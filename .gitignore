@@ -25,6 +25,11 @@ __pycache__/
 !.env.example
 *.pem
 cookies.txt
+credentials*.json
+client_secret*.json
+token*.json
+gmail_refresh_token.txt
+gmail_*token*.txt
 
 # Local databases and backups
 *.sqlite3

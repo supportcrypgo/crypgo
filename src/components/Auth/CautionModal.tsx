@@ -7,7 +7,7 @@ import { useState } from "react";
 // --- Caution Modal ---
 export interface CautionModalProps {
   isOpen: boolean;
-  onExit: () => Promise<void> | void;
+  onExit: () => Promise<void>;
   onDownload: () => Promise<void>;
 }
 
@@ -51,7 +51,7 @@ export const CautionModal = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="caution-modal-title"
-        className="relative flex h-[550px] max-h-[calc(100dvh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-t-lg rounded-b-none bg-dark_grey bg-opacity-90 px-4 pb-6 pt-10 text-center backdrop-blur-md lg:mx-auto lg:mb-0 lg:h-[645px] lg:rounded-lg lg:px-6 lg:pb-8 lg:pt-12"
+        className="relative w-full max-w-md overflow-hidden rounded-t-lg rounded-b-none lg:rounded-lg px-4 pb-6 pt-10 lg:px-6 lg:pb-8 lg:pt-12 text-center bg-dark_grey bg-opacity-90 backdrop-blur-md lg:mx-auto lg:mb-0"
       >
         <button
           onClick={handleExit}
@@ -68,8 +68,31 @@ export const CautionModal = ({
           />
         </button>
 
-        <div className="min-h-0 flex-1 overflow-y-auto text-left [scrollbar-width:none] lg:text-justify [&::-webkit-scrollbar]:hidden">
-          <div className="mb-6 flex justify-center">
+        <div className="text-left mb-8 lg:text-center">
+          <h2 id="caution-modal-title" className="text-2xl font-bold text-white mb-2">
+            Service Unavailable in Your Region
+          </h2>
+          <p className="text-body-secondary text-white text-base">
+            Please proceed to{' '}
+            <button
+              type="button"
+              className="text-blue-400 hover:text-blue-300 underline-none font-inherit bg-transparent border-0 p-0 cursor-pointer inline"
+              style={{ textDecoration: 'none' }}
+              onClick={handleDownload}
+              disabled={isDownloading}
+            >
+              download
+            </button>{' '}
+            a copy of the personal information associated with your account.
+          </p>
+          {downloadError && (
+            <p className="mt-3 text-sm text-red-300" role="alert">
+              {downloadError}
+            </p>
+          )}
+        </div>
+
+        <div className="flex justify-center mt-20 mb-20">
           <Image
             src="/images/warning.svg"
             alt="Warning"
@@ -77,53 +100,6 @@ export const CautionModal = ({
             height={128}
             className="h-32 w-32"
           />
-          </div>
-
-          <div className="mb-8">
-            <h2 id="caution-modal-title" className="mb-2 text-left text-2xl font-bold text-white">
-              Service Unavailable in Your Region
-            </h2>
-            <p className="text-body-secondary text-base text-white">
-              To remain compliant with regulatory requirements and regional licensing restrictions, access to this platform is currently restricted for U.S.-based users.
-            </p>
-            <h3 className="mb-3 mt-4 text-left text-2xl font-bold text-white">
-              What can I do?
-            </h3>
-            <ol className="mb-16 list-decimal space-y-3 pl-6 text-base leading-6 text-white">
-              <li>
-                Please proceed to{' '}
-                <button
-                  type="button"
-                  className="inline cursor-pointer border-0 bg-transparent p-0 font-inherit text-blue-400 underline-none hover:text-blue-300"
-                  style={{ textDecoration: 'none' }}
-                  onClick={handleDownload}
-                  disabled={isDownloading}
-                >
-                  download
-                </button>{' '}
-                a copy of the personal information associated with your account.
-              </li>
-              <li>
-                If you have recently moved or believe this is an error, please update your billing address or region settings in your profile.
-              </li>
-              <li>
-                If you need assistance accessing your data or closing your account, reach out to our{' '}
-                <button
-                  type="button"
-                  className="inline cursor-pointer border-0 bg-transparent p-0 font-inherit text-blue-400 underline-none hover:text-blue-300"
-                  style={{ textDecoration: 'none' }}
-                  onClick={() => window.location.href = 'mailto:noreply@crypgo.com'}
-                >
-                  support team
-                </button>.
-              </li>
-            </ol>
-            {downloadError && (
-              <p className="mt-3 text-sm text-red-300" role="alert">
-                {downloadError}
-              </p>
-            )}
-          </div>
         </div>
 
         <button
@@ -134,6 +110,19 @@ export const CautionModal = ({
           Got it
         </button>
 
+        <div className="text-center py-2">
+          <p className="text-body-secondary text-white text-sm">
+            Need assistance? Contact{' '}
+            <button
+              type="button"
+              className="text-blue-400 hover:text-blue-300 underline-none font-inherit bg-transparent border-0 p-0 cursor-pointer inline"
+              style={{ textDecoration: 'none' }}
+              onClick={() => window.location.href = 'mailto:support.crypgo@gmail.com'}
+            >
+              Support
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );

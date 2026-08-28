@@ -11,8 +11,11 @@ from django.db.models import F
 from .models import EmailLog, Bounce, Tracking
 from .retry import RetryHandler
 from .throttler import Throttler
+from .gmail_sender import gmail_sender
 
 logger = logging.getLogger(__name__)
+
+USE_GMAIL_API = getattr(settings, 'USE_GMAIL_API', False)
 
 
 class EmailSender:
@@ -110,17 +113,28 @@ class EmailSender:
                 import re
                 plain_text = re.sub(r'<[^>]+>', '', html_body).strip()
             headers = self._build_headers(lead.email, tracking_id)
-            msg = EmailMultiAlternatives(
-                subject=subject,
-                body=plain_text or html_body,
-                from_email=from_email,
-                to=[lead.email],
-                headers=headers,
-            )
-            if html_body:
-                msg.attach_alternative(html_body, "text/html")
-            # Send
-            msg.send(fail_silently=False)
+            
+            if USE_GMAIL_API:
+                gmail_sender.send(
+                    from_email=from_email,
+                    to_emails=[lead.email],
+                    subject=subject,
+                    html_body=html_body,
+                    plain_text=plain_text,
+                    headers=headers,
+                )
+            else:
+                msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=plain_text or html_body,
+                    from_email=from_email,
+                    to=[lead.email],
+                    headers=headers,
+                )
+                if html_body:
+                    msg.attach_alternative(html_body, "text/html")
+                # Send
+                msg.send(fail_silently=False)
 
             # Track success
             self.throttler.record_send()
@@ -203,17 +217,26 @@ class EmailSender:
             if not plain_text and html_body:
                 plain_text = re.sub(r'<[^>]+>', '', html_body).strip()
             headers = self._build_headers(recipient_email, tracking_id)
-            msg = EmailMultiAlternatives(
-                subject=subject,
-                body=plain_text or html_body,
-                from_email=from_email,
-                to=[recipient_email],
-                headers=headers,
-            )
-            if html_body:
-                msg.attach_alternative(html_body, "text/html")
-
-            msg.send(fail_silently=False)
+            if USE_GMAIL_API:
+                gmail_sender.send(
+                    from_email=from_email,
+                    to_emails=[recipient_email],
+                    subject=subject,
+                    html_body=html_body,
+                    plain_text=plain_text,
+                    headers=headers,
+                )
+            else:
+                msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=plain_text or html_body,
+                    from_email=from_email,
+                    to=[recipient_email],
+                    headers=headers,
+                )
+                if html_body:
+                    msg.attach_alternative(html_body, "text/html")
+                msg.send(fail_silently=False)
             self.throttler.record_send()
 
             return self._log_attempt(

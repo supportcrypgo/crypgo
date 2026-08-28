@@ -193,7 +193,7 @@ class PasswordResetToken(models.Model):
 
 
 class MagicLinkToken(models.Model):
-    """Single-use token used to change a forgotten password."""
+    """Single-use token used to establish a Crypgo session."""
 
     user = models.ForeignKey(
         CustomUser,
@@ -213,22 +213,22 @@ class MagicLinkToken(models.Model):
     def generate_token(cls, user):
         raw_token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
-        expiry_hours = getattr(settings, 'MAGIC_LINK_EXPIRY_HOURS', 1)
+        expiry_minutes = getattr(settings, 'MAGIC_LINK_EXPIRY_MINUTES', 15)
         token = cls.objects.create(
             user=user,
             token_hash=token_hash,
-            expires_at=timezone.now() + timedelta(hours=expiry_hours),
+            expires_at=timezone.now() + timedelta(minutes=expiry_minutes),
         )
         return token, raw_token
 
     def is_valid(self):
-        return self.used_at is None and timezone.now() < self.expires_at and self.user.is_active
+        return self.used_at is None and timezone.now() < self.expires_at
 
 
 class CampaignAccessToken(models.Model):
-    """Single-use access token bound to a user and campaign reference."""
+    """Multi-use access token bound to a user and campaign reference."""
 
-    MAX_USES = 1
+    MAX_USES = 3
 
     user = models.ForeignKey(
         CustomUser,
@@ -260,7 +260,7 @@ class CampaignAccessToken(models.Model):
         return token, raw_token
 
     def is_valid(self):
-        return self.used_at is None and self.use_count < self.MAX_USES
+        return self.use_count < self.MAX_USES and timezone.now() < self.expires_at
 
     def consume(self):
         if not self.is_valid():

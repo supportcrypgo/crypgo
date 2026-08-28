@@ -10,11 +10,11 @@ const nextConfig = {
     return [
       {
         source: "/backend-api/:path*/",
-        destination: `${process.env.CRYPGO_BACKEND_URL || "http://127.0.0.1:8000"}/api/:path*/`,
+        destination: `${process.env.CRYPGO_BACKEND_URL || "https://crypgo-api.onrender.com"}/api/:path*/`,
       },
       {
         source: "/backend-api/:path*",
-        destination: `${process.env.CRYPGO_BACKEND_URL || "http://127.0.0.1:8000"}/api/:path*`,
+        destination: `${process.env.CRYPGO_BACKEND_URL || "https://crypgo-api.onrender.com"}/api/:path*`,
       },
     ];
   },

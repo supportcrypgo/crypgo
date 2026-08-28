@@ -6,6 +6,7 @@
     "manage.py"
   ],
   "exclude": [
+    "**/.*",
     "**/__pycache__",
     "**/migrations/**",
     "**/tests/**",

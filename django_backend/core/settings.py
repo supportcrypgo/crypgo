@@ -12,9 +12,10 @@ load_dotenv(BASE_DIR / '.env', override=True)
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'localhost:8000', '.trycloudflare.com']
+# Production: Get ALLOWED_HOSTS from environment or default to Render domain
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'crypgo-api.onrender.com').split(',')
 
 # Application definition
 INSTALLED_APPS = [
@@ -71,13 +72,22 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # Use PostgreSQL in hosted environments and keep SQLite as the local fallback.
 DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
     if DATABASE_URL else {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+    },
+    'sqlite': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+if DATABASE_URL and DATABASE_SCHEMA != 'public':
+    DATABASES['default'].setdefault('OPTIONS', {})['options'] = (
+        f'-c search_path={DATABASE_SCHEMA},public'
+    )
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -112,21 +122,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom User Model
 AUTH_USER_MODEL = 'users.CustomUser'
 
-# CORS Configuration
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5000",
-    "http://localhost:8000",
-    "http://localhost:8001",
-]
+# CORS Configuration - use environment variable or default
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '["https://crypgo-frontend.onrender.com"]')
+if isinstance(CORS_ALLOWED_ORIGINS, str):
+    import json
+    CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
 
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF Configuration - trust frontend origin
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:5000",
-]
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '["https://crypgo-frontend.onrender.com"]')
+if isinstance(CSRF_TRUSTED_ORIGINS, str):
+    import json
+    CSRF_TRUSTED_ORIGINS = json.loads(CSRF_TRUSTED_ORIGINS)
 
 # Cookie settings for security
 SESSION_COOKIE_SAMESITE = 'Lax'
@@ -195,16 +203,27 @@ SIMPLE_JWT = {
     'AUTH_COOKIE_SAMESITE': 'Lax',
 }
 
-# Email Configuration - Gmail SMTP for email bot campaigns
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', '465'))
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False') == 'True'
-EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'True') == 'True'
-EMAIL_HOST_USER = 'support.crypgo@gmail.com'
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = 'support.crypgo@gmail.com'
-EMAIL_FROM_NAME = 'Crypgo'
+# Email Configuration - Gmail API (production) or SMTP (fallback)
+USE_GMAIL_API = os.getenv('USE_GMAIL_API', 'False') == 'True'
+
+if USE_GMAIL_API:
+    EMAIL_BACKEND = 'apps.email_backend.GmailAPIBackend'
+    GMAIL_CLIENT_ID = os.getenv('GMAIL_CLIENT_ID')
+    GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
+    GMAIL_REFRESH_TOKEN = os.getenv('GMAIL_REFRESH_TOKEN')
+    DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com')
+    EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
+else:
+    # Fallback SMTP configuration
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', '465'))
+    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False') == 'True'
+    EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'True') == 'True'
+    EMAIL_HOST_USER = 'support.crypgo@gmail.com'
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+    DEFAULT_FROM_EMAIL = 'support.crypgo@gmail.com'
+    EMAIL_FROM_NAME = 'Crypgo'
 
 # Password Reset Token Settings
 PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 24
