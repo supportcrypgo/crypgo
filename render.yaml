@@ -1,7 +1,23 @@
 services:
   - type: web
+    name: crypgo-frontend
+    env: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CRYPGO_BACKEND_URL
+        sync: false
+      - key: NEXT_PUBLIC_API_URL
+        value: /backend-api
+      - key: NEXT_PUBLIC_WS_URL
+        sync: false
+
+  - type: web
     name: crypgo-api
-    runtime: python
+    env: python
     rootDir: django_backend
     buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
     startCommand: gunicorn core.wsgi:application
@@ -14,7 +30,9 @@ services:
       - key: ALLOWED_HOSTS
         sync: false
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: crypgo-db
+          property: connectionString
       - key: FRONTEND_URL
         sync: false
       - key: CORS_ALLOWED_ORIGINS
@@ -25,9 +43,47 @@ services:
         sync: false
 
   - type: web
+    name: crypgo-email
+    env: python
+    rootDir: Bot
+    buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
+    startCommand: gunicorn bot_project.wsgi:application
+    healthCheckPath: /health/
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: email-bot-db
+          property: connectionString
+      - key: SITE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USE_TLS
+        value: "True"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: CRYPGO_API_URL
+        sync: false
+      - key: CRYPGO_SERVICE_KEY
+        sync: false
+
+  - type: web
     name: crypgo-websocket
-    runtime: node
-    rootDir: .
+    env: node
     buildCommand: npm ci --omit=dev
     startCommand: node server/wsServer.mjs
     healthCheckPath: /health
@@ -37,5 +93,9 @@ services:
       - key: COINGECKO_API_KEY
         sync: false
 
-# Attach a managed PostgreSQL database in Render and set its connection string
-# as DATABASE_URL on crypgo-api. Keep the Bot database separate.
+databases:
+  - name: crypgo-db
+    plan: free
+
+  - name: email-bot-db
+    plan: free
