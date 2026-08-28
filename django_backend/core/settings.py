@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import timedelta
+import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -68,29 +69,15 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-# Database - SQLite for development
-# To switch to PostgreSQL, replace this block with the commented PostgreSQL section below.
-# Make sure PostgreSQL is installed and running, and update the .env with your credentials.
+# Use PostgreSQL in hosted environments and keep SQLite as the local fallback.
+DATABASE_URL = os.getenv('DATABASE_URL')
 DATABASES = {
-    'default': {
+    'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+    if DATABASE_URL else {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-
-# # PostgreSQL Configuration (for production use)
-# # Uncomment and comment out the SQLite block above to use PostgreSQL.
-# # Make sure PostgreSQL is installed and running, and update the .env with your credentials.
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.getenv('DB_NAME', 'crypgo_db'),
-#         'USER': os.getenv('DB_USER', 'crypgo_user'),
-#         'PASSWORD': os.getenv('DB_PASSWORD'),
-#         'HOST': os.getenv('DB_HOST', 'localhost'),
-#         'PORT': os.getenv('DB_PORT', '5432'),
-#     }
-# }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

@@ -30,9 +30,7 @@ services:
       - key: ALLOWED_HOSTS
         sync: false
       - key: DATABASE_URL
-        fromDatabase:
-          name: crypgo-db
-          property: connectionString
+        sync: false
       - key: FRONTEND_URL
         sync: false
       - key: CORS_ALLOWED_ORIGINS
@@ -57,9 +55,7 @@ services:
       - key: ALLOWED_HOSTS
         sync: false
       - key: DATABASE_URL
-        fromDatabase:
-          name: email-bot-db
-          property: connectionString
+        sync: false
       - key: SITE_URL
         sync: false
       - key: FRONTEND_URL
@@ -93,9 +89,6 @@ services:
       - key: COINGECKO_API_KEY
         sync: false
 
-databases:
-  - name: crypgo-db
-    plan: free
-
-  - name: email-bot-db
-    plan: free
+# Provide DATABASE_URL manually from an external PostgreSQL provider such as
+# Neon or Supabase. Keeping databases out of this blueprint avoids Render's
+# database billing verification requirement.
