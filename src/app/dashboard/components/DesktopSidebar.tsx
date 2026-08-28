@@ -132,7 +132,7 @@ export default function DesktopSidebar() {
       {/* Logout - pinned to bottom with 24-32px separation */}
       <div className="px-5 pb-6 pt-8">
         <button
-          onClick={() => void logout()}
+          onClick={() => logout()}
           className="w-full flex items-center gap-3 px-5 py-3 rounded-xl text-sm text-charcoalGray hover:text-white hover:bg-deepSlate/50 transition-all"
         >
           <LogOut className="w-5 h-5 shrink-0" />

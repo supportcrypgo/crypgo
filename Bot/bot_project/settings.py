@@ -10,9 +10,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Security
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'fallback-dev-key')
-# TEMPORARY DEBUGGING - REMOVE AFTER FIXING
-DEBUG = True
-ALLOWED_HOSTS = ['*']
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'crypgo-email.onrender.com').split(',')
 
 # Application definition
 INSTALLED_APPS = [
@@ -79,27 +78,48 @@ TEMPLATES = [
 WSGI_APPLICATION = 'bot_project.wsgi.application'
 
 # Database
+DATABASE_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 DATABASES = {
-    'default': dj_database_url.config(
-        default=f'sqlite:///{BASE_DIR}/db.sqlite3',
+    'default': dj_database_url.parse(
+        os.getenv('DATABASE_URL') or f'sqlite:///{BASE_DIR}/db.sqlite3',
         conn_max_age=600,
-    )
+    ),
+    'sqlite': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 }
+if os.getenv('DATABASE_URL') and DATABASE_SCHEMA != 'public':
+    DATABASES['default'].setdefault('OPTIONS', {})['options'] = (
+        f'-c search_path={DATABASE_SCHEMA},public'
+    )
 
-# Email Configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True'
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv(
-    'DEFAULT_FROM_EMAIL',
-    ''
-)
-EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
-EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
+# Email Configuration - Gmail API (production) or SMTP (fallback)
+USE_GMAIL_API = os.getenv('USE_GMAIL_API', 'False') == 'True'
+
+if USE_GMAIL_API:
+    EMAIL_BACKEND = 'apps.email_engine.gmail_backend.GmailAPIBackend'
+    GMAIL_CLIENT_ID = os.getenv('GMAIL_CLIENT_ID')
+    GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
+    GMAIL_REFRESH_TOKEN = os.getenv('GMAIL_REFRESH_TOKEN')
+    DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com')
+    EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
+    EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
+else:
+    # Fallback SMTP configuration
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+    EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True'
+    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    DEFAULT_FROM_EMAIL = os.getenv(
+        'DEFAULT_FROM_EMAIL',
+        ''
+    )
+    EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
+    EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -136,13 +156,12 @@ SPECTACULAR_SETTINGS = {
     'COMPONENT_SPLIT_REQUEST': True,
 }
 
-# CORS
+# CORS - use environment variable or default
 CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "https://*.ngrok.io",
-]
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '["https://crypgo-frontend.onrender.com"]')
+if isinstance(CORS_ALLOWED_ORIGINS, str):
+    import json
+    CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
 
 # Static & Media
 STATIC_URL = '/static/'
