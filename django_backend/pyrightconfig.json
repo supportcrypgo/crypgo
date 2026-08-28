@@ -1,0 +1,16 @@
+{
+  "typeCheckingMode": "basic",
+  "exclude": [
+    "**/__pycache__",
+    "*/migrations/**",
+    "**/tests/**",
+    ".venv/**",
+    "venv/**",
+    "*/tests.py",
+    "**/.venv/**",
+    "**/node_modules/**"
+  ],
+  "pythonVersion": "3.13",
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false
+}

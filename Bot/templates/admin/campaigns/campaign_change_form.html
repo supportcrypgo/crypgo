@@ -1,0 +1,40 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_field_sets %}
+  {{ block.super }}
+  {% if original %}
+    <p style="margin-top: 16px;">
+      <a
+        href="{% url 'admin:campaigns_campaign_send_now' original.pk %}"
+        class="button"
+        style="background: #22c55e; color: #fff; border-color: #16a34a;"
+      >
+        Send Campaign Now
+      </a>
+    </p>
+    <p>
+      <strong>Status:</strong> {{ original.get_status_display }}
+    </p>
+    <p>
+      <strong>Sent:</strong> {{ original.sent_count }}/{{ original.total_leads }}
+    </p>
+    <p>
+      <strong>Last run:</strong>
+      {% if original.completed_at %}
+        {{ original.completed_at }}
+      {% elif original.started_at %}
+        {{ original.started_at }}
+      {% else %}
+        Never
+      {% endif %}
+    </p>
+    <p>
+      <strong>Resume point:</strong>
+      {% if original.last_processed_index > 0 %}
+        Lead {{ original.last_processed_index }}
+      {% else %}
+        Fresh start
+      {% endif %}
+    </p>
+  {% endif %}
+{% endblock %}
