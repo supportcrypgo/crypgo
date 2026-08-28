@@ -127,29 +127,6 @@ module.exports = {
       min_uptime: '30s',
       restart_delay: 10000,
     },
-
-    // Cloudflare backend tunnel (Django API - Port 8000)
-    {
-      name: 'cloudflare-backend',
-      script: process.platform === 'win32'
-        ? 'C:/Program Files (x86)/cloudflared/cloudflared.exe'
-        : 'cloudflared',
-      args: 'tunnel --url http://localhost:8000',
-      cwd: PROJECT_ROOT,
-      instances: 1,
-      exec_mode: 'fork',
-      watch: false,
-      max_memory_restart: '100M',
-      error_file: 'logs/cloudflare-backend-error.log',
-      out_file: 'logs/cloudflare-backend-out.log',
-      log_file: 'logs/cloudflare-backend-combined.log',
-      merge_logs: true,
-      time: true,
-      autorestart: true,
-      max_restarts: 5,
-      min_uptime: '30s',
-      restart_delay: 10000,
-    },
   ],
   
   // Deploy configuration (for future use)

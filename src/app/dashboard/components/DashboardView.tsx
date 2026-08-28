@@ -35,7 +35,6 @@ export default function DashboardView({ userId }: DashboardViewProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [adminRawWalletAssets, setAdminRawWalletAssets] = useState<UnifiedWalletAsset[]>([]);
   const [walletLoading, setWalletLoading] = useState(false);
-  const [cautionModalOpen, setCautionModalOpen] = useState(false);
 
   const { prices, isLoading: pricesLoading, error: pricesError } = useCryptoPricesGlobal();
   const [walletError, setWalletError] = useState<string | null>(null);
@@ -126,7 +125,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
     return (
       <div className="min-h-screen bg-darkmode text-white">
         <MobileHeader onMenuClick={() => setMenuOpen(!menuOpen)} showMenuButton={false} />
-        <CautionModalGate userId={userId} onOpenChange={setCautionModalOpen} />
+        <CautionModalGate userId={userId} />
 
         {menuOpen && (
           <div
@@ -150,7 +149,6 @@ export default function DashboardView({ userId }: DashboardViewProps) {
             userId={userId}
             performanceMetrics={performanceMetrics}
             availableBalance={currentWalletSummary.availableBalance}
-            maskBalance={cautionModalOpen}
           />
 
           <section className="space-y-3">
@@ -169,7 +167,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
   return (
     <div className="min-h-screen bg-darkmode text-white">
       <DesktopSidebar />
-      <CautionModalGate userId={userId} onOpenChange={setCautionModalOpen} />
+      <CautionModalGate userId={userId} />
 
       <div className={SIDEBAR_OFFSET_CLASS}>
         <DesktopHeader title="Dashboard" />
@@ -192,7 +190,6 @@ export default function DashboardView({ userId }: DashboardViewProps) {
                 userId={userId}
                 performanceMetrics={performanceMetrics}
                 availableBalance={currentWalletSummary.availableBalance}
-                maskBalance={cautionModalOpen}
               />
 
               <Watchlist assets={watchlistAssets} isLoading={isLoading} />

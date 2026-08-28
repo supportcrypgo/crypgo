@@ -1,7 +1,6 @@
 'use client';
 
 import { UnifiedUser, UnifiedWalletAsset, UnifiedTransaction } from '@/types/unified';
-import { clearCautionRestriction } from '@/lib/cautionRestriction';
 
 // ─── Configuration ───
 const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_URL || '/backend-api';
@@ -610,9 +609,7 @@ export const authApi = {
    * Login user - tokens are set as http-only cookies by the backend
    */
   async login(credentials: LoginCredentials): Promise<TokenResponse> {
-    const startTime = Date.now();
-    console.log(`[Auth] Login attempt for: ${credentials.email}`);
-    
+    console.log('[authApi.login] request start', { email: credentials.email });
     const response = await fetch(`${API_BASE_URL}/auth/login/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -620,26 +617,26 @@ export const authApi = {
       credentials: 'include',
     });
 
-    const duration = Date.now() - startTime;
-
+    console.log('[authApi.login] response status', response.status);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const message = extractErrorMessage(errorData, response.status) || 'Login failed.';
-      console.error(`[Auth] Login failed for: ${credentials.email} (${duration}ms) - ${message}`);
+      console.error('[authApi.login] response error', { 
+        status: response.status, 
+        statusText: response.statusText,
+        errorData, 
+        message 
+      });
       throw new Error(message);
     }
 
     const data = await response.json();
+    console.log('[authApi.login] response data', data);
     if (data?.access_token && typeof window !== 'undefined') {
       localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, data.access_token);
-      clearCautionRestriction();
     }
 
-    console.log(`[Auth] Login successful for: ${credentials.email} (${duration}ms)`);
-    return {
-      ...data,
-      user: data?.user ? normalizeUser(data.user) : undefined,
-    };
+    return data;
   },
 
   /**
@@ -662,32 +659,17 @@ export const authApi = {
       );
     }
 
-    const data = await response.json();
-    clearCautionRestriction();
-    return {
-      ...data,
-      user: data?.user ? normalizeUser(data.user) : undefined,
-    };
+    return response.json();
   },
 
   /**
    * Logout user - calls backend to blacklist token and clear cookies
    */
   async logout(): Promise<void> {
-    try {
-      await fetch(`${API_BASE_URL}/auth/logout/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
-        },
-        credentials: 'include',
-      });
-    } catch {
-    } finally {
-      clearAccessToken();
-      clearCautionRestriction();
-    }
+    await authenticatedRequest('/auth/logout/', {
+      method: 'POST',
+    });
+    clearAccessToken();
   },
 
   /**
@@ -753,22 +735,7 @@ export const authApi = {
     if (data.access_token && typeof window !== 'undefined') {
       localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, data.access_token);
     }
-    return {
-      ...data,
-      user: data?.user ? normalizeUser(data.user) : undefined,
-    };
-  },
-
-  async resetPasswordWithMagicLink(token: string, newPassword: string, confirmPassword: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/auth/magic-link/reset-password/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, new_password: newPassword, confirm_password: confirmPassword }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(extractErrorMessage(data, response.status));
-    }
+    return data;
   },
 
   async consumeCampaignAccess(token: string): Promise<TokenResponse> {
