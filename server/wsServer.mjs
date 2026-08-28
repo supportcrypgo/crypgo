@@ -12,9 +12,10 @@
  * Listens on: ws://localhost:5001
  */
 
+import http from 'node:http';
 import { WebSocketServer } from 'ws';
 
-const PORT = 5001;
+const PORT = Number(process.env.PORT || process.env.WS_PORT || 5001);
 const POLL_INTERVAL_MS = 10_000; // fetch fresh prices every 10s
 const BROADCAST_INTERVAL_MS = 10_000; // broadcast every 10s
 
@@ -55,9 +56,21 @@ async function fetchPrices() {
 }
 
 // ── WebSocket server ──
-const wss = new WebSocketServer({ port: PORT });
+const httpServer = http.createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', service: 'websocket' }));
+    return;
+  }
 
-console.log(`[ws-server] WebSocket server listening on ws://localhost:${PORT}`);
+  res.writeHead(404);
+  res.end();
+});
+
+const wss = new WebSocketServer({ server: httpServer });
+httpServer.listen(PORT);
+
+console.log(`[ws-server] WebSocket and health server listening on port ${PORT}`);
 
 wss.on('connection', (ws, req) => {
   console.log(`[ws-server] Client connected (${req.socket.remoteAddress})`);
@@ -102,5 +115,5 @@ fetchPrices();
 // Handle process termination
 process.on('SIGINT', () => {
   console.log('\n[ws-server] Shutting down...');
-  wss.close(() => process.exit(0));
+  wss.close(() => httpServer.close(() => process.exit(0)));
 });
