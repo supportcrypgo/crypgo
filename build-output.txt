@@ -1,0 +1,582 @@
+
+> crypgo_project@0.1.0 build
+> next build
+
+ GÜá You are using a non-standard "NODE_ENV" value in your environment. This creates inconsistencies in the project and is strongly advised against. Read more: https://nextjs.org/docs/messages/non-standard-node-env
+  Gû¦ Next.js 14.2.4
+  - Environments: .env.local, .env
+
+   Creating an optimized production build ...
+ G£ô Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/20) ...
+Error: <Html> should not be imported outside of pages/_document.
+Read more: https://nextjs.org/docs/messages/no-document-import-in-page
+    at Z (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\pages.runtime.prod.js:16:5430)
+    at I (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\682.js:6:1263)
+    at renderWithHooks (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5658:16)
+    at renderIndeterminateComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5732:15)
+    at renderElement (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5957:7)
+    at renderNodeDestructiveImpl (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:6115:11)
+    at renderNodeDestructive (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:6087:14)
+    at finishClassComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5688:3)
+    at renderClassComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5696:3)
+    at renderElement (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5954:7)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/500". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+Error: <Html> should not be imported outside of pages/_document.
+Read more: https://nextjs.org/docs/messages/no-document-import-in-page
+    at Z (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\pages.runtime.prod.js:16:5430)
+    at I (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\682.js:6:1263)
+    at renderWithHooks (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5658:16)
+    at renderIndeterminateComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5732:15)
+    at renderElement (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5957:7)
+    at renderNodeDestructiveImpl (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:6115:11)
+    at renderNodeDestructive (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:6087:14)
+    at finishClassComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5688:3)
+    at renderClassComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5696:3)
+    at renderElement (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5954:7)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/admin/customers/advertisers". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+   Generating static pages (5/20) 
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/p2p/create-offer". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/history". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/p2p". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+   Generating static pages (10/20) 
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/p2p/trade". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/profile". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/p2p/merchant-onboarding". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/wallet/receive". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+   Generating static pages (15/20) 
+Error: <Html> should not be imported outside of pages/_document.
+Read more: https://nextjs.org/docs/messages/no-document-import-in-page
+    at Z (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\pages.runtime.prod.js:16:5430)
+    at I (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\682.js:6:1263)
+    at renderWithHooks (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5658:16)
+    at renderIndeterminateComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5732:15)
+    at renderElement (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5957:7)
+    at renderNodeDestructiveImpl (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:6115:11)
+    at renderNodeDestructive (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:6087:14)
+    at finishClassComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5688:3)
+    at renderClassComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5696:3)
+    at renderElement (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5954:7)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/404". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+Error: <Html> should not be imported outside of pages/_document.
+Read more: https://nextjs.org/docs/messages/no-document-import-in-page
+    at Z (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\pages.runtime.prod.js:16:5430)
+    at I (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\682.js:6:1263)
+    at renderWithHooks (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5658:16)
+    at renderIndeterminateComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5732:15)
+    at renderElement (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5957:7)
+    at renderNodeDestructiveImpl (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:6115:11)
+    at renderNodeDestructive (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:6087:14)
+    at finishClassComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5688:3)
+    at renderClassComponent (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5696:3)
+    at renderElement (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\react-dom\cjs\react-dom-server.browser.development.js:5954:7)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/wallet/send". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/_not-found". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/dashboard/swap". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908) {
+  digest: '1366204119'
+}
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+System.Management.Automation.RemoteException
+Error occurred prerendering page "/". Read more: https://nextjs.org/docs/messages/prerender-error
+System.Management.Automation.RemoteException
+TypeError: Cannot read properties of null (reading 'useContext')
+    at t.useContext (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.prod.js:12:109363)
+    at d (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:36735)
+    at h (C:\Users\User\Desktop\Crypgo-1.0.0\.next\server\chunks\991.js:1:28660)
+    at au (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:10446)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:15122
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+    at a_ (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:49776)
+    at ab (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:11808)
+    at C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16871
+    at aw (C:\Users\User\Desktop\Crypgo-1.0.0\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:16908)
+ G£ô Generating static pages (20/20)
+System.Management.Automation.RemoteException
+> Export encountered errors on following paths:
+	/_error: /404
+	/_error: /500
+	/_not-found/page: /_not-found
+	/dashboard/admin/customers/advertisers/page: /dashboard/admin/customers/advertisers
+	/dashboard/history/page: /dashboard/history
+	/dashboard/p2p/create-offer/page: /dashboard/p2p/create-offer
+	/dashboard/p2p/merchant-onboarding/page: /dashboard/p2p/merchant-onboarding
+	/dashboard/p2p/page: /dashboard/p2p
+	/dashboard/p2p/trade/page: /dashboard/p2p/trade
+	/dashboard/page: /dashboard
+	/dashboard/profile/page: /dashboard/profile
+	/dashboard/swap/page: /dashboard/swap
+	/dashboard/wallet/receive/page: /dashboard/wallet/receive
+	/dashboard/wallet/send/page: /dashboard/wallet/send
+	/page: /

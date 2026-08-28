@@ -1,0 +1,1 @@
+# This file ensures Django recognizes the management commands

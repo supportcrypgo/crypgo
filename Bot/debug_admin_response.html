@@ -1,0 +1,1201 @@
+
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en-us" dir="ltr" x-data="{ theme: $persist({'value': 'auto'}).as('theme') }" x-bind:class="theme.value && theme.value" x-cloak>
+
+<head>
+    <title>Site administration | Email Bot Admin</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@48,500,0,0" rel="stylesheet"/>
+
+    
+        <link href="/static/css/unfold_custom.css" rel="stylesheet">
+    
+
+    <link href="/static/unfold/css/styles.css" rel="stylesheet">
+    <link href="/static/unfold/css/simplebar.css" rel="stylesheet">
+
+    <script src="/static/unfold/js/simplebar.js"></script>
+    <script src="/static/unfold/js/alpine.persist.js" defer></script>
+    <script src="/static/unfold/js/alpine.js" defer></script>
+    <script src="/static/unfold/js/htmx.js"></script>
+    <script src="/static/unfold/js/app.js"></script>
+
+    
+        <script src="/static/js/unfold_custom.js"></script>
+    
+
+    
+
+    
+
+    
+        <meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    
+
+    
+        <meta name="robots" content="NONE,NOARCHIVE">
+    
+
+    
+        <style>
+            html {
+                
+                    
+                
+                    
+                
+                    
+                
+                    
+                
+                    
+                
+                    
+                
+            }
+        </style>
+    
+</head>
+
+<body class="antialiased bg-white font-sans text-gray-500 dark:bg-gray-900 dark:text-gray-400 " data-admin-utc-offset="-18000" x-data="{ sidebarMobileOpen: false, sidebarDesktopOpen: true }">
+    
+    <div id="page" class="flex min-h-screen">
+        
+            
+                
+
+<div class="relative z-50">
+    <div @click="sidebarDesktopOpen = !sidebarDesktopOpen"
+         hx-get="/admin/toggle-sidebar/"
+         hx-swap="none"
+         class="block bg-white border cursor-pointer fixed flex h-6 hidden items-center justify-center rounded-full text-gray-500 top-5 -translate-x-1/2 w-6 z-50 xl:flex dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200"
+         :class="{'ml-6 rotate-180': !sidebarDesktopOpen, 'ml-72': sidebarDesktopOpen}">
+        <span class="material-symbols-outlined md-16">
+            first_page
+        </span>
+    </div>
+
+    <div @click="sidebarMobileOpen = !sidebarMobileOpen"
+         class="fixed bottom-0 bg-gray-700 flex cursor-pointer flex items-center left-0 mb-2 ml-2 justify-center px-2 py-1 rounded-full shadow-sm text-xs text-white uppercase z-50 xl:hidden"
+        :class="{'ml-72 -translate-x-1/2': sidebarMobileOpen}">
+        Menu
+    </div>
+
+    <div :class="{'xl:block': sidebarDesktopOpen, 'xl:hidden': !sidebarDesktopOpen, 'max-xl:fixed': sidebarMobileOpen, 'hidden': !sidebarMobileOpen }">
+        
+
+<div class="relative min-w-sidebar transition-width w-sidebar z-30">
+    <nav id="nav-sidebar" class="bg-gray-50 border-r border-gray-200 flex flex-col fixed max-h-screen min-h-screen min-w-sidebar transition-width w-sidebar dark:bg-gray-900 dark:border-gray-800">
+        <div class="border-b border-gray-200 mb-5 py-3 dark:border-gray-800">
+            <div class="flex font-medium h-10 items-center px-6 text-gray-700 dark:text-gray-200">
+                
+                    
+
+
+    <a href="/admin/" class="bg-primary-600 flex h-8 items-center justify-center rounded-md mr-4 text-white text-xs w-8">
+        <span class="material-symbols-outlined md-18">settings</span>
+    </a>
+
+
+
+                    
+    <h1 id="site-name">
+        <a href="/admin/">
+            Email Automation System
+        </a>
+    </h1>
+
+                
+            </div>
+        </div>
+
+        
+
+    <div class="mb-5 mx-3 relative">
+        <div class="bg-white border flex items-center overflow-hidden rounded-md shadow-sm focus-within:ring focus-within:ring-primary-300 focus-within:border-primary-600 dark:bg-gray-900 dark:border-gray-700 focus-within:dark:ring-primary-600/30">
+            <span class="material-symbols-outlined md-18 pl-3 text-gray-400">manage_search</span>
+
+            <input type="search"
+                   id="nav-filter"
+                   name="s"
+                   hx-get="/admin/search/"
+                   hx-trigger="keyup changed delay:500ms, search"
+                   hx-target="#search-results"
+                   hx-indicator=".htmx-indicator"
+                   class="flex-grow font-medium overflow-hidden pl-2 pr-3 py-2 text-gray-500 text-sm focus:outline-none dark:bg-gray-900 dark:text-gray-400"
+                   placeholder="Search apps and models..." aria-label="Filter navigation items" />
+            <div class="absolute htmx-indicator mt-0.5 opacity-0 right-2 top-2">
+                <span class="animate-spin material-symbols-outlined md-18 text-gray-300">sync</span>
+            </div>
+        </div>
+
+        <div id="search-results"></div>
+    </div>
+
+
+
+        
+            
+
+
+    <div class="overflow-auto">
+        
+            
+
+            
+                <h3 class="font-medium my-3 px-6 text-gray-900 text-sm first:mt-0 dark:text-gray-200">
+                    Dashboard
+                </h3>
+            
+
+            <ol class="px-6">
+                
+            </ol>
+        
+            
+
+            
+                <h3 class="font-medium my-3 px-6 text-gray-900 text-sm first:mt-0 dark:text-gray-200">
+                    Lead Management
+                </h3>
+            
+
+            <ol class="px-6">
+                
+                    <li>
+                        <a href="/admin/leads/lead/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    person
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                All Leads
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/leads/lead/import/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    upload
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Import Leads
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/leads/blacklistedlead/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    block
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Blacklist
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+            </ol>
+        
+            
+
+            
+                <h3 class="font-medium my-3 px-6 text-gray-900 text-sm first:mt-0 dark:text-gray-200">
+                    Email Templates
+                </h3>
+            
+
+            <ol class="px-6">
+                
+                    <li>
+                        <a href="/admin/app_templates/emailtemplate/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    description
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                All Templates
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/app_templates/emailtemplate/add/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    add_circle
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Create Template
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+            </ol>
+        
+            
+
+            
+                <h3 class="font-medium my-3 px-6 text-gray-900 text-sm first:mt-0 dark:text-gray-200">
+                    Campaigns
+                </h3>
+            
+
+            <ol class="px-6">
+                
+                    <li>
+                        <a href="/admin/campaigns/campaign/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    list
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                All Campaigns
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/campaigns/campaign/add/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    add_circle
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Create Campaign
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/campaigns/campaign/?status__exact=scheduled"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    schedule
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Scheduled
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/campaigns/campaign/?status__exact=running"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    play_arrow
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Running
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/campaigns/campaign/?status__exact=completed"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    check_circle
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Completed
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+            </ol>
+        
+            
+
+            
+                <h3 class="font-medium my-3 px-6 text-gray-900 text-sm first:mt-0 dark:text-gray-200">
+                    Email Engine
+                </h3>
+            
+
+            <ol class="px-6">
+                
+                    <li>
+                        <a href="/admin/email_engine/emaillog/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    description
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Send Logs
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/email_engine/bounce/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    error
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Bounces
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+                    <li>
+                        <a href="/admin/email_engine/tracking/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    track_changes
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Tracking
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+            </ol>
+        
+            
+
+            
+                <h3 class="font-medium my-3 px-6 text-gray-900 text-sm first:mt-0 dark:text-gray-200">
+                    Unsubscribes
+                </h3>
+            
+
+            <ol class="px-6">
+                
+            </ol>
+        
+            
+
+            
+                <h3 class="font-medium my-3 px-6 text-gray-900 text-sm first:mt-0 dark:text-gray-200">
+                    Webhooks
+                </h3>
+            
+
+            <ol class="px-6">
+                
+            </ol>
+        
+            
+
+            
+                <h3 class="font-medium my-3 px-6 text-gray-900 text-sm first:mt-0 dark:text-gray-200">
+                    System
+                </h3>
+            
+
+            <ol class="px-6">
+                
+                    <li>
+                        <a href="/admin/core/setting/"
+                           class="block border border-transparent flex h-11 items-center -mx-3 px-3 py-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+                            
+                                <span class="material-symbols-outlined md-18 mr-3">
+                                    settings
+                                </span>
+                            
+
+                            <span class="text-sm">
+                                Settings
+                            </span>
+
+                            
+                        </a>
+                    </li>
+                
+            </ol>
+        
+    </div>
+
+    
+        <label for="show-applications" class="cursor-pointer flex items-center mt-auto px-6 py-3 text-gray-500 text-sm transition-all hover:text-gray-700 dark:text-gray-400 hover:dark:text-gray-200">
+            <span class="material-symbols-outlined md-18 mr-3">
+                apps
+            </span>
+
+            <span>
+                All applications
+            </span>
+        </label>
+
+        <input type="checkbox" id="show-applications" class="hidden peer" />
+
+        <div class="absolute bottom-0 hidden left-72 right-0 top-0 z-50 peer-checked:block">
+            <label class="absolute bg-gray-900 bg-opacity-80 backdrop-blur-sm bottom-0 left-0 right-0 top-0 z-10 w-screen" for="show-applications"></label>
+
+            <div class="bg-white flex flex-col h-full overflow-x-hidden overflow-y-auto py-5 px-8 relative text-sm w-80 z-20 dark:bg-gray-900 dark:border-r dark:border-gray-800" data-simplebar>
+                
+                    <div class="mb-6 last:mb-0">
+                        <h3 class="mb-4 font-medium overflow-hidden text-ellipsis text-gray-700 whitespace-nowrap dark:text-gray-200">
+                            App_Templates
+                        </h3>
+
+                        <ul>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/app_templates/emailtemplate/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Email Templates
+                                    </a>
+                                </li>
+                            
+                        </ul>
+                    </div>
+                
+                    <div class="mb-6 last:mb-0">
+                        <h3 class="mb-4 font-medium overflow-hidden text-ellipsis text-gray-700 whitespace-nowrap dark:text-gray-200">
+                            Authentication and Authorization
+                        </h3>
+
+                        <ul>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/auth/group/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Groups
+                                    </a>
+                                </li>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/auth/user/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Users
+                                    </a>
+                                </li>
+                            
+                        </ul>
+                    </div>
+                
+                    <div class="mb-6 last:mb-0">
+                        <h3 class="mb-4 font-medium overflow-hidden text-ellipsis text-gray-700 whitespace-nowrap dark:text-gray-200">
+                            Campaigns
+                        </h3>
+
+                        <ul>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/campaigns/campaign/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Campaigns
+                                    </a>
+                                </li>
+                            
+                        </ul>
+                    </div>
+                
+                    <div class="mb-6 last:mb-0">
+                        <h3 class="mb-4 font-medium overflow-hidden text-ellipsis text-gray-700 whitespace-nowrap dark:text-gray-200">
+                            Core
+                        </h3>
+
+                        <ul>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/core/setting/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Settings
+                                    </a>
+                                </li>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/core/systemlog/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        System Logs
+                                    </a>
+                                </li>
+                            
+                        </ul>
+                    </div>
+                
+                    <div class="mb-6 last:mb-0">
+                        <h3 class="mb-4 font-medium overflow-hidden text-ellipsis text-gray-700 whitespace-nowrap dark:text-gray-200">
+                            Email_Engine
+                        </h3>
+
+                        <ul>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/email_engine/bounce/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Bounces
+                                    </a>
+                                </li>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/email_engine/emaillog/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Email Logs
+                                    </a>
+                                </li>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/email_engine/tracking/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Tracking Events
+                                    </a>
+                                </li>
+                            
+                        </ul>
+                    </div>
+                
+                    <div class="mb-6 last:mb-0">
+                        <h3 class="mb-4 font-medium overflow-hidden text-ellipsis text-gray-700 whitespace-nowrap dark:text-gray-200">
+                            Leads
+                        </h3>
+
+                        <ul>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/leads/blacklistedlead/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Blacklisted Leads
+                                    </a>
+                                </li>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/leads/lead/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Leads
+                                    </a>
+                                </li>
+                            
+                        </ul>
+                    </div>
+                
+                    <div class="mb-6 last:mb-0">
+                        <h3 class="mb-4 font-medium overflow-hidden text-ellipsis text-gray-700 whitespace-nowrap dark:text-gray-200">
+                            Unsubscribes
+                        </h3>
+
+                        <ul>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/unsubscribes/unsubscribedlead/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Unsubscribed Leads
+                                    </a>
+                                </li>
+                            
+                        </ul>
+                    </div>
+                
+                    <div class="mb-6 last:mb-0">
+                        <h3 class="mb-4 font-medium overflow-hidden text-ellipsis text-gray-700 whitespace-nowrap dark:text-gray-200">
+                            Webhooks
+                        </h3>
+
+                        <ul>
+                            
+                                <li class="block mb-4 last:mb-0">
+                                    <a href="/admin/webhooks/webhook/" class="block overflow-hidden text-ellipsis text-gray-500 transition-all whitespace-nowrap hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                        Webhooks
+                                    </a>
+                                </li>
+                            
+                        </ul>
+                    </div>
+                
+            </div>
+        </div>
+    
+
+
+        
+    </nav>
+</div>
+
+    </div>
+</div>
+
+            
+        
+
+        <div id="main" class="flex-grow">
+            
+                
+                    <div class="border-b border-gray-200 mb-6 px-4 lg:px-12 dark:border-gray-800">
+                        <div class="container flex items-center h-16 mx-auto py-4">
+                            <div id="header-inner" class="flex items-center w-full">
+                                <div class="flex items-center w-full">
+                                    
+                                        
+                                            
+                                                
+
+<div class="flex-grow font-medium min-w-0 mr-3">
+    <h1 class="overflow-hidden text-ellipsis text-sm whitespace-nowrap xl:text-base text-gray-700 dark:text-gray-200">
+        
+            
+
+            Site administration
+
+            
+
+            
+        
+    </h1>
+</div>
+
+                                            
+
+                                            
+                                                
+
+<div class="flex items-center ml-auto">
+    <div class="flex flex-row group items-center leading-none relative" x-data="{ openUserLinks: false, openTheme: false }">
+        <div class="flex flex-row text-gray-500">
+            <div class="mr-4 relative">
+                <a class="block cursor-pointer hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" x-on:click="openTheme = !openTheme">
+                    <span class="material-symbols-outlined">
+                        <span x-text="theme.value == 'dark' && 'dark_mode' || theme.value == 'light' && 'light_mode' || 'computer'"></span>
+                    </span>
+                </a>
+
+                <nav class="absolute bg-white border flex flex-col leading-none overflow-hidden py-1 -right-2 rounded shadow-lg text-sm text-gray-500 top-7 w-40 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400" x-cloak x-show="openTheme" @click.outside="openTheme = false">
+                    <a class="block cursor-pointer flex flex-row leading-none mx-1 px-3 py-1.5 rounded hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                       x-on:click="theme.value = 'dark'"
+                       x-bind:class="theme.value == 'dark' && 'text-primary-600 hover:!text-primary-600'">
+                        <span class="material-symbols-outlined mr-2">dark_mode</span>
+                        <span class="leading-none self-center">Dark</span>
+                    </a>
+
+                    <a class="block cursor-pointer flex flex-row mx-1 px-3 py-1.5 rounded hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                       x-on:click="theme.value = 'light'"
+                       x-bind:class="theme.value == 'light'  && 'text-primary-600 hover:!text-primary-600'">
+                        <span class="material-symbols-outlined mr-2">light_mode</span>
+                        <span class="leading-none self-center">Light</span>
+                    </a>
+
+                    <a class="block cursor-pointer flex flex-row mx-1 px-3 py-1.5 rounded hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                       x-on:click="theme.value = 'auto'"
+                       x-bind:class="theme.value == 'auto' && 'text-primary-600 hover:!text-primary-600'">
+                        <span class="material-symbols-outlined mr-2">computer</span>
+                        <span class="leading-none self-center">System</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="relative">
+                <a class="block cursor-pointer hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" @click="openUserLinks = !openUserLinks">
+                    <span class="material-symbols-outlined">person</span>
+                </a>
+
+                <nav class="absolute bg-white border flex flex-col leading-none overflow-hidden py-1 -right-2 rounded shadow-lg text-sm text-gray-500 top-7 w-52 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400" x-cloak x-show="openUserLinks" @click.outside="openUserLinks = false">
+                    <div class="border-b border-gray-100 flex flex-row flex-shrink-0 items-start justify-start mb-1 pb-1 dark:border-gray-700">
+                        <span class="block mx-1 px-3 py-2 truncate">
+                            admin
+                        </span>
+                    </div>
+
+                    
+
+                    
+                        <a href="/" class="mx-1 px-3 py-2 rounded hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200">
+                            View site
+                        </a>
+                    
+
+                    
+                        <a href="/admin/password_change/" class="mx-1 px-3 py-2 rounded hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200">
+                            Change password
+                        </a>
+                    
+
+                    <div class="border-t mt-1 pt-1 dark:border-gray-700">
+                        <a href="/admin/logout/" class="bg-none block mx-1 px-3 py-2 text-red-500 rounded hover:bg-red-100 dark:hover:bg-red-500/20 dark:hover:text-red-500">
+                            Log out
+                        </a>
+                    </div>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    
+</div>
+
+                                            
+                                        
+                                    
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                
+            
+
+            
+                
+            
+
+            
+                <div class="px-4 lg:px-12">
+                    <div class="container mx-auto">
+                        
+
+                    </div>
+                </div>
+            
+
+            <div class="px-4 pb-12 lg:px-12">
+                <div id="content" class="container mx-auto colM">
+                    
+
+                    
+    <div class="flex -mx-4">
+        <div class="px-4 w-8/12">
+            
+
+
+  
+    <div class="app-app_templates module">
+      <table class="border border-spacing-none border-separate rounded-md shadow-sm text-gray-700 text-sm w-full dark:border-gray-800 mb-8">
+        <caption class="font-semibold mb-4 text-gray-700 text-left dark:text-gray-200">
+          <a href="/admin/app_templates/" class="section" title="Models in the App_Templates application">
+              App_Templates
+          </a>
+        </caption>
+
+        
+          <tr class="model-emailtemplate bg-white dark:bg-gray-900">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 ">
+                  <a href="/admin/app_templates/emailtemplate/">
+                      Email Templates
+                  </a>
+              </th>
+            
+
+            
+              <td class=" p-3 text-right">
+                  <a href="/admin/app_templates/emailtemplate/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+      </table>
+    </div>
+  
+    <div class="app-auth module">
+      <table class="border border-spacing-none border-separate rounded-md shadow-sm text-gray-700 text-sm w-full dark:border-gray-800 mb-8">
+        <caption class="font-semibold mb-4 text-gray-700 text-left dark:text-gray-200">
+          <a href="/admin/auth/" class="section" title="Models in the Authentication and Authorization application">
+              Authentication and Authorization
+          </a>
+        </caption>
+
+        
+          <tr class="model-group bg-gray-50 dark:bg-gray-800">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 border-b dark:border-gray-800">
+                  <a href="/admin/auth/group/">
+                      Groups
+                  </a>
+              </th>
+            
+
+            
+              <td class="border-b dark:border-gray-800 p-3 text-right">
+                  <a href="/admin/auth/group/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+          <tr class="model-user bg-white dark:bg-gray-900">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 ">
+                  <a href="/admin/auth/user/">
+                      Users
+                  </a>
+              </th>
+            
+
+            
+              <td class=" p-3 text-right">
+                  <a href="/admin/auth/user/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+      </table>
+    </div>
+  
+    <div class="app-campaigns module">
+      <table class="border border-spacing-none border-separate rounded-md shadow-sm text-gray-700 text-sm w-full dark:border-gray-800 mb-8">
+        <caption class="font-semibold mb-4 text-gray-700 text-left dark:text-gray-200">
+          <a href="/admin/campaigns/" class="section" title="Models in the Campaigns application">
+              Campaigns
+          </a>
+        </caption>
+
+        
+          <tr class="model-campaign bg-gray-50 dark:bg-gray-800">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 ">
+                  <a href="/admin/campaigns/campaign/">
+                      Campaigns
+                  </a>
+              </th>
+            
+
+            
+              <td class=" p-3 text-right">
+                  <a href="/admin/campaigns/campaign/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+      </table>
+    </div>
+  
+    <div class="app-core module">
+      <table class="border border-spacing-none border-separate rounded-md shadow-sm text-gray-700 text-sm w-full dark:border-gray-800 mb-8">
+        <caption class="font-semibold mb-4 text-gray-700 text-left dark:text-gray-200">
+          <a href="/admin/core/" class="section" title="Models in the Core application">
+              Core
+          </a>
+        </caption>
+
+        
+          <tr class="model-setting bg-white dark:bg-gray-900">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 border-b dark:border-gray-800">
+                  <a href="/admin/core/setting/">
+                      Settings
+                  </a>
+              </th>
+            
+
+            
+              <td class="border-b dark:border-gray-800 p-3 text-right">
+                  <a href="/admin/core/setting/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+          <tr class="model-systemlog bg-gray-50 dark:bg-gray-800">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 ">
+                  <a href="/admin/core/systemlog/">
+                      System Logs
+                  </a>
+              </th>
+            
+
+            
+              <td class=" p-3 text-right"></td>
+            
+
+            
+          </tr>
+        
+      </table>
+    </div>
+  
+    <div class="app-email_engine module">
+      <table class="border border-spacing-none border-separate rounded-md shadow-sm text-gray-700 text-sm w-full dark:border-gray-800 mb-8">
+        <caption class="font-semibold mb-4 text-gray-700 text-left dark:text-gray-200">
+          <a href="/admin/email_engine/" class="section" title="Models in the Email_Engine application">
+              Email_Engine
+          </a>
+        </caption>
+
+        
+          <tr class="model-bounce bg-white dark:bg-gray-900">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 border-b dark:border-gray-800">
+                  <a href="/admin/email_engine/bounce/">
+                      Bounces
+                  </a>
+              </th>
+            
+
+            
+              <td class="border-b dark:border-gray-800 p-3 text-right">
+                  <a href="/admin/email_engine/bounce/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+          <tr class="model-emaillog bg-gray-50 dark:bg-gray-800">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 border-b dark:border-gray-800">
+                  <a href="/admin/email_engine/emaillog/">
+                      Email Logs
+                  </a>
+              </th>
+            
+
+            
+              <td class="border-b dark:border-gray-800 p-3 text-right"></td>
+            
+
+            
+          </tr>
+        
+          <tr class="model-tracking bg-white dark:bg-gray-900">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 ">
+                  <a href="/admin/email_engine/tracking/">
+                      Tracking Events
+                  </a>
+              </th>
+            
+
+            
+              <td class=" p-3 text-right"></td>
+            
+
+            
+          </tr>
+        
+      </table>
+    </div>
+  
+    <div class="app-leads module">
+      <table class="border border-spacing-none border-separate rounded-md shadow-sm text-gray-700 text-sm w-full dark:border-gray-800 mb-8">
+        <caption class="font-semibold mb-4 text-gray-700 text-left dark:text-gray-200">
+          <a href="/admin/leads/" class="section" title="Models in the Leads application">
+              Leads
+          </a>
+        </caption>
+
+        
+          <tr class="model-blacklistedlead bg-gray-50 dark:bg-gray-800">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 border-b dark:border-gray-800">
+                  <a href="/admin/leads/blacklistedlead/">
+                      Blacklisted Leads
+                  </a>
+              </th>
+            
+
+            
+              <td class="border-b dark:border-gray-800 p-3 text-right">
+                  <a href="/admin/leads/blacklistedlead/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+          <tr class="model-lead bg-white dark:bg-gray-900">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 ">
+                  <a href="/admin/leads/lead/">
+                      Leads
+                  </a>
+              </th>
+            
+
+            
+              <td class=" p-3 text-right">
+                  <a href="/admin/leads/lead/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+      </table>
+    </div>
+  
+    <div class="app-unsubscribes module">
+      <table class="border border-spacing-none border-separate rounded-md shadow-sm text-gray-700 text-sm w-full dark:border-gray-800 mb-8">
+        <caption class="font-semibold mb-4 text-gray-700 text-left dark:text-gray-200">
+          <a href="/admin/unsubscribes/" class="section" title="Models in the Unsubscribes application">
+              Unsubscribes
+          </a>
+        </caption>
+
+        
+          <tr class="model-unsubscribedlead bg-gray-50 dark:bg-gray-800">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 ">
+                  <a href="/admin/unsubscribes/unsubscribedlead/">
+                      Unsubscribed Leads
+                  </a>
+              </th>
+            
+
+            
+              <td class=" p-3 text-right">
+                  <a href="/admin/unsubscribes/unsubscribedlead/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+      </table>
+    </div>
+  
+    <div class="app-webhooks module">
+      <table class="border border-spacing-none border-separate rounded-md shadow-sm text-gray-700 text-sm w-full dark:border-gray-800 ">
+        <caption class="font-semibold mb-4 text-gray-700 text-left dark:text-gray-200">
+          <a href="/admin/webhooks/" class="section" title="Models in the Webhooks application">
+              Webhooks
+          </a>
+        </caption>
+
+        
+          <tr class="model-webhook bg-white dark:bg-gray-900">
+            
+              <th scope="row" class="font-normal p-3 text-left dark:text-gray-400 ">
+                  <a href="/admin/webhooks/webhook/">
+                      Webhooks
+                  </a>
+              </th>
+            
+
+            
+              <td class=" p-3 text-right">
+                  <a href="/admin/webhooks/webhook/add/" class="addlink text-gray-500 transition-all underline dark:text-gray-400 dark:hover:text-gray-200">
+                      Add
+                  </a>
+              </td>
+            
+
+            
+          </tr>
+        
+      </table>
+    </div>
+  
+
+
+        </div>
+
+        <div class="px-4 w-4/12">
+            
+
+
+
+<div id="content-related">
+    <div class="module" id="recent-actions-module">
+        <h2 class="mb-4 font-semibold text-gray-700 text-sm dark:text-gray-200">
+            Recent actions
+        </h2>
+
+        
+            <p class="dark:text-gray-400">
+                None available
+            </p>
+        
+    </div>
+</div>
+
+        </div>
+    </div>
+
+
+                    
+                </div>
+            </div>
+
+            
+        </div>
+    </div>
+
+</body>
+
+</html>

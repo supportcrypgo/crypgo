@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  background-color: #000510;
+}
+
+body {
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+section{
+  @apply bg-darkmode;
+}
+
+.blog-details p, .blog-details hr {
+  @apply mb-8 ;
+}
+
+.blog-details hr {
+  @apply border-dark_border;
+}
+
+.blog-details strong {
+  @apply font-bold dark:text-white;
+}
+
+.blog-details ul {
+  @apply mb-8 list-inside list-disc space-y-3;
+}
+
+.blog-details ol {
+  @apply mb-8 list-inside list-decimal space-y-3;
+}
+
+.blog-details h1 {
+  @apply mb-8 text-3xl font-bold text-midnight_text dark:text-white sm:text-4xl md:text-[40px] md:leading-[1.28];
+}
+
+.blog-details h2 {
+  @apply mb-8 text-2xl font-bold text-midnight_text dark:text-white sm:text-3xl md:text-[35px] md:leading-[1.28];
+}
+
+.blog-details h3 {
+  @apply mb-6 text-2xl font-bold dark:text-white sm:text-[28px] sm:leading-[40px];
+}
+
+/* ── Safe area utilities ── */
+.pt-safe-top {
+  padding-top: env(safe-area-inset-top, 20px);
+}
+
+.pb-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+/* ── Profile page animations ── */
+.profile-enter {
+  animation: profileSlideUp 0.3s ease-out;
+}
+
+@keyframes profileSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Touch target improvements ── */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ── Hide TradingView attribution logo ── */
+a[href*="tradingview.com"] {
+  display: none !important;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.modal-scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.modal-scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .modal-scrollbar-hide {
+    -ms-overflow-style: auto;
+    scrollbar-width: auto;
+  }
+
+  .modal-scrollbar-hide::-webkit-scrollbar {
+    display: block;
+  }
+}

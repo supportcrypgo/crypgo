@@ -1,0 +1,63 @@
+'use client';
+
+import React from 'react';
+import { ReceiveAssetInfo, NetworkOption } from '../types';
+import { CheckCircle2 } from 'lucide-react';
+
+interface ReceiveDetailsProps {
+  asset: ReceiveAssetInfo;
+  network: NetworkOption;
+  status?: 'active' | 'inactive';
+}
+
+export default function ReceiveDetails({ asset, network, status = 'active' }: ReceiveDetailsProps) {
+  return (
+    <div className="bg-deepSlate/50 border border-white/5 rounded-2xl p-6 space-y-4">
+      <h3 className="text-sm font-semibold text-white">Receive Details</h3>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-charcoalGray">Asset</span>
+          <div className="flex items-center gap-2">
+            <img src={asset.logo} alt={asset.name} className="w-5 h-5 rounded-full" />
+            <span className="text-sm font-medium text-white">{asset.ticker}</span>
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-charcoalGray">Network</span>
+          <span className="text-sm font-medium text-white">
+            {network.shortName ? `${network.shortName} • ${network.name}` : network.name}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-charcoalGray">Minimum Deposit</span>
+          <span className="text-sm font-medium text-white">{network.minDeposit} {network.minDepositInUsd && `(${network.minDepositInUsd})`}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-charcoalGray">Confirmations Required</span>
+          <span className="text-sm font-medium text-white">{network.confirmations} {network.confirmationsLabel}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-charcoalGray">Estimated Arrival</span>
+          <span className="text-sm font-medium text-white">{network.estimatedArrival}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-charcoalGray">Status</span>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+            status === 'active' 
+              ? 'bg-green-500/20 text-green-400' 
+              : 'bg-red-500/20 text-red-400'
+          }`}>
+            {status === 'active' ? (
+              <>
+                <CheckCircle2 className="w-3 h-3 mr-1" />
+                Active
+              </>
+            ) : (
+              'Inactive'
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

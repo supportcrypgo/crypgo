@@ -1,0 +1,19 @@
+{
+  "folders": [
+    {
+      "name": "Crypgo Frontend",
+      "path": "."
+    },
+    {
+      "name": "Email Bot",
+      "path": "Bot"
+    },
+    {
+      "name": "Crypgo Backend",
+      "path": "django_backend"
+    }
+  ],
+  "settings": {
+    "python.analysis.diagnosticMode": "openFilesOnly"
+  }
+}

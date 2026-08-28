@@ -1,0 +1,26 @@
+{
+  "include": [
+    "apps",
+    "bot_project",
+    "scripts",
+    "manage.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/migrations/**",
+    "**/tests/**",
+    "**/tests.py",
+    "venv/**",
+    ".venv/**",
+    "staticfiles/**",
+    "static/**",
+    "media/**",
+    "logs/**",
+    "backups/**",
+    "**/node_modules/**"
+  ],
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.11",
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false
+}
