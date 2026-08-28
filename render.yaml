@@ -4,7 +4,6 @@ services:
     env: node
     buildCommand: npm ci && npm run build
     startCommand: npm start
-    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
@@ -21,15 +20,16 @@ services:
     rootDir: django_backend
     buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
     startCommand: gunicorn core.wsgi:application
-    healthCheckPath: /health/
     envVars:
       - key: DEBUG
         value: "False"
       - key: SECRET_KEY
         generateValue: true
-      - key: ALLOWED_HOSTS
-        sync: false
       - key: DATABASE_URL
+        sync: false
+      - key: DB_SCHEMA
+        value: crypgo
+      - key: ALLOWED_HOSTS
         sync: false
       - key: FRONTEND_URL
         sync: false
@@ -38,57 +38,69 @@ services:
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
       - key: CRYPGO_SERVICE_KEY
+        generateValue: true
+      - key: USE_GMAIL_API
+        value: "True"
+      - key: GMAIL_CLIENT_ID
         sync: false
-
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        value: "support.crypgo@gmail.com"
+      - key: EMAIL_FROM_NAME
+        value: "Crypgo"
   - type: web
     name: crypgo-email
     env: python
     rootDir: Bot
     buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
     startCommand: gunicorn bot_project.wsgi:application
-    healthCheckPath: /health/
     envVars:
       - key: DEBUG
         value: "False"
       - key: DJANGO_SECRET_KEY
         generateValue: true
-      - key: ALLOWED_HOSTS
-        sync: false
       - key: DATABASE_URL
+        sync: false
+      - key: DB_SCHEMA
+        value: emailbot
+      - key: ALLOWED_HOSTS
         sync: false
       - key: SITE_URL
         sync: false
       - key: FRONTEND_URL
         sync: false
-      - key: EMAIL_HOST
-        value: smtp.gmail.com
-      - key: EMAIL_PORT
-        value: "587"
-      - key: EMAIL_USE_TLS
+      - key: USE_GMAIL_API
         value: "True"
-      - key: EMAIL_HOST_USER
+      - key: GMAIL_CLIENT_ID
         sync: false
-      - key: EMAIL_HOST_PASSWORD
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
         sync: false
       - key: DEFAULT_FROM_EMAIL
-        sync: false
+        value: "support.crypgo@gmail.com"
+      - key: EMAIL_FROM_NAME
+        value: "Crypgo"
+      - key: EMAIL_X_MAILER
+        value: "Crypgo Mailer"
       - key: CRYPGO_API_URL
         sync: false
       - key: CRYPGO_SERVICE_KEY
         sync: false
-
   - type: web
     name: crypgo-websocket
     env: node
     buildCommand: npm ci --omit=dev
     startCommand: node server/wsServer.mjs
-    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
       - key: COINGECKO_API_KEY
         sync: false
 
-# Provide DATABASE_URL manually from an external PostgreSQL provider such as
-# Neon or Supabase. Keeping databases out of this blueprint avoids Render's
-# database billing verification requirement.
+# Free tier deployment. Local SQLite data is ephemeral on Render Free.
+# Services sleep after 15 minutes of inactivity and wake on the next request.
+# Use an external DATABASE_URL when data must survive restarts and deploys.

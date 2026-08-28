@@ -8,7 +8,6 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiRespon
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.conf import settings
-from django.core.cache import cache
 from .models import (
     CustomUser,
     PasswordResetToken, MagicLinkToken, CampaignAccessToken, WalletAsset, UserHistoricalSnapshot, UserSession, KYCDocument,
@@ -162,23 +161,13 @@ class LoginView(APIView):
         tags=["auth"]
     )
     def post(self, request: Request):
-        request_data = get_request_data(request)
-        email = request_data.get('email', 'unknown')
-        serializer = LoginSerializer(data=request_data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except serializers.ValidationError:
-            logger.warning('Login failed: Invalid credentials for email %s', email)
-            raise
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
         validated_data = get_validated_data(serializer)
         user = validated_data.get('user')
         if user is None:
-            logger.warning('Login failed: Invalid credentials for email %s', email)
             return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Log successful login
-        logger.info(f'Login successful: {user.email} (ID: {user.pk}) at {timezone.now()}')
         return issue_auth_response(user)
 
 
@@ -192,11 +181,6 @@ class MagicLinkRequestView(APIView):
         email = get_validated_data(serializer)['email']
         user = User.objects.filter(email__iexact=email, is_active=True).first()
         if user:
-            request_key = f"magic-link-request:{email.lower()}"
-            request_count = int(cache.get(request_key, 0))
-            if request_count >= 2:
-                return Response({'error': 'Password-change requests are limited to 2 per day.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-            cache.set(request_key, request_count + 1, 86400)
             _, raw_token = MagicLinkToken.generate_token(user)
             send_magic_link_email(user, raw_token)
         return Response({'success': True, 'message': 'If an account exists with this email, a sign-in link has been sent.'})
@@ -216,37 +200,11 @@ class MagicLinkConsumeView(APIView):
                 token = MagicLinkToken.objects.select_for_update().select_related('user').get(token_hash=token_hash)
                 if not token.is_valid() or not token.user.is_active:
                     raise MagicLinkToken.DoesNotExist
-        except MagicLinkToken.DoesNotExist:
-            return Response({'error': 'Invalid or expired sign-in link.'}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'success': True, 'message': 'Password change link is valid.'}, status=status.HTTP_200_OK)
-
-
-class MagicLinkPasswordChangeView(APIView):
-    permission_classes = [AllowAny]
-    throttle_scope = 'password_reset'
-
-    def post(self, request: Request):
-        serializer = ResetPasswordUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        validated_data = get_validated_data(serializer)
-        token_hash = hashlib.sha256(validated_data['token'].encode('utf-8')).hexdigest()
-        try:
-            with transaction.atomic():
-                token = MagicLinkToken.objects.select_for_update().select_related('user').get(token_hash=token_hash)
-                if not token.is_valid():
-                    raise MagicLinkToken.DoesNotExist
-                attempt_key = f"magic-link-password:{token.user.pk}"
-                attempt_count = int(cache.get(attempt_key, 0))
-                if attempt_count >= 2:
-                    return Response({'error': 'Password changes are limited to 2 attempts per hour.'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
-                cache.set(attempt_key, attempt_count + 1, 3600)
-                token.user.set_password(validated_data['new_password'])
-                token.user.save(update_fields=['password'])
                 token.used_at = timezone.now()
                 token.save(update_fields=['used_at'])
         except MagicLinkToken.DoesNotExist:
-            return Response({'error': 'Invalid or already used password-change link.'}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'success': True, 'message': 'Password updated successfully.'}, status=status.HTTP_200_OK)
+            return Response({'error': 'Invalid or expired sign-in link.'}, status=status.HTTP_400_BAD_REQUEST)
+        return issue_auth_response(token.user)
 
 
 class CampaignAccessConsumeView(APIView):
@@ -267,8 +225,6 @@ class CampaignAccessConsumeView(APIView):
                     raise CampaignAccessToken.DoesNotExist
         except CampaignAccessToken.DoesNotExist:
             return Response({'error': 'Invalid or expired campaign link.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Keep this API response JSON-based; the frontend performs the browser navigation.
         return issue_auth_response(token.user)
 
 

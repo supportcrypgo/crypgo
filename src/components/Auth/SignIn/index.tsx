@@ -66,7 +66,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken }: { onSuccess?: 
       }
       setLoading(true);
       try {
-        await authApi.resetPasswordWithMagicLink(magicLinkToken, newPassword, confirmPassword);
+        await authApi.resetPassword(magicLinkToken, newPassword);
         onPasswordChanged?.();
       } catch (err) {
         setFormError(err instanceof Error ? err.message : 'Unable to update your password.');
