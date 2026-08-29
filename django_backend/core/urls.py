@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 
@@ -10,7 +10,13 @@ def health_check(request):
     return HttpResponse('OK', status=200)
 
 
+def api_root(request):
+    """Root API endpoint that redirects to /api/"""
+    return HttpResponseRedirect('/api/')
+
+
 urlpatterns = [
+    path('', api_root, name='root'),
     path('admin/', admin.site.urls),
     path('health/', health_check, name='health'),
     path('api/', include('apps.users.urls')),
