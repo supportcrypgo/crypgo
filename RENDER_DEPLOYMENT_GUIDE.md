@@ -9,7 +9,7 @@ This guide provides all the configuration needed to deploy Crypgo on Render with
 | Frontend | Node.js | `https://crypgo-frontend.onrender.com` |
 | API (Django) | Python | `https://crypgo-api.onrender.com` |
 | Email Bot (Django) | Python | `https://crypgo-email.onrender.com` |
-| WebSocket | Node.js | `wss://crypgo-websocket.onrender.com` |
+| WebSocket | Node.js | `wss://crypgo-ws.onrender.com` |
 
 ---
 
@@ -22,7 +22,8 @@ This guide provides all the configuration needed to deploy Crypgo on Render with
 | `NODE_ENV` | `production` | Auto-set by Render |
 | `CRYPGO_BACKEND_URL` | `https://crypgo-api.onrender.com` | Backend API URL |
 | `NEXT_PUBLIC_API_URL` | `/backend-api` | Next.js rewrite path |
-| `NEXT_PUBLIC_WS_URL` | `wss://crypgo-websocket.onrender.com` | WebSocket URL |
+| `NEXT_PUBLIC_WS_URL` | `wss://crypgo-ws.onrender.com` | WebSocket URL |
+| `COINGECKO_API_KEY` | *Your CoinGecko API Key* | Required by the frontend API routes |
 
 ### 2. crypgo-api (Python/Django)
 
@@ -65,7 +66,7 @@ This guide provides all the configuration needed to deploy Crypgo on Render with
 | `CRYPGO_API_URL` | `https://crypgo-api.onrender.com` | API service URL |
 | `CRYPGO_SERVICE_KEY` | *Same as crypgo-api* | **Must match API service key** |
 
-### 4. crypgo-websocket (Node.js)
+### 4. crypgo-ws (Node.js)
 
 | Variable | Value | Notes |
 |----------|-------|-------|
@@ -125,7 +126,7 @@ For **each service**, go to Settings → Environment and add the required variab
 **Critical**: Set `DATABASE_URL` first for both Django services, then deploy.
 
 ### 4. Deploy Order
-1. **crypgo-websocket** (no dependencies)
+1. **crypgo-ws** (no dependencies)
 2. **crypgo-api** (needs DATABASE_URL)
 3. **crypgo-email** (needs DATABASE_URL, CRYPGO_API_URL, CRYPGO_SERVICE_KEY)
 4. **crypgo-frontend** (needs CRYPGO_BACKEND_URL, NEXT_PUBLIC_WS_URL)
@@ -134,7 +135,7 @@ For **each service**, go to Settings → Environment and add the required variab
 After deployment, test:
 - `https://crypgo-api.onrender.com/health/` → `OK`
 - `https://crypgo-email.onrender.com/health/` → `OK`
-- `https://crypgo-websocket.onrender.com/health` → JSON response
+- `https://crypgo-ws.onrender.com/health` → JSON response
 - `https://crypgo-frontend.onrender.com` → Frontend loads
 
 ### 6. Test API Endpoints
@@ -162,7 +163,7 @@ After deployment, test:
 ```
 API:        https://crypgo-api.onrender.com/health/
 Email:      https://crypgo-email.onrender.com/health/
-WebSocket:  https://crypgo-websocket.onrender.com/health
+WebSocket:  https://crypgo-ws.onrender.com/health
 Frontend:   https://crypgo-frontend.onrender.com
 ```
 

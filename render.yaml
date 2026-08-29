@@ -12,7 +12,9 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: /backend-api
       - key: NEXT_PUBLIC_WS_URL
-        value: "wss://crypgo-websocket.onrender.com"
+        value: "wss://crypgo-ws.onrender.com"
+      - key: COINGECKO_API_KEY
+        sync: false
 
   - type: web
     name: crypgo-api
@@ -91,7 +93,7 @@ services:
       - key: CRYPGO_SERVICE_KEY
         sync: false
   - type: web
-    name: crypgo-websocket
+    name: crypgo-ws
     env: node
     buildCommand: npm ci --omit=dev
     startCommand: node server/wsServer.mjs
