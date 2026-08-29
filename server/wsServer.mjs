@@ -63,6 +63,20 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  if (req.url === '/' || req.url === '') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'ok', 
+      service: 'websocket',
+      message: 'Crypgo WebSocket Price Server',
+      endpoints: {
+        health: '/health',
+        websocket: '/'
+      }
+    }));
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
