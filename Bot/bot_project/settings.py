@@ -202,35 +202,23 @@ LOGGING = {
         },
     },
     'handlers': {
-        'file': {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'email_bot.log',
-            'formatter': 'verbose',
-        },
-        'error_file': {
-            'level': 'ERROR',
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'error.log',
-            'formatter': 'verbose',
-        },
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
         },
     },
     'root': {
-        'handlers': ['console', 'file'],
+        'handlers': ['console'],
         'level': os.getenv('LOG_LEVEL', 'INFO'),
     },
     'loggers': {
         'django': {
-            'handlers': ['file'],
+            'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,
         },
         'email_bot': {
-            'handlers': ['file', 'error_file'],
+            'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': False,
         },
