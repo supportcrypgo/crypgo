@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponse, HttpResponseRedirect
@@ -10,7 +10,7 @@ def health_check(request):
     return HttpResponse('OK', status=200)
 
 
-def api_root_redirection(request):
+def api_root(request):
     """Root API endpoint that manually builds API root with all available endpoints"""
     from rest_framework import status
     from rest_framework.response import Response
@@ -209,7 +209,8 @@ def api_root_redirection(request):
 
 
 urlpatterns = [
-    path('', api_root_redirection, name='root'),
+    path('', api_root, name='root'),
+    re_path(r'^api/$', api_root, name='api-root'),
     path('api/', include('apps.users.urls')),
     path('admin/', admin.site.urls),
     path('health/', health_check, name='health'),
