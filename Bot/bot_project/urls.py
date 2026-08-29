@@ -12,19 +12,14 @@ def health_check(request):
     return HttpResponse("OK", status=200)
 
 
-def root_redirect(request):
-    """Root endpoint redirects to admin dashboard."""
-    return HttpResponseRedirect('/admin/')
-
-
 def api_root(request):
     """Root API endpoint that redirects to /api/."""
     return HttpResponseRedirect('/api/')
 
 
 urlpatterns = [
-    path('', root_redirect, name='root'),
-    path('api-root/', api_root, name='api-root'),
+    path('', api_root, name='root'),
+    path('health/', health_check, name='health_check'),
     # Admin (with Unfold)
     path('admin/', admin.site.urls),
     
@@ -39,8 +34,6 @@ urlpatterns = [
     # Tracking endpoints (public - no auth)
     path('track/', include('apps.email_engine.urls')),
     path('unsubscribe/', include('apps.unsubscribes.urls')),
-    path('health/', health_check, name='health_check'),
-    
 ]
 
 if settings.DEBUG:
