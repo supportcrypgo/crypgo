@@ -57,7 +57,7 @@ services:
     name: crypgo-email
     env: python
     rootDir: Bot
-    buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput
+    buildCommand: pip install -r requirements.txt && python manage.py migrate && python manage.py force_reset_admin && python manage.py collectstatic --noinput
     startCommand: gunicorn bot_project.wsgi:application
     envVars:
       - key: DEBUG
@@ -67,7 +67,7 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: DB_SCHEMA
-        value: emailbot
+        value: public
       - key: ALLOWED_HOSTS
         value: "crypgo-email.onrender.com"
       - key: SITE_URL
@@ -91,7 +91,13 @@ services:
       - key: CRYPGO_API_URL
         value: "https://crypgo-api.onrender.com"
       - key: CRYPGO_SERVICE_KEY
-        sync: false
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: "admin"
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: ADMIN_EMAIL
+        value: "admin@crypgo.com"
   - type: web
     name: crypgo-ws
     env: node
