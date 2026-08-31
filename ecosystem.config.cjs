@@ -56,14 +56,15 @@ module.exports = {
     },
 
     // FRONTEND (Next.js) - Port 5000
+    // Uses direct path to Next.js binary for Windows PM2 compatibility
     {
       name: 'frontend',
-      script: 'npm',
-      args: 'run dev',
+      script: path.join(PROJECT_ROOT, 'node_modules', 'next', 'dist', 'bin', 'next'),
+      args: 'dev -p 5000',
+      interpreter: 'node',
       cwd: PROJECT_ROOT,
       env: {
         NODE_ENV: 'development',
-        NEXT_PUBLIC_USE_FIXTURES: 'true',
         PORT: '5000',
       },
       instances: 1,
