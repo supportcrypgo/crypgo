@@ -1,4 +1,6 @@
 import "./globals.css";
+import "slick-carousel/slick/slick.css";
+import "slick-carousel/slick/slick-theme.css";
 import ClientLayout from "./ClientLayout";
 
 export const dynamic = 'force-dynamic';
