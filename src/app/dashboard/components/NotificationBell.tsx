@@ -2,8 +2,24 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
-import { formatDistanceToNow } from 'date-fns';
 import { Bell, Check, Mail, Shield, AlertCircle, AlertTriangle } from 'lucide-react';
+
+// Helper function to format relative time (replacement for formatDistanceToNow from date-fns v3)
+function formatRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  const diffInDays = Math.floor(diffInHours / 24);
+
+  if (diffInSeconds < 60) return 'Just now';
+  if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+  if (diffInHours < 24) return `${diffInHours}h ago`;
+  if (diffInDays < 7) return `${diffInDays}d ago`;
+  
+  // More than a week ago
+  return date.toLocaleDateString();
+}
 
 export default function NotificationBell() {
   const { unreadCount, fetchNotifications, markAsRead, markAllAsRead, isLoading, error, notifications } = useNotifications();
@@ -147,8 +163,8 @@ export default function NotificationBell() {
                         )}
                       </div>
                       <p className="text-xs text-charcoalGray mt-1 line-clamp-2">{notification.body}</p>
-                      <p className="text-[10px] text-charcoalGray/60 mt-1">
-                        {notification.created_at ? formatDistanceToNow(new Date(notification.created_at), { addSuffix: true }) : 'Just now'}
+<p className="text-[10px] text-charcoalGray/60 mt-1">
+                        {notification.created_at ? formatRelativeTime(new Date(notification.created_at)) : 'Just now'}
                       </p>
                     </div>
                   </li>
