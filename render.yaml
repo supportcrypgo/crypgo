@@ -1,3 +1,6 @@
+# Secrets are managed in the Render dashboard and should never be committed here.
+# Keep this file as a deployment template only.
+
 services:
   - type: web
     name: crypgo-frontend
