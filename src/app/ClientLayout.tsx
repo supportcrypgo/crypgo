@@ -1,13 +1,13 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import Header from '@/components/Layout/Header/index';
-import Footer from '@/components/Layout/Footer/index';
-import ScrollToTop from '@/components/ScrollToTop/index';
-import Aoscompo from '@/utils/aos';
-import { UnifiedProvider } from '@/context/UnifiedContext';
-import { CryptoPriceProvider } from '@/context/CryptoPriceContext';
-import { AuthProvider } from '@/hooks/useAuth';
+import Header from '../components/Layout/Header/index';
+import Footer from '../components/Layout/Footer/index';
+import ScrollToTop from '../components/ScrollToTop/index';
+import Aoscompo from '../utils/aos';
+import { UnifiedProvider } from '../context/UnifiedContext';
+import { CryptoPriceProvider } from '../context/CryptoPriceContext';
+import { AuthProvider } from '../hooks/useAuth';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
