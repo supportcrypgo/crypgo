@@ -1,9 +1,9 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import Header from '@/components/Layout/Header';
-import Footer from '@/components/Layout/Footer';
-import ScrollToTop from '@/components/ScrollToTop';
+import Header from '@/components/Layout/Header/index';
+import Footer from '@/components/Layout/Footer/index';
+import ScrollToTop from '@/components/ScrollToTop/index';
 import Aoscompo from '@/utils/aos';
 import { UnifiedProvider } from '@/context/UnifiedContext';
 import { CryptoPriceProvider } from '@/context/CryptoPriceContext';
