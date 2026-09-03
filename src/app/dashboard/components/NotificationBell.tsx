@@ -55,12 +55,12 @@ export default function NotificationBell() {
 
   const handleMarkAsRead = async (id: number) => {
     await markAsRead([id]);
-    setLocalNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+    setLocalNotifications((prev: any) => prev.map((n: any) => n.id === id ? { ...n, is_read: true } : n));
   };
 
   const handleMarkAllAsRead = async () => {
     await markAllAsRead();
-    setLocalNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    setLocalNotifications((prev: any) => prev.map((n: any) => ({ ...n, is_read: true })));
   };
 
   const getNotificationIcon = (type: string) => {
@@ -104,7 +104,7 @@ export default function NotificationBell() {
                 <input
                   type="checkbox"
                   checked={showUnreadOnly}
-                  onChange={e => setShowUnreadOnly(e.target.checked)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setShowUnreadOnly(e.target.checked)}
                   className="w-4 h-4 rounded border-charcoalGray bg-deepSlate text-primary focus:ring-primary"
                 />
                 <span className="text-xs text-charcoalGray">Unread only</span>
@@ -136,7 +136,7 @@ export default function NotificationBell() {
               </div>
             ) : (
               <ul className="divide-y divide-deepSlate/50">
-                {localNotifications.map((notification) => (
+                {localNotifications.map((notification: any) => (
                   <li
                     key={notification.id}
                     className={`px-4 py-3 flex gap-3 ${!notification.is_read ? 'bg-white/5' : ''} hover:bg-white/2.5 transition-colors`}
