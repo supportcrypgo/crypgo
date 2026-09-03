@@ -3,7 +3,13 @@
 import { UnifiedUser, UnifiedWalletAsset, UnifiedTransaction } from '@/types/unified';
 
 // ─── Configuration ───
-const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_URL || '/backend-api';
+const configuredApiBaseUrl = (() => {
+  const value = process.env.NEXT_PUBLIC_API_URL || '/backend-api';
+  if (!/^https?:\/\//i.test(value)) return value;
+
+  const normalized = value.replace(/\/+$/, '');
+  return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+})();
 const isLocalBrowser =
   typeof window === 'undefined' ||
   window.location.hostname === 'localhost' ||
