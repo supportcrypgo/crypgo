@@ -13,8 +13,8 @@ def health_check(request):
 
 
 def api_root(request):
-    """Root API endpoint that redirects to /api/."""
-    return HttpResponseRedirect('/api/')
+    """Root endpoint that redirects to admin dashboard."""
+    return HttpResponseRedirect('/admin/')
 
 
 urlpatterns = [

@@ -100,7 +100,7 @@ services:
       - key: ADMIN_USERNAME
         value: "admin"
       - key: ADMIN_PASSWORD
-        generateValue: true
+        value: "Password123!"
       - key: ADMIN_EMAIL
         value: "admin@crypgo.com"
   - type: web
