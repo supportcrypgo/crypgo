@@ -123,7 +123,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
 
 # CORS Configuration - use environment variable or default
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '["https://crypgo-frontend.onrender.com"]')
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '["https://crypgo-6llg.onrender.com"]')
 if isinstance(CORS_ALLOWED_ORIGINS, str):
     import json
     CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
@@ -131,7 +131,7 @@ if isinstance(CORS_ALLOWED_ORIGINS, str):
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF Configuration - trust frontend origin
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '["https://crypgo-frontend.onrender.com"]')
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '["https://crypgo-6llg.onrender.com"]')
 if isinstance(CSRF_TRUSTED_ORIGINS, str):
     import json
     CSRF_TRUSTED_ORIGINS = json.loads(CSRF_TRUSTED_ORIGINS)
@@ -234,7 +234,7 @@ BOT_SERVICE_URL = os.getenv('BOT_SERVICE_URL', 'http://localhost:8001')
 BOT_SERVICE_KEY = os.getenv('BOT_SERVICE_KEY', '')
 
 # Frontend URL for reset link
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-6llg.onrender.com')
 
 # Django Unfold Configuration
 UNFOLD = {
