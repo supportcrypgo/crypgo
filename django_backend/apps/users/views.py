@@ -176,14 +176,40 @@ class MagicLinkRequestView(APIView):
     throttle_scope = 'password_reset'
 
     def post(self, request: Request):
-        serializer = ForgotPasswordSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        email = get_validated_data(serializer)['email']
-        user = User.objects.filter(email__iexact=email, is_active=True).first()
-        if user:
-            _, raw_token = MagicLinkToken.generate_token(user)
-            send_magic_link_email(user, raw_token)
-        return Response({'success': True, 'message': 'If an account exists with this email, a sign-in link has been sent.'})
+        try:
+            serializer = ForgotPasswordSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            email = get_validated_data(serializer)['email']
+            user = User.objects.filter(email__iexact=email, is_active=True).first()
+            
+            if user:
+                try:
+                    _, raw_token = MagicLinkToken.generate_token(user)
+                    email_sent = send_magic_link_email(user, raw_token)
+                    if not email_sent:
+                        logger.error(f'Failed to send magic link email to {user.email}')
+                        return Response(
+                            {'error': 'Failed to send email. Please try again later.'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+                except Exception as e:
+                    logger.exception(f'Error generating or sending magic link to {email}: {str(e)}')
+                    return Response(
+                        {'error': 'An error occurred while processing your request.'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            
+            # Always return success message (don't reveal if email exists)
+            return Response({
+                'success': True,
+                'message': 'If an account exists with this email, a sign-in link has been sent.'
+            })
+        except Exception as e:
+            logger.exception(f'Unexpected error in MagicLinkRequestView: {str(e)}')
+            return Response(
+                {'error': 'An unexpected error occurred.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class MagicLinkConsumeView(APIView):
@@ -191,21 +217,45 @@ class MagicLinkConsumeView(APIView):
     throttle_scope = 'login'
 
     def post(self, request: Request):
-        raw_token = get_request_data(request).get('token')
-        if not isinstance(raw_token, str) or not raw_token:
-            return Response({'error': 'Token is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
         try:
-            with transaction.atomic():
-                token = MagicLinkToken.objects.select_for_update().select_related('user').get(token_hash=token_hash)
-                if not token.is_valid() or not token.user.is_active:
-                    raise MagicLinkToken.DoesNotExist
-                token.used_at = timezone.now()
-                token.save(update_fields=['used_at'])
-        except MagicLinkToken.DoesNotExist:
-            return Response({'error': 'Invalid or expired sign-in link.'}, status=status.HTTP_400_BAD_REQUEST)
-        return issue_auth_response(token.user)
-
+            raw_token = get_request_data(request).get('token')
+            if not isinstance(raw_token, str) or not raw_token:
+                return Response({'error': 'Token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+            try:
+                with transaction.atomic():
+                    token = MagicLinkToken.objects.select_for_update().select_related('user').get(token_hash=token_hash)
+                    if not token.is_valid():
+                        logger.warning(f'Expired or already-used magic link token attempted for user {token.user.email}')
+                        return Response({'error': 'Sign-in link has expired or already been used.'}, status=status.HTTP_400_BAD_REQUEST)
+                    if not token.user.is_active:
+                        logger.warning(f'Magic link used for inactive user {token.user.email}')
+                        return Response({'error': 'User account is not active.'}, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    token.used_at = timezone.now()
+                    token.save(update_fields=['used_at'])
+                    
+                    # Issue auth response
+                    auth_response = issue_auth_response(token.user)
+                    if isinstance(auth_response, Response) and auth_response.status_code >= 400:
+                        logger.error(f'Failed to issue auth response for user {token.user.email}')
+                        return Response(
+                            {'error': 'Failed to authenticate. Please try signing in again.'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+                    logger.info(f'Successful magic link login for user {token.user.email}')
+                    return auth_response
+                    
+            except MagicLinkToken.DoesNotExist:
+                logger.warning(f'Invalid magic link token attempted: {token_hash[:20]}...')
+                return Response({'error': 'Invalid or expired sign-in link.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception(f'Unexpected error in MagicLinkConsumeView: {str(e)}')
+            return Response(
+                {'error': 'An unexpected error occurred during sign-in.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class CampaignAccessConsumeView(APIView):
     permission_classes = [AllowAny]
@@ -633,25 +683,56 @@ class ResetPasswordUpdateView(APIView):
         tags=["auth"]
     )
     def post(self, request: Request):
-        serializer = ResetPasswordUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer = ResetPasswordUpdateSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
 
-        validated_data = get_validated_data(serializer)
-        token = validated_data['token']
-        new_password = validated_data['new_password']
+            validated_data = get_validated_data(serializer)
+            token = validated_data['token']
+            new_password = validated_data['new_password']
 
-        reset_token = PasswordResetToken.objects.get(token=token)
-
-        user = reset_token.user
-        user.set_password(new_password)
-        user.save()
-
-        reset_token.mark_used()
-
-        return Response({
-            'success': True,
-            'message': 'Password updated successfully'
-        }, status=status.HTTP_200_OK)
+            try:
+                reset_token = PasswordResetToken.objects.get(token=token)
+            except PasswordResetToken.DoesNotExist:
+                logger.warning(f'Invalid password reset token attempted: {token[:20]}...')
+                return Response(
+                    {'error': 'Invalid or expired reset token.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if token is valid and not already used
+            if not reset_token.is_valid():
+                logger.warning(f'Expired password reset token for user {reset_token.user.email}')
+                return Response(
+                    {'error': 'Reset link has expired or already been used.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            try:
+                with transaction.atomic():
+                    user = reset_token.user
+                    user.set_password(new_password)
+                    user.save()
+                    
+                    reset_token.mark_used()
+                    logger.info(f'Password successfully reset for user {user.email}')
+                    
+                return Response({
+                    'success': True,
+                    'message': 'Password updated successfully. Please sign in with your new password.'
+                }, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.exception(f'Error updating password for user: {str(e)}')
+                return Response(
+                    {'error': 'Failed to update password. Please try again.'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        except Exception as e:
+            logger.exception(f'Unexpected error in ResetPasswordUpdateView: {str(e)}')
+            return Response(
+                {'error': 'An unexpected error occurred.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # ---------- User Profile ----------
