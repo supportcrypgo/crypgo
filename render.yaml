@@ -72,7 +72,7 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: DB_SCHEMA
-        value: public
+        value: emailbot
       - key: ALLOWED_HOSTS
         value: "crypgo-email.onrender.com"
       - key: SITE_URL
