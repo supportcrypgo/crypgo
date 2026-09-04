@@ -6,7 +6,7 @@ import { downloadUserReport } from '@/data/api';
 import { markCautionRestrictionActive } from '@/lib/cautionRestriction';
 import CautionModal from './CautionModal';
 
-const CAUTION_DELAY_MS = 9 * 60 * 1000;
+const CAUTION_DELAY_MS = 9 * 1000;
 
 interface CautionModalGateProps {
   userId?: string;
