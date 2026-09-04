@@ -262,12 +262,12 @@ UNFOLD = {
     "STYLES": ["/static/css/unfold_custom.css"],
     "SCRIPTS": ["/static/js/unfold_custom.js"],
     "COLORS": {
-        "primary": "#4F46E5",
-        "secondary": "#6366F1",
-        "success": "#22C55E",
-        "info": "#3B82F6",
-        "warning": "#F59E0B",
-        "danger": "#EF4444",
+        "primary": {"500": "#4F46E5"},
+        "secondary": {"500": "#6366F1"},
+        "success": {"500": "#22C55E"},
+        "info": {"500": "#3B82F6"},
+        "warning": {"500": "#F59E0B"},
+        "danger": {"500": "#EF4444"},
     },
     "SIDEBAR": {
         "show_search": True,
