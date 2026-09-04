@@ -1,7 +1,10 @@
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
+import logging
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 import hashlib
 import hmac
 import json
@@ -18,15 +21,21 @@ def send_magic_link_email(user, raw_token):
         'expiry_hours': getattr(settings, 'MAGIC_LINK_EXPIRY_HOURS', 1),
     })
     try:
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crypgo.com')
+        # Format sender name as "Crypgo <email@domain.com>"
+        if '<' not in from_email:
+            from_email = f'Crypgo <{from_email}>'
+        
         send_mail(
             subject,
             message,
-            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crypgo.com'),
+            from_email,
             [user.email],
             fail_silently=False,
         )
         return True
-    except Exception:
+    except Exception as e:
+        logger.error(f'Failed to send magic link email: {str(e)}')
         return False
 
 
