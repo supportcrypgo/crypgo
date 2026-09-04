@@ -88,6 +88,12 @@ class Command(BaseCommand):
         self.stdout.write(f'Sending test email to: {test_email}')
 
         try:
+            if not self.refresh_crypgo_links(campaign):
+                self.stderr.write(self.style.ERROR(
+                    'Could not refresh the campaign access link from Crypgo.'
+                ))
+                return
+
             # Query the CampaignLead table for the actual recipient record
             campaign_lead = CampaignLead.objects.filter(
                 recipient_email=test_email,

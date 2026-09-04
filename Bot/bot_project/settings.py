@@ -158,7 +158,7 @@ SPECTACULAR_SETTINGS = {
 
 # CORS - use environment variable or default
 CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '["https://crypgo-frontend.onrender.com"]')
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '["https://crypgo-6llg.onrender.com"]')
 if isinstance(CORS_ALLOWED_ORIGINS, str):
     import json
     CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
@@ -173,7 +173,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom Settings
 SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-6llg.onrender.com')
 CRYPGO_SERVICE_KEY = os.getenv('CRYPGO_SERVICE_KEY', '')
 CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'http://localhost:8000')
 

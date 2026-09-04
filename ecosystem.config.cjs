@@ -13,6 +13,7 @@ module.exports = {
         NODE_ENV: 'production',
         DEBUG: 'True',
         DJANGO_SETTINGS_MODULE: 'core.settings',
+        BOT_SERVICE_KEY: 'local-dev-service-key',
       },
       instances: 1,
       exec_mode: 'fork',
