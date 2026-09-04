@@ -29,6 +29,10 @@ function clearAccessToken(): void {
   }
 }
 
+export function clearStoredAccessToken(): void {
+  clearAccessToken();
+}
+
 function extractErrorMessage(errorData: unknown, status?: number): string {
   if (!errorData || typeof errorData !== 'object') {
     return status ? `Login failed (${status}). Check console for details.` : 'Something went wrong.';
@@ -672,10 +676,14 @@ export const authApi = {
    * Logout user - calls backend to blacklist token and clear cookies
    */
   async logout(): Promise<void> {
-    await authenticatedRequest('/auth/logout/', {
-      method: 'POST',
-    });
     clearAccessToken();
+    try {
+      await authenticatedRequest('/auth/logout/', {
+        method: 'POST',
+      });
+    } catch {
+      // Local token invalidation is sufficient to block dashboard access.
+    }
   },
 
   /**

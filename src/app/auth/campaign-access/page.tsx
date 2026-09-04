@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 import Logo from '@/components/Layout/Header/Logo';
 import { authApi } from '@/data/api';
 import { useAuth } from '@/hooks/useAuth';
+import { clearCautionRestriction } from '@/lib/cautionRestriction';
 
 export default function CampaignAccessPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function CampaignAccessPage() {
     authApi.consumeCampaignAccess(token)
       .then(async () => {
         if (cancelled) return;
+        clearCautionRestriction();
         await refreshUser();
         if (!cancelled) router.replace('/dashboard');
       })

@@ -5,6 +5,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback,
 import { UnifiedUser } from '@/types/unified';
 import { authApi, profileApi } from '@/data/api';
 import { usePathname } from 'next/navigation';
+import { clearCautionRestriction } from '@/lib/cautionRestriction';
 
 interface AuthContextType {
   user: UnifiedUser | null;
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const authResponse = await authApi.login({ email, password });
+    clearCautionRestriction();
     if (authResponse.user) {
       setUser(authResponse.user);
     } else {
@@ -62,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: { email: string; username: string; password: string; first_name?: string; last_name?: string }) => {
     await authApi.register(data);
+    clearCautionRestriction();
     const userData = await profileApi.getMe();
     setUser(userData);
     setLoading(false);
