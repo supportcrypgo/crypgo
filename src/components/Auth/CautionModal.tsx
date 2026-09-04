@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // --- Caution Modal ---
 export interface CautionModalProps {
@@ -18,6 +18,16 @@ export const CautionModal = ({
 }: CautionModalProps) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
 
   const handleDownload = async () => {
     setIsDownloading(true);
