@@ -172,7 +172,7 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom Settings
-SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
+SITE_URL = os.getenv('SITE_URL', 'https://crypgo-email.onrender.com')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-6llg.onrender.com')
 CRYPGO_SERVICE_KEY = os.getenv('CRYPGO_SERVICE_KEY', '')
 CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'http://localhost:8000')
