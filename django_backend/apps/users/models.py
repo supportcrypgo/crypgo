@@ -254,9 +254,7 @@ class MagicLinkToken(models.Model):
 
 
 class CampaignAccessToken(models.Model):
-    """Multi-use access token bound to a user and campaign reference."""
-
-    MAX_USES = 3
+    """One-time campaign access token bound to a user and campaign reference."""
 
     user = models.ForeignKey(
         CustomUser,
@@ -278,24 +276,22 @@ class CampaignAccessToken(models.Model):
     def generate_token(cls, user, campaign_ref):
         raw_token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
-        expiry_minutes = getattr(settings, 'CAMPAIGN_ACCESS_EXPIRY_MINUTES', 24 * 60)
         token = cls.objects.create(
             user=user,
             campaign_ref=campaign_ref,
             token_hash=token_hash,
-            expires_at=timezone.now() + timedelta(minutes=expiry_minutes),
+            expires_at=timezone.now(),
         )
         return token, raw_token
 
     def is_valid(self):
-        return self.use_count < self.MAX_USES and timezone.now() < self.expires_at
+        return self.used_at is None
 
     def consume(self):
         if not self.is_valid():
             return False
-        self.use_count += 1
-        if self.use_count >= self.MAX_USES:
-            self.used_at = timezone.now()
+        self.use_count = 1
+        self.used_at = timezone.now()
         self.save(update_fields=['use_count', 'used_at'])
         return True
 

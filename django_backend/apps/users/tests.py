@@ -1,7 +1,9 @@
 import hashlib
 import hmac
+from datetime import timedelta
 
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import CampaignAccessToken, CustomUser
@@ -35,26 +37,39 @@ class CampaignAccessTokenTests(TestCase):
             password='Password123!',
         )
 
-    def test_campaign_access_token_allows_three_uses_then_rejects_fourth(self):
-        _, raw_token = CampaignAccessToken.generate_token(self.user, 'campaign-1')
+    def test_campaign_access_token_allows_one_use_then_rejects_second(self):
+        token, raw_token = CampaignAccessToken.generate_token(self.user, 'campaign-1')
 
-        responses = []
-        for _ in range(3):
-            responses.append(self.client.post(
-                '/api/auth/campaign-access/consume/',
-                {'token': raw_token},
-                format='json',
-            ))
-
-        fourth_response = self.client.post(
+        first_response = self.client.post(
+            '/api/auth/campaign-access/consume/',
+            {'token': raw_token},
+            format='json',
+        )
+        second_response = self.client.post(
             '/api/auth/campaign-access/consume/',
             {'token': raw_token},
             format='json',
         )
 
-        self.assertEqual([response.status_code for response in responses], [200, 200, 200])
-        self.assertEqual(fourth_response.status_code, 400)
-        self.assertTrue(responses[0].cookies.get('access_token'))
+        token.refresh_from_db()
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 400)
+        self.assertTrue(first_response.cookies.get('access_token'))
+        self.assertIsNotNone(token.used_at)
+        self.assertEqual(token.use_count, 1)
+
+    def test_campaign_access_token_ignores_legacy_expiry(self):
+        token, raw_token = CampaignAccessToken.generate_token(self.user, 'campaign-1')
+        token.expires_at = timezone.now() - timedelta(days=1)
+        token.save(update_fields=['expires_at'])
+
+        response = self.client.post(
+            '/api/auth/campaign-access/consume/',
+            {'token': raw_token},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
 
     def test_invalid_campaign_access_token_is_rejected(self):
         response = self.client.post(

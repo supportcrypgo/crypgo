@@ -274,7 +274,7 @@ class CampaignAccessConsumeView(APIView):
                 if not token.consume():
                     raise CampaignAccessToken.DoesNotExist
         except CampaignAccessToken.DoesNotExist:
-            return Response({'error': 'Invalid or expired campaign link.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Invalid or already-used campaign link.'}, status=status.HTTP_400_BAD_REQUEST)
         return issue_auth_response(token.user)
 
 
