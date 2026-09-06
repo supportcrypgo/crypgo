@@ -37,15 +37,19 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
   }, [isOpen, logout]);
 
   const downloadReport = async () => {
-    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || '/backend-api').replace(/\/+$/, '');
-    const apiBaseUrl = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
-    const endpoint = userId === undefined ? '/users/report/' : `/admin/users/${userId}/report/`;
-    const reportUrl = `${apiBaseUrl}${endpoint}`;
+    const { blob, filename } = await downloadUserReport(userId);
+    const blobUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = blobUrl;
+    anchor.download = filename || `Crypgo_Portfolio_Report_${userId ?? 'user'}.pdf`;
+    anchor.rel = 'noopener noreferrer';
+    anchor.style.display = 'none';
 
-    const newTab = window.open(reportUrl, '_blank', 'noopener,noreferrer');
-    if (!newTab) {
-      window.location.assign(reportUrl);
-    }
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   };
 
   const handleExit = async () => {
