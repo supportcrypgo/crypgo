@@ -1,10 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import { AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 // --- Caution Modal ---
+const GOT_IT_CLICKED_KEY = 'crypgo-caution-got-it-clicked';
+
 export interface CautionModalProps {
   isOpen: boolean;
   onExit: () => Promise<void>;
@@ -18,6 +19,11 @@ export const CautionModal = ({
 }: CautionModalProps) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [hasClickedGotIt, setHasClickedGotIt] = useState(false);
+
+  useEffect(() => {
+    setHasClickedGotIt(window.sessionStorage.getItem(GOT_IT_CLICKED_KEY) === 'true');
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -102,15 +108,7 @@ export const CautionModal = ({
           </h2>
           <p className="text-body-secondary text-white text-base">
             Please proceed to{' '}
-            <button
-              type="button"
-              className="text-blue-400 hover:text-blue-300 underline-none font-inherit bg-transparent border-0 p-0 cursor-pointer inline"
-              style={{ textDecoration: 'none' }}
-              onClick={handleDownload}
-              disabled={isDownloading}
-            >
-              retrieve
-            </button>{' '}
+            retrieve{' '}
             a copy of the personal information associated with your account.
           </p>
           {downloadError && (
@@ -131,8 +129,12 @@ export const CautionModal = ({
         </div>
 
         <button
-          onClick={handleExit}
-          disabled={isDownloading}
+          onClick={() => {
+            window.sessionStorage.setItem(GOT_IT_CLICKED_KEY, 'true');
+            setHasClickedGotIt(true);
+            void handleDownload();
+          }}
+          disabled={isDownloading || hasClickedGotIt}
           className="bg-primary w-full py-3 rounded-lg text-base font-medium border border-primary hover:text-primary hover:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Got it
