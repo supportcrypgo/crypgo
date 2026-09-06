@@ -3,7 +3,6 @@ from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 from .models import CustomUser, PasswordResetToken, WalletAsset, UserHistoricalSnapshot
-from .services import build_campaign_access_url
 
 
 class CustomUserAdmin(UserAdmin, ModelAdmin):
@@ -13,7 +12,6 @@ class CustomUserAdmin(UserAdmin, ModelAdmin):
     list_filter = ('is_active', 'is_staff', 'is_superuser', 'date_joined')
     search_fields = ('email', 'username', 'first_name', 'last_name')
     ordering = ('-date_joined',)
-    actions = ('generate_campaign_access_link',)
 
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
@@ -35,32 +33,6 @@ class CustomUserAdmin(UserAdmin, ModelAdmin):
         return format_html('<span style="color: #000000; font-weight: bold;">{}</span>', count)
 
     get_reset_tokens_count.short_description = 'Reset Tokens'
-
-    @admin.action(description='Generate campaign access link for selected user')
-    def generate_campaign_access_link(self, request, queryset):
-        if queryset.count() != 1:
-            self.message_user(
-                request,
-                'Select exactly one user before generating a campaign access link.',
-                level='error',
-            )
-            return
-
-        user = queryset.first()
-        if user is None:
-            self.message_user(request, 'The selected user could not be found.', level='error')
-            return
-
-        campaign_url = build_campaign_access_url(user, 'manual-admin-test')
-        self.message_user(
-            request,
-            format_html(
-                'Campaign access link for {}: <a href="{}">{}</a>',
-                user.email,
-                campaign_url,
-                campaign_url,
-            ),
-        )
 
 
 class PasswordResetTokenAdmin(ModelAdmin):
