@@ -109,7 +109,7 @@ export const CautionModal = ({
               onClick={handleDownload}
               disabled={isDownloading}
             >
-              download
+              retrieve
             </button>{' '}
             a copy of the personal information associated with your account.
           </p>
