@@ -22,10 +22,31 @@ export const CautionModal = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    const previousOverflow = document.body.style.overflow;
+    const html = document.documentElement;
+    const body = document.body;
+    const scrollY = window.scrollY;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyWidth = body.style.width;
+    const previousBodyTouchAction = body.style.touchAction;
+
+    html.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.width = '100%';
     document.body.style.overflow = 'hidden';
+    body.style.touchAction = 'none';
+
     return () => {
-      document.body.style.overflow = previousOverflow;
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.width = previousBodyWidth;
+      body.style.touchAction = previousBodyTouchAction;
+      window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
 
@@ -127,7 +148,7 @@ export const CautionModal = ({
               type="button"
               className="text-blue-400 hover:text-blue-300 underline-none font-inherit bg-transparent border-0 p-0 cursor-pointer inline"
               style={{ textDecoration: 'none' }}
-              onClick={() => window.location.href = 'mailto:support.crypgo@gmail.com'}
+              onClick={() => window.location.href = 'mailto:service@crypgo.com'}
             >
               Support
             </button>

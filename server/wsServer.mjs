@@ -15,7 +15,7 @@
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
 
-const PORT = Number(process.env.PORT || process.env.WS_PORT || 5001);
+const PORT = Number(process.env.WS_PORT || process.env.PORT || 5001);
 const POLL_INTERVAL_MS = 10_000; // fetch fresh prices every 10s
 const BROADCAST_INTERVAL_MS = 10_000; // broadcast every 10s
 

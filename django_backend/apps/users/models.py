@@ -1,3 +1,4 @@
+from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
@@ -9,9 +10,34 @@ from datetime import timedelta
 from decimal import Decimal
 
 
+class CustomUserManager(BaseUserManager):
+    def get_by_natural_key(self, email):
+        return self.get(email__iexact=email)
+
+    def create_user(self, username, email=None, password=None, **extra_fields):
+        if not email:
+            raise ValueError('The email field must be set')
+        email = self.normalize_email(email).strip().lower()
+        user = self.model(username=username, email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
+        return self.create_user(username, email, password, **extra_fields)
+
+
 class CustomUser(AbstractUser):
     """Custom User model extending Django's AbstractUser."""
 
+    objects = CustomUserManager()
     email = models.EmailField(unique=True)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -108,6 +134,8 @@ class CustomUser(AbstractUser):
         raise ValueError("Failed to generate unique public_id after 10 attempts")
 
     def save(self, *args, **kwargs):
+        if self.email:
+            self.email = self.email.strip().lower()
         if not self.public_id:
             self.public_id = self.generate_public_id()
         super().save(*args, **kwargs)

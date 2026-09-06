@@ -5,6 +5,25 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from .models import CampaignAccessToken, CustomUser
+from .serializers import LoginSerializer
+
+
+class EmailNormalizationTests(TestCase):
+    def test_email_is_lowercased_and_login_accepts_mixed_case(self):
+        user = CustomUser.objects.create_user(
+            username='case-user',
+            email='Sirmattfrewer@gmail.com',
+            password='Password123!',
+        )
+
+        self.assertEqual(user.email, 'sirmattfrewer@gmail.com')
+
+        serializer = LoginSerializer(data={
+            'email': 'SiRmAtTfReWeR@gmail.com',
+            'password': 'Password123!',
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertEqual(serializer.validated_data['user'].email, 'sirmattfrewer@gmail.com')
 
 
 class CampaignAccessTokenTests(TestCase):

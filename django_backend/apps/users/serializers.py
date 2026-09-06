@@ -113,7 +113,7 @@ class LoginSerializer(serializers.Serializer):
     
     def validate(self, attrs):
         from django.contrib.auth import authenticate
-        email = attrs.get('email')
+        email = (attrs.get('email') or '').strip().lower()
         password = attrs.get('password')
         
         if email and password:
@@ -139,6 +139,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         ]
     
     def validate_email(self, value):
+        value = value.strip().lower()
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return value

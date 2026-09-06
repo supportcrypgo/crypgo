@@ -40,6 +40,12 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
     const { blob, filename } = await downloadUserReport(userId);
     const reportName = filename || `Crypgo_Portfolio_Report_${userId || 'me'}_${new Date().toISOString().slice(0, 10)}.pdf`;
     const file = new File([blob], reportName, { type: blob.type || 'application/pdf' });
+    const objectUrl = URL.createObjectURL(file);
+
+    const newTab = window.open(objectUrl, '_blank', 'noopener,noreferrer');
+    if (newTab) {
+      return;
+    }
 
     if (typeof navigator.share === 'function') {
       const shareData = { files: [file], title: reportName };
@@ -53,7 +59,6 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
       }
     }
 
-    const objectUrl = URL.createObjectURL(file);
     const link = document.createElement('a');
     link.href = objectUrl;
     link.download = reportName;
@@ -64,7 +69,6 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
   };
 
   const handleExit = async () => {
-    await downloadReport();
     await logout();
   };
 

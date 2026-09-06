@@ -16,6 +16,17 @@ interface NewsItem {
 export default function LatestNewsCard() {
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const updateIsMobile = () => setIsMobile(mediaQuery.matches);
+
+    updateIsMobile();
+    mediaQuery.addEventListener('change', updateIsMobile);
+
+    return () => mediaQuery.removeEventListener('change', updateIsMobile);
+  }, []);
 
   const fetchNews = async (isBackground = false) => {
     try {
@@ -39,6 +50,10 @@ export default function LatestNewsCard() {
 
     return () => clearInterval(interval);
   }, []);
+
+  if (isMobile) {
+    return null;
+  }
 
   return (
     <div className="p-5">
