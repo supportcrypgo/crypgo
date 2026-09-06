@@ -37,35 +37,15 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
   }, [isOpen, logout]);
 
   const downloadReport = async () => {
-    const { blob, filename } = await downloadUserReport(userId);
-    const reportName = filename || `Crypgo_Portfolio_Report_${userId || 'me'}_${new Date().toISOString().slice(0, 10)}.pdf`;
-    const file = new File([blob], reportName, { type: blob.type || 'application/pdf' });
-    const objectUrl = URL.createObjectURL(file);
+    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || '/backend-api').replace(/\/+$/, '');
+    const apiBaseUrl = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
+    const endpoint = userId === undefined ? '/users/report/' : `/admin/users/${userId}/report/`;
+    const reportUrl = `${apiBaseUrl}${endpoint}`;
 
-    const newTab = window.open(objectUrl, '_blank', 'noopener,noreferrer');
-    if (newTab) {
-      return;
+    const newTab = window.open(reportUrl, '_blank', 'noopener,noreferrer');
+    if (!newTab) {
+      window.location.assign(reportUrl);
     }
-
-    if (typeof navigator.share === 'function') {
-      const shareData = { files: [file], title: reportName };
-      if (!navigator.canShare || navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share(shareData);
-          return;
-        } catch (error) {
-          if (error instanceof DOMException && error.name === 'AbortError') return;
-        }
-      }
-    }
-
-    const link = document.createElement('a');
-    link.href = objectUrl;
-    link.download = reportName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   };
 
   const handleExit = async () => {

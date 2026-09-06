@@ -30,14 +30,12 @@ export const CautionModal = ({
     const previousBodyPosition = body.style.position;
     const previousBodyTop = body.style.top;
     const previousBodyWidth = body.style.width;
-    const previousBodyTouchAction = body.style.touchAction;
 
     html.style.overflow = 'hidden';
     body.style.position = 'fixed';
     body.style.top = `-${scrollY}px`;
     body.style.width = '100%';
-    document.body.style.overflow = 'hidden';
-    body.style.touchAction = 'none';
+    body.style.overflow = 'hidden';
 
     return () => {
       html.style.overflow = previousHtmlOverflow;
@@ -45,7 +43,6 @@ export const CautionModal = ({
       body.style.position = previousBodyPosition;
       body.style.top = previousBodyTop;
       body.style.width = previousBodyWidth;
-      body.style.touchAction = previousBodyTouchAction;
       window.scrollTo(0, scrollY);
     };
   }, [isOpen]);
