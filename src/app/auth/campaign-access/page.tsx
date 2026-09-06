@@ -2,8 +2,6 @@
 
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
-import Logo from '@/components/Layout/Header/Logo';
 import { authApi } from '@/data/api';
 import { useAuth } from '@/hooks/useAuth';
 import { clearCautionRestriction } from '@/lib/cautionRestriction';
@@ -37,12 +35,5 @@ export default function CampaignAccessPage() {
     };
   }, [refreshUser, router, searchParams]);
 
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-darkmode px-6 text-center text-white">
-      <div className="flex w-full max-w-md flex-col items-center">
-        <div className="mb-8 inline-block max-w-[160px]"><Logo /></div>
-        <Loader2 className="h-10 w-10 animate-spin" aria-label="Loading" />
-      </div>
-    </main>
-  );
+  return null;
 }
