@@ -34,9 +34,8 @@ def unsubscribe_process_ajax(request):
             existing, created = UnsubscribedLead.objects.get_or_create(
                 email=email,
                 defaults={
-                    'document_id': None,
-                    'campaign_name': '',
                     'reason': reason,
+                    'source': 'email',
                 }
             )
             
@@ -91,9 +90,8 @@ def unsubscribe_process(request, email):
             existing, created = UnsubscribedLead.objects.get_or_create(
                 email=email,
                 defaults={
-                    'document_id': None,
-                    'campaign_name': '',
                     'reason': reason,
+                    'source': 'email',
                 }
             )
             

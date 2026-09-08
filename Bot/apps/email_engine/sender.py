@@ -25,6 +25,15 @@ class EmailSender:
         self.retry_handler = RetryHandler()
         self.throttler = Throttler()
 
+    def _public_frontend_base_url(self):
+        """Return the public frontend URL for customer-facing links."""
+        frontend_url = (getattr(settings, 'FRONTEND_URL', '') or '').strip().rstrip('/')
+        if frontend_url:
+            return frontend_url
+
+        site_url = (getattr(settings, 'SITE_URL', '') or '').strip().rstrip('/')
+        return site_url or 'http://localhost'
+
     def _resolve_from_email(self):
         """Return a consistently formatted from address."""
         raw_from = settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER
@@ -43,10 +52,11 @@ class EmailSender:
         site_url = settings.SITE_URL.rstrip('/')
         message_domain = urlparse(site_url).hostname or 'localhost'
         unsubscribe_email = quote(recipient_email, safe='')
+        public_frontend_url = self._public_frontend_base_url()
 
         return {
             'Message-ID': f'<{tracking_id}@{message_domain}>',
-            'List-Unsubscribe': f'<{site_url}/unsubscribe/?email={unsubscribe_email}>',
+            'List-Unsubscribe': f'<{public_frontend_url}/unsubscribe/?email={unsubscribe_email}>',
             'X-Mailer': settings.EMAIL_X_MAILER,
         }
 
@@ -62,6 +72,7 @@ class EmailSender:
 
         # Build context with lead data
         site_url = settings.SITE_URL.rstrip('/')
+        public_frontend_url = self._public_frontend_base_url()
         encoded_email = quote(lead.email, safe='')
         full_context = {
             'first_name': lead.first_name or '',
@@ -70,7 +81,7 @@ class EmailSender:
             'email': lead.email,
             'company': lead.company or '',
             'greeting': lead.first_name or 'there',
-            'unsubscribe_url': f"{site_url}/unsubscribe/?email={encoded_email}",
+            'unsubscribe_url': f"{public_frontend_url}/unsubscribe/?email={encoded_email}",
             'tracking_pixel': f"{site_url}/track/open/{tracking_id}/",
             **context,
         }
@@ -284,13 +295,13 @@ class EmailSender:
 
     def _inject_unsubscribe_link(self, html_body, email):
         """Inject unsubscribe link into email HTML (idempotent - skips if already present)"""
-        site_url = settings.SITE_URL.rstrip('/')
-        unsubscribe_url = f"{site_url}/unsubscribe/?email={quote(email, safe='')}"
-        
+        public_frontend_url = self._public_frontend_base_url()
+        unsubscribe_url = f"{public_frontend_url}/unsubscribe/?email={quote(email, safe='')}"
+
         # Skip if unsubscribe link already exists in the body (e.g. from template {{ unsubscribe_url }})
         if unsubscribe_url in html_body:
             return html_body
-            
+
         link_html = (
             f'<p style="font-size:12px;color:#999;">'
             f'If you no longer wish to receive these emails, '
@@ -313,8 +324,8 @@ class EmailSender:
             # Skip mailto: links and anchor-only links
             if original_url.startswith('mailto:') or original_url.startswith('#'):
                 return match.group(0)
-            # Don't re-wrap already tracked URLs
-            if f'{site_url}/track/click/' in original_url:
+            # Don't re-wrap unsubscribe or already tracked URLs
+            if '/unsubscribe/' in original_url.lower() or f'{site_url}/track/click/' in original_url:
                 return match.group(0)
             encoded_target = quote(original_url, safe='')
             tracked_url = f"{site_url}/track/click/{tracking_id}/?url={encoded_target}"

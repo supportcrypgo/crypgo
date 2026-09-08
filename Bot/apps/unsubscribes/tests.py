@@ -16,6 +16,26 @@ class UnsubscribedLeadModelTest(TestCase):
 
 
 class UnsubscribeViewsTest(TestCase):
+    def test_unsubscribe_process_creates_current_model_fields(self):
+        response = self.client.post(
+            '/unsubscribe/process/',
+            {
+                'email': 'recipient@example.com',
+                'reason': 'User requested unsubscribe from email',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {
+                'success': True,
+                'message': 'recipient@example.com unsubscribed successfully',
+            },
+        )
+        record = UnsubscribedLead.objects.get(email='recipient@example.com')
+        self.assertEqual(record.source, 'email')
+
     def test_unsubscribe_page(self):
         response = self.client.get('/unsubscribe/test@example.com/')
         self.assertEqual(response.status_code, 200)

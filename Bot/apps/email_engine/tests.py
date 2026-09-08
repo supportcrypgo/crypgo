@@ -163,6 +163,19 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertIn('https://app.crypgo.com/auth/campaign-access?token=one', mail.outbox[0].body)
 
     @override_settings(
+        SITE_URL='https://backend.example.com',
+        FRONTEND_URL='https://public.example.com',
+    )
+    def test_unsubscribe_link_uses_frontend_url(self):
+        sender = EmailSender()
+        html = '<p>Hello there</p>'
+
+        updated = sender._inject_unsubscribe_link(html, 'friend@example.com')
+
+        self.assertIn('https://public.example.com/unsubscribe/?email=friend%40example.com', updated)
+        self.assertNotIn('https://backend.example.com/unsubscribe/?email=friend%40example.com', updated)
+
+    @override_settings(
         SITE_URL='https://public.example.com',
         FRONTEND_URL='https://public.example.com',
     )
