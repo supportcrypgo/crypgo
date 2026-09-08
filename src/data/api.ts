@@ -566,8 +566,11 @@ export async function downloadUserReport(userId?: string | number): Promise<{
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    const extractedMessage = extractErrorMessage(errorData, response.status);
     throw new Error(
-      extractErrorMessage(errorData, response.status) || 'Unable to download the report.'
+      response.status >= 500 && extractedMessage.startsWith('Login failed')
+        ? 'Unable to retrieve your account report right now. Please try again.'
+        : extractedMessage || 'Unable to retrieve your account report.'
     );
   }
 
