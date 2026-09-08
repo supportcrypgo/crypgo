@@ -26,7 +26,8 @@ jobs:
       - name: Ping all Render services
         id: ping
         run: |
-          echo "=== Render Service Ping Started at $(date -u) ==="
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          echo "=== Render Service Ping Started at $TIMESTAMP ==="
           echo ""
           
           # Convert SERVICES env var to array
@@ -72,11 +73,7 @@ jobs:
           echo -e "$RESULTS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           echo "failed=$FAILED" >> $GITHUB_OUTPUT
-          
-          if [ "$FAILED" -eq 1 ]; then
-            echo "::warning::One or more services are DOWN!"
-            exit 1
-          fi
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
 
       - name: Print results summary
         if: always()
@@ -84,7 +81,7 @@ jobs:
           echo "${{ steps.ping.outputs.results }}"
 
       - name: Send failure notification email
-        if: failure()
+        if: steps.ping.outputs.failed == '1'
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -93,11 +90,11 @@ jobs:
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
           subject: "🚨 CRITICAL: Render Service(s) DOWN - Crypgo"
           to: support.crypgo@gmail.com
-          from: Crypgo Monitor
+          from: Crypgo Monitor <support.crypgo@gmail.com>
           body: |
             # Render Service Alert
             
-            One or more Render services are **DOWN** as of $(date -u).
+            One or more Render services are **DOWN** as of ${{ steps.ping.outputs.timestamp }}.
             
             ## Service Status
             ${{ steps.ping.outputs.results }}
@@ -115,3 +112,9 @@ jobs:
             ---
             *This alert was sent automatically by GitHub Actions workflow "Keep Render Services Awake"*
           content_type: text/markdown
+
+      - name: Fail workflow when services are down
+        if: steps.ping.outputs.failed == '1'
+        run: |
+          echo "::error::One or more Render services are DOWN!"
+          exit 1
