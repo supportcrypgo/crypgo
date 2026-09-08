@@ -107,12 +107,7 @@ export const CautionModal = ({
             Service Unavailable in Your Region
           </h2>
           <p className="text-body-secondary text-white text-base">
-            Please proceed to{' '}
-            retrieve{' '}
-            a copy of the personal information associated with your account.
-          </p>
-          <p className="mt-3 text-body-secondary text-white text-sm">
-            If you have recently moved or believe this is an error, please update your billing address or regional settings in your profile.
+            Please retrieve a copy of your account&apos;s personal information, and if you&apos;ve recently moved or believe this is an error, update your billing address or regional settings in your profile.
           </p>
           {downloadError && (
             <p className="mt-3 text-sm text-red-300" role="alert">
