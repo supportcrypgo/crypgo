@@ -102,7 +102,7 @@ export const CautionModal = ({
           />
         </button>
 
-        <div className="text-left mb-8 lg:text-center">
+        <div className="text-left mb-8">
           <h2 id="caution-modal-title" className="text-2xl font-bold text-white mb-2">
             Service Unavailable in Your Region
           </h2>
