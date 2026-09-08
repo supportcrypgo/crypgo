@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Ping all Render services
         id: ping
@@ -30,8 +30,8 @@ jobs:
           echo "=== Render Service Ping Started at $TIMESTAMP ==="
           echo ""
           
-          # Convert SERVICES env var to array
-          IFS=$'\n' read -r -d '' -a SERVICE_URLS <<< "${SERVICES}"
+          # Convert SERVICES env var to an array without requiring a NUL terminator.
+          mapfile -t SERVICE_URLS <<< "${SERVICES}"
           
           FAILED=0
           RESULTS="| Service | Status | Response Time | HTTP Code |\n|---------|--------|---------------|-----------|\n"
