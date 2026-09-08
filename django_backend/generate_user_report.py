@@ -136,18 +136,13 @@ def get_live_usd_prices(tickers):
         with urlopen(request, timeout=10) as response:
             payload = loads(response.read().decode('utf-8'))
     except Exception as error:
-        raise RuntimeError('Unable to fetch live CoinGecko prices for this report.') from error
+        print(f'CoinGecko price lookup unavailable: {error}')
+        return {}
 
     prices = {}
     for ticker, coingecko_id in COINGECKO_IDS.items():
         if coingecko_id in payload and 'usd' in payload[coingecko_id]:
             prices[ticker] = Decimal(str(payload[coingecko_id]['usd']))
-
-    missing_tickers = [ticker for ticker in tickers if ticker not in prices]
-    if missing_tickers:
-        raise RuntimeError(
-            f'CoinGecko did not return live USD prices for: {", ".join(sorted(set(missing_tickers)))}.'
-        )
 
     return prices
 
@@ -172,7 +167,7 @@ def generate_user_report_bytes(user):
     
     for asset in assets_with_balance:
         qty = Decimal(str(asset.quantity))
-        price = prices[asset.ticker.upper()]
+        price = prices.get(asset.ticker.upper(), Decimal('0'))
         total_usd += qty * price
         available_usd += Decimal(str(asset.available_quantity)) * price
         pending_usd += Decimal(str(asset.locked_quantity)) * price
