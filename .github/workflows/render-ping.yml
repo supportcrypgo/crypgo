@@ -111,7 +111,6 @@ jobs:
             
             ---
             *This alert was sent automatically by GitHub Actions workflow "Keep Render Services Awake"*
-          content_type: text/markdown
 
       - name: Fail workflow when services are down
         if: steps.ping.outputs.failed == '1'
