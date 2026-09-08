@@ -2,7 +2,7 @@ name: Keep Render Services Awake
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # Every 15 minutes
+    - cron: '*/13 * * * *'  # Every 13 minutes
   workflow_dispatch:  # Allow manual trigger
 
 permissions:
@@ -44,7 +44,7 @@ jobs:
             
             # Time the request and capture HTTP code
             START=$(date +%s%3N)
-            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" 2>/dev/null || echo "000")
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "$URL" 2>/dev/null || echo "000")
             END=$(date +%s%3N)
             RESPONSE_TIME=$((END - START))
             
