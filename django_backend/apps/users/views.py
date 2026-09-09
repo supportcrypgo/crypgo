@@ -281,19 +281,12 @@ class CampaignAccessConsumeView(APIView):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def export_campaign_recipients(request, campaign_ref):
-    print(f'DEBUG: Received signature: {request.headers.get("X-Bot-Signature", "")!r}')
-    print(f'DEBUG: Request body: {request.body!r}')
-    print(f'DEBUG: BOT_SERVICE_KEY: {settings.BOT_SERVICE_KEY!r}')
-    
     signature = request.headers.get('X-Bot-Signature', '')
     expected = hmac.new(
         settings.BOT_SERVICE_KEY.encode('utf-8'), request.body, hashlib.sha256
     ).hexdigest()
-    print(f'DEBUG: Expected signature: {expected}')
-    print(f'DEBUG: Match: {hmac.compare_digest(signature, expected)}')
-    
+
     if not settings.BOT_SERVICE_KEY or not hmac.compare_digest(signature, expected):
-        print('DEBUG: Authorization failed')
         return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
 
     recipients = []
