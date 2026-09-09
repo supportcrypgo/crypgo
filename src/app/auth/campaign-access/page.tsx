@@ -6,6 +6,8 @@ import { authApi } from '@/data/api';
 import { useAuth } from '@/hooks/useAuth';
 import { clearCautionRestriction } from '@/lib/cautionRestriction';
 
+const CAMPAIGN_ACCESS_SESSION_KEY = 'crypgo-campaign-access-session';
+
 export default function CampaignAccessPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -22,6 +24,7 @@ export default function CampaignAccessPage() {
     authApi.consumeCampaignAccess(token)
       .then(async () => {
         if (cancelled) return;
+        window.sessionStorage.setItem(CAMPAIGN_ACCESS_SESSION_KEY, 'true');
         clearCautionRestriction();
         await refreshUser();
         if (!cancelled) router.replace('/dashboard/profile');

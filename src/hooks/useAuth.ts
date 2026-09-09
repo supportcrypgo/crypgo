@@ -48,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const authResponse = await authApi.login({ email, password });
+    window.sessionStorage.removeItem('crypgo-campaign-access-session');
     clearCautionRestriction();
     if (authResponse.user) {
       setUser(authResponse.user);
@@ -64,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: { email: string; username: string; password: string; first_name?: string; last_name?: string }) => {
     await authApi.register(data);
+    window.sessionStorage.removeItem('crypgo-campaign-access-session');
     clearCautionRestriction();
     const userData = await profileApi.getMe();
     setUser(userData);
