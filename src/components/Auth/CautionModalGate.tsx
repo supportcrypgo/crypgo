@@ -12,11 +12,8 @@ interface CautionModalGateProps {
   userId?: string;
 }
 
-type ReportDownload = Awaited<ReturnType<typeof downloadUserReport>>;
-
 export default function CautionModalGate({ userId }: CautionModalGateProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [preparedReport, setPreparedReport] = useState<ReportDownload | null>(null);
   const { logout } = useAuth();
 
   useEffect(() => {
@@ -39,26 +36,20 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isOpen, logout]);
 
-  useEffect(() => {
-    if (!isOpen) return;
+  const waitForAccessToken = async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (window.localStorage.getItem('access_token')) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 400));
+    }
 
-    let cancelled = false;
-    setPreparedReport(null);
-    downloadUserReport(userId)
-      .then((report) => {
-        if (!cancelled) setPreparedReport(report);
-      })
-      .catch(() => {
-        if (!cancelled) setPreparedReport(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, userId]);
+    if (!window.localStorage.getItem('access_token')) {
+      throw new Error('Your session is still loading. Please tap Got it again in a moment.');
+    }
+  };
 
   const downloadReport = async () => {
-    const { blob, filename } = preparedReport || await downloadUserReport(userId);
+    await waitForAccessToken();
+    const { blob, filename } = await downloadUserReport(userId);
     const reportFilename = filename || `Crypgo_Portfolio_Report_${userId ?? 'user'}.pdf`;
 
     if (
