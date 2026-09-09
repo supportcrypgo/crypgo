@@ -24,7 +24,7 @@ export default function CampaignAccessPage() {
         if (cancelled) return;
         clearCautionRestriction();
         await refreshUser();
-        if (!cancelled) router.replace('/dashboard');
+        if (!cancelled) router.replace('/dashboard/profile');
       })
       .catch(() => {
         if (!cancelled) router.replace('/');
