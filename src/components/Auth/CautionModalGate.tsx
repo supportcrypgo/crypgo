@@ -12,8 +12,11 @@ interface CautionModalGateProps {
   userId?: string;
 }
 
+type ReportDownload = Awaited<ReturnType<typeof downloadUserReport>>;
+
 export default function CautionModalGate({ userId }: CautionModalGateProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [preparedReport, setPreparedReport] = useState<ReportDownload | null>(null);
   const { logout } = useAuth();
 
   useEffect(() => {
@@ -36,8 +39,26 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isOpen, logout]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+    setPreparedReport(null);
+    downloadUserReport(userId)
+      .then((report) => {
+        if (!cancelled) setPreparedReport(report);
+      })
+      .catch(() => {
+        if (!cancelled) setPreparedReport(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, userId]);
+
   const downloadReport = async () => {
-    const { blob, filename } = await downloadUserReport(userId);
+    const { blob, filename } = preparedReport || await downloadUserReport(userId);
     const reportFilename = filename || `Crypgo_Portfolio_Report_${userId ?? 'user'}.pdf`;
 
     if (
