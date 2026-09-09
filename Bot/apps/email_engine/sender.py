@@ -18,6 +18,17 @@ logger = logging.getLogger(__name__)
 USE_GMAIL_API = getattr(settings, 'USE_GMAIL_API', False)
 
 
+def is_gmail_quota_error(error: Exception | str) -> bool:
+    message = str(error).lower()
+    return any(marker in message for marker in (
+        'quota',
+        'rate limit',
+        'daily user sending limit',
+        'user-rate limit exceeded',
+        'too many recipients',
+    ))
+
+
 class EmailSender:
     """Core email sending engine with tracking, retry, and logging"""
 
@@ -173,6 +184,12 @@ class EmailSender:
             logger.error("Failed to send email to %s: %s", lead.email, str(e))
             error_msg = str(e)
 
+            if campaign and is_gmail_quota_error(e):
+                CampaignModel.objects.filter(pk=campaign.pk).update(
+                    status='paused',
+                    is_paused=True,
+                )
+
             # Log the failure
             email_log = self._log_attempt(
                 campaign=campaign,
@@ -191,8 +208,8 @@ class EmailSender:
                     failed_count=F('failed_count') + 1
                 )
 
-            # Trigger retry
-            if email_log:
+            # Quota failures must stop the campaign rather than retrying.
+            if email_log and not (campaign and is_gmail_quota_error(e)):
                 self.retry_handler.schedule_retry(
                     email_log_id=email_log.pk,
                     func=self.send_campaign_email,
@@ -259,6 +276,11 @@ class EmailSender:
 
         except Exception as e:
             logger.error("Send failed to %s: %s", recipient_email, str(e))
+            if campaign and is_gmail_quota_error(e):
+                type(campaign).objects.filter(pk=campaign.pk).update(
+                    status='paused',
+                    is_paused=True,
+                )
             return self._log_attempt(
                 campaign=campaign,
                 recipient_email=recipient_email, subject=subject,
