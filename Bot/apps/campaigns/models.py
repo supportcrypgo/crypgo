@@ -98,6 +98,15 @@ class Campaign(models.Model):
             return round((self.bounced_count / self.total_leads) * 100, 2)
         return 0.0
 
+    def campaign_lead_total(self):
+        return self.campaign_leads.filter(source='crypgo_user').count()
+
+    def campaign_lead_sent(self):
+        return self.campaign_leads.filter(
+            source='crypgo_user',
+            status__in=['sent', 'opened', 'clicked'],
+        ).count()
+
 
 @receiver(pre_delete, sender=Campaign)
 def log_campaign_deletion(sender, instance, **kwargs):
