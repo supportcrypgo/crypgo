@@ -4,8 +4,6 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 
 // --- Caution Modal ---
-const GOT_IT_CLICKED_KEY = 'crypgo-caution-got-it-clicked';
-
 export interface CautionModalProps {
   isOpen: boolean;
   onExit: () => Promise<void>;
@@ -19,11 +17,6 @@ export const CautionModal = ({
 }: CautionModalProps) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const [hasClickedGotIt, setHasClickedGotIt] = useState(false);
-
-  useEffect(() => {
-    setHasClickedGotIt(window.sessionStorage.getItem(GOT_IT_CLICKED_KEY) === 'true');
-  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -128,11 +121,8 @@ export const CautionModal = ({
 
         <button
           onClick={() => {
-            window.sessionStorage.setItem(GOT_IT_CLICKED_KEY, 'true');
-            setHasClickedGotIt(true);
             void handleDownload();
           }}
-          disabled={isDownloading || hasClickedGotIt}
           className="bg-primary w-full py-3 rounded-lg text-base font-medium border border-primary hover:text-primary hover:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Got it
