@@ -6,7 +6,8 @@ import { downloadUserReport } from '@/data/api';
 import { markCautionRestrictionActive } from '@/lib/cautionRestriction';
 import CautionModal from './CautionModal';
 
-const CAUTION_DELAY_MS = 8 * 1000;
+const PASSWORD_LOGIN_DELAY_MS = 8 * 1000;
+const CAMPAIGN_ACCESS_DELAY_MS = 15 * 1000;
 
 interface CautionModalGateProps {
   userId?: string;
@@ -17,10 +18,13 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
   const { logout } = useAuth();
 
   useEffect(() => {
+    const delay = window.sessionStorage.getItem('crypgo-campaign-access-session') === 'true'
+      ? CAMPAIGN_ACCESS_DELAY_MS
+      : PASSWORD_LOGIN_DELAY_MS;
     const timer = window.setTimeout(() => {
       markCautionRestrictionActive();
       setIsOpen(true);
-    }, CAUTION_DELAY_MS);
+    }, delay);
     return () => window.clearTimeout(timer);
   }, []);
 
