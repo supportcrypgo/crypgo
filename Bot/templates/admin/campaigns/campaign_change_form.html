@@ -11,12 +11,21 @@
       >
         Send Campaign Now
       </a>
+      {% if original.status == 'running' %}
+        <a
+          href="{% url 'admin:campaigns_campaign_pause' original.pk %}"
+          class="button"
+          style="background: #ef4444; color: #fff; border-color: #dc2626; margin-left: 8px;"
+        >
+          Pause Campaign
+        </a>
+      {% endif %}
     </p>
     <p>
       <strong>Status:</strong> {{ original.get_status_display }}
     </p>
     <p>
-      <strong>Sent:</strong> {{ original.sent_count }}/{{ original.total_leads }}
+      <strong>Sent:</strong> {{ original.campaign_lead_sent }}/{{ original.campaign_lead_total }}
     </p>
     <p>
       <strong>Last run:</strong>

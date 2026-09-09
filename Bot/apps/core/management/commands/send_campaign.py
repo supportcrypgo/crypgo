@@ -313,6 +313,10 @@ class Command(BaseCommand):
                 self.stdout.write(f'  Batch {batch_start + 1}-{batch_end}/{total_in_doc}')
 
                 for lead in batch:
+                    campaign.refresh_from_db(fields=['is_paused', 'status'])
+                    if campaign.is_paused or campaign.status == 'paused':
+                        self.stdout.write(self.style.WARNING('Campaign paused. Stopping send.'))
+                        return
                     remaining_day = throttler.get_remaining_day(campaign)
                     if remaining_day <= 0:
                         self.stdout.write(self.style.WARNING('Daily cap reached. Pausing campaign.'))
@@ -423,6 +427,10 @@ class Command(BaseCommand):
         ).exclude(status='sent').order_by('id')
 
         for recipient in recipients:
+            campaign.refresh_from_db(fields=['is_paused', 'status'])
+            if campaign.is_paused or campaign.status == 'paused':
+                logger.info('Campaign %s paused. Stopping recipient send.', campaign.pk)
+                return
             if not recipient.recipient_email or not recipient.dashboard_url:
                 recipient.status = 'failed'
                 recipient.error_message = 'Recipient email or dashboard URL is missing.'

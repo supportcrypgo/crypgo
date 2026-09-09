@@ -73,6 +73,11 @@ class CampaignAdmin(ModelAdmin):
                 self.admin_site.admin_view(self.send_campaign_view),
                 name='campaigns_campaign_send_now',
             ),
+            path(
+                '<int:campaign_id>/pause/',
+                self.admin_site.admin_view(self.pause_campaign_view),
+                name='campaigns_campaign_pause',
+            ),
         ]
         return custom_urls + urls
 
@@ -259,6 +264,19 @@ class CampaignAdmin(ModelAdmin):
             message,
             messages.SUCCESS if ok else messages.WARNING,
         )
+        return HttpResponseRedirect(
+            request.META.get('HTTP_REFERER')
+            or reverse('admin:campaigns_campaign_change', args=[campaign.pk])
+        )
+
+    def pause_campaign_view(self, request, campaign_id):
+        campaign = get_object_or_404(Campaign, pk=campaign_id)
+        Campaign.objects.filter(pk=campaign.pk).update(
+            status='paused',
+            is_paused=True,
+            updated_at=timezone.now(),
+        )
+        self.message_user(request, f"Campaign '{campaign.name}' paused.", messages.WARNING)
         return HttpResponseRedirect(
             request.META.get('HTTP_REFERER')
             or reverse('admin:campaigns_campaign_change', args=[campaign.pk])
