@@ -260,7 +260,7 @@ class Command(BaseCommand):
             f'  Batch size: {batch_size}\n'
             f'  A/B Testing: {"Enabled" if use_ab_testing else "Disabled"}\n'
             f'  Documents: {campaign.current_document_id} to {max_document_id}\n'
-            f'  Rate: 1 email every 90 seconds (40/hour, 350/day)'
+            f'  Rate: 1 email every 90 seconds (40/hour, 100/day)'
         )
 
         total_sent = 0
@@ -376,9 +376,17 @@ class Command(BaseCommand):
                             )
                             doc_sent += 1
                         else:
+                            campaign.refresh_from_db()
+                            if campaign.is_paused:
+                                self.stdout.write(self.style.WARNING('Campaign paused after a provider limit error.'))
+                                return
                             raise Exception(f'Email send returned status: {getattr(result, "status", "unknown")}')
 
                     except Exception as e:
+                        campaign.refresh_from_db()
+                        if campaign.is_paused:
+                            self.stdout.write(self.style.WARNING('Campaign paused after a provider limit error.'))
+                            return
                         logger.error("Failed to send to %s (lead %d): %s", lead.email, lead.pk, str(e))
                         campaign_lead.retry_count = F('retry_count') + 1
                         campaign_lead.error_message = str(e)[:500]
@@ -448,6 +456,10 @@ class Command(BaseCommand):
                 recipient.sent_at = timezone.now()
                 recipient.error_message = ''
             else:
+                campaign.refresh_from_db()
+                if campaign.is_paused:
+                    logger.warning('Campaign %s paused after a provider limit error.', campaign.pk)
+                    return
                 recipient.status = 'failed'
                 recipient.error_message = f'Email send returned status: {getattr(result, "status", "unknown")}'
             recipient.save(update_fields=['status', 'sent_at', 'error_message', 'updated_at'])

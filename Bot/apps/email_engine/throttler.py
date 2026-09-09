@@ -18,7 +18,7 @@ class Throttler:
 
     CAMPAIGN_SECONDS_BETWEEN_EMAILS = 90
     CAMPAIGN_MAX_PER_HOUR = 40
-    CAMPAIGN_MAX_PER_DAY = 350
+    CAMPAIGN_MAX_PER_DAY = 100
 
     def __init__(self, per_second=None, per_hour=None, per_day=None):
         self.per_second = per_second or self.DEFAULT_PER_SECOND
