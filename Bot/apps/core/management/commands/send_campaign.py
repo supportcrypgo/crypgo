@@ -204,7 +204,7 @@ class Command(BaseCommand):
                     'Content-Type': 'application/json',
                     'X-Bot-Signature': signature,
                 },
-                timeout=15,
+                timeout=60,
             )
             response.raise_for_status()
             exported = response.json().get('recipients', [])

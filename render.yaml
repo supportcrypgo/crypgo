@@ -44,8 +44,8 @@ services:
         value: '["https://crypgo-6llg.onrender.com"]'
       - key: CSRF_TRUSTED_ORIGINS
         value: '["https://crypgo-6llg.onrender.com"]'
-      - key: CRYPGO_SERVICE_KEY
-        generateValue: true
+      - key: BOT_SERVICE_KEY
+        sync: false
       - key: USE_GMAIL_API
         value: "True"
       - key: GMAIL_CLIENT_ID
@@ -98,7 +98,7 @@ services:
       - key: CRYPGO_API_URL
         value: "https://crypgo-api.onrender.com"
       - key: CRYPGO_SERVICE_KEY
-        generateValue: true
+        sync: false
       - key: ADMIN_USERNAME
         value: "admin"
       - key: ADMIN_PASSWORD

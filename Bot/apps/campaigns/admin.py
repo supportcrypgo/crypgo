@@ -169,7 +169,7 @@ class CampaignAdmin(ModelAdmin):
                     'Content-Type': 'application/json',
                     'X-Bot-Signature': signature,
                 },
-                timeout=15,
+                timeout=60,
             )
             response.raise_for_status()
             recipients = response.json().get('recipients', [])
