@@ -23,9 +23,13 @@ def is_gmail_quota_error(error: Exception | str) -> bool:
     return any(marker in message for marker in (
         'quota',
         'rate limit',
+        'daily limit',
+        'sending limit',
+        'limit exceeded',
         'daily user sending limit',
         'user-rate limit exceeded',
         'too many recipients',
+        'message blocked',
     ))
 
 
