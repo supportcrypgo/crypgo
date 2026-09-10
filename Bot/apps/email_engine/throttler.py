@@ -18,7 +18,7 @@ class Throttler:
 
     CAMPAIGN_SECONDS_BETWEEN_EMAILS = 90
     CAMPAIGN_MAX_PER_HOUR = 40
-    CAMPAIGN_MAX_PER_DAY = 100
+    CAMPAIGN_MAX_PER_DAY = 70
 
     def __init__(self, per_second=None, per_hour=None, per_day=None):
         self.per_second = per_second or self.DEFAULT_PER_SECOND
@@ -112,7 +112,7 @@ class Throttler:
 
         filters = {
             'campaign': campaign,
-            'status__in': ('sent', 'delivered'),
+            'status__in': ('sent', 'delivered', 'opened', 'clicked'),
         }
         if since is not None:
             filters['sent_at__gte'] = since

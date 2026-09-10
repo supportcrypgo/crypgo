@@ -260,7 +260,7 @@ class Command(BaseCommand):
             f'  Batch size: {batch_size}\n'
             f'  A/B Testing: {"Enabled" if use_ab_testing else "Disabled"}\n'
             f'  Documents: {campaign.current_document_id} to {max_document_id}\n'
-            f'  Rate: 1 email every 90 seconds (40/hour, 100/day)'
+            f'  Rate: 1 email every 90 seconds (40/hour, 70/day)'
         )
 
         total_sent = 0
@@ -430,6 +430,12 @@ class Command(BaseCommand):
             campaign.refresh_from_db(fields=['is_paused', 'status'])
             if campaign.is_paused or campaign.status == 'paused':
                 logger.info('Campaign %s paused. Stopping recipient send.', campaign.pk)
+                return
+            if throttler.get_remaining_day(campaign) <= 0:
+                logger.warning('Campaign %s reached its daily cap. Pausing.', campaign.pk)
+                campaign.status = 'paused'
+                campaign.is_paused = True
+                campaign.save(update_fields=['status', 'is_paused', 'updated_at'])
                 return
             if not recipient.recipient_email or not recipient.dashboard_url:
                 recipient.status = 'failed'
