@@ -105,8 +105,8 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(throttler.get_remaining_hour(self.campaign), 0)
         self.assertFalse(throttler.can_send_campaign(self.campaign))
 
-    def test_throttler_blocks_after_350_sends_in_a_day(self):
-        sent_at = datetime.combine(timezone.now().date(), dt_time(12, 0))
+    def test_throttler_leaves_one_send_after_69_sends_in_a_day(self):
+        sent_at = timezone.now() - timedelta(hours=2)
         EmailLog.objects.bulk_create([
             EmailLog(
                 campaign=self.campaign,
@@ -116,7 +116,25 @@ class EmailSenderDeliverabilityTest(TestCase):
                 status='sent',
                 sent_at=sent_at,
             )
-            for idx in range(350)
+            for idx in range(69)
+        ])
+
+        throttler = Throttler()
+
+        self.assertEqual(throttler.get_remaining_day(self.campaign), 1)
+
+    def test_throttler_blocks_after_70_sends_in_a_day(self):
+        sent_at = timezone.now() - timedelta(hours=2)
+        EmailLog.objects.bulk_create([
+            EmailLog(
+                campaign=self.campaign,
+                recipient_email=f'day-cap-{idx}@example.com',
+                subject='Test',
+                tracking_id=f'day-cap-test-{idx}',
+                status='sent',
+                sent_at=sent_at,
+            )
+            for idx in range(70)
         ])
 
         throttler = Throttler()
