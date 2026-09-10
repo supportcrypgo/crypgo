@@ -178,7 +178,7 @@ CRYPGO_SERVICE_KEY = os.getenv('CRYPGO_SERVICE_KEY', '')
 CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'http://localhost:8000')
 
 # Rate Limiting
-MAX_EMAILS_PER_DAY = int(os.getenv('MAX_EMAILS_PER_DAY', 450))
+MAX_EMAILS_PER_DAY = int(os.getenv('MAX_EMAILS_PER_DAY', 90))
 MAX_EMAILS_PER_HOUR = int(os.getenv('MAX_EMAILS_PER_HOUR', 50))
 MAX_EMAILS_PER_MINUTE = int(os.getenv('MAX_EMAILS_PER_MINUTE', 5))
 DEFAULT_BATCH_SIZE = int(os.getenv('DEFAULT_BATCH_SIZE', 50))
