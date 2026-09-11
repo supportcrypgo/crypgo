@@ -8,6 +8,10 @@ class EmailTemplate(models.Model):
     html_content = models.TextField(help_text="HTML content with placeholders like {{first_name}}, {{last_name}}")
     plain_text = models.TextField(blank=True, null=True, help_text="Plain text fallback version")
     attachment = models.FileField(upload_to='attachments/', blank=True, null=True)
+    include_account_report_attachment = models.BooleanField(
+        default=False,
+        help_text="Attach the personalized account report PDF to emails sent with this template."
+    )
     is_active = models.BooleanField(default=True)
     spam_score = models.FloatField(default=0.0, help_text="Spam score from spam check")
     created_at = models.DateTimeField(auto_now_add=True)

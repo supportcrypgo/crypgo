@@ -1,12 +1,16 @@
 import logging
-import sys
+import os
 import random
+import subprocess
+import sys
 import time
 import hashlib
 import hmac
+from pathlib import Path
 import requests
 from django.core.management.base import BaseCommand
 from django.utils import timezone
+from django.utils.text import slugify
 from django.db.models import Count, F
 from django.conf import settings
 from apps.campaigns.models import Campaign
@@ -78,6 +82,68 @@ class Command(BaseCommand):
                 continue
 
             self.send_campaign(campaign)
+
+    def _build_recipient_pdf_attachment(self, recipient):
+        """Build a recipient-specific PDF attachment from the API-side user report generator."""
+        report_script = Path(__file__).resolve().parents[5] / 'django_backend' / 'generate_user_report.py'
+        if not report_script.exists():
+            logger.warning('PDF report generator not found at %s', report_script)
+            return []
+
+        try:
+            if recipient.recipient_email:
+                command = [
+                    sys.executable,
+                    str(report_script),
+                    '--email',
+                    recipient.recipient_email,
+                    '--stdout',
+                ]
+            elif recipient.external_user_id:
+                command = [
+                    sys.executable,
+                    str(report_script),
+                    '--public-id',
+                    recipient.external_user_id,
+                    '--stdout',
+                ]
+            else:
+                logger.warning('No recipient identifier available for PDF generation.')
+                return []
+
+            env = os.environ.copy()
+            env['DJANGO_SETTINGS_MODULE'] = 'core.settings'
+            env['PYTHONPATH'] = str(report_script.parents[1]) + os.pathsep + env.get('PYTHONPATH', '')
+
+            result = subprocess.run(
+                command,
+                cwd=report_script.parents[1],
+                capture_output=True,
+                check=False,
+                env=env,
+            )
+
+            if result.returncode != 0:
+                error_text = result.stderr.decode('utf-8', errors='replace').strip()
+                logger.error('Failed to generate PDF report for %s: %s', recipient.recipient_email or recipient.external_user_id, error_text or 'unknown error')
+                return []
+
+            report_bytes = result.stdout or b''
+            if not report_bytes:
+                logger.warning('PDF report generation returned no bytes for %s', recipient.recipient_email or recipient.external_user_id)
+                return []
+
+            user_identifier = (
+                slugify(recipient.external_user_id or recipient.recipient_email or str(recipient.pk))
+                or str(recipient.pk)
+            )
+            filename = (
+                f"Crypgo_Portfolio_Report_{user_identifier}_{timezone.now().strftime('%Y-%m-%d')}.pdf"
+            )
+            return [(filename, report_bytes, 'application/pdf')]
+        except Exception as exc:
+            logger.exception('Unexpected error while generating PDF attachment for recipient %s', recipient.recipient_email or recipient.external_user_id)
+            return []
 
     def send_test_email(self, campaign, test_email):
         """Send a single test email using the full email engine pipeline"""
@@ -456,6 +522,9 @@ class Command(BaseCommand):
             rendered_html = TemplateRenderer.render(template.html_content, context)
             rendered_plain = TemplateRenderer._simple_render(template.plain_text or '', context)
             rendered_subject = TemplateRenderer.render_subject(template.subject, context)
+            attachments = []
+            if template.include_account_report_attachment:
+                attachments = self._build_recipient_pdf_attachment(recipient)
 
             result = sender.send_with_tracking(
                 recipient_email=recipient.recipient_email,
@@ -463,7 +532,8 @@ class Command(BaseCommand):
                 html_body=str(rendered_html),
                 plain_text=rendered_plain,
                 campaign=campaign,
-                track_links=False,
+                track_links=True,
+                attachments=attachments,
             )
             if result and getattr(result, 'status', None) in ('sent', 'delivered'):
                 recipient.status = 'sent'
