@@ -16,7 +16,7 @@ export interface CoinMarketData {
 }
 
 const CACHE_KEY = 'crypto_market_cache';
-const CACHE_DURATION = 60000; // 60 seconds
+const CACHE_DURATION = 120000; // 120 seconds
 
 interface CacheEntry {
   data: CoinMarketData[];
@@ -80,8 +80,8 @@ export function useCryptoMarket() {
   useEffect(() => {
     fetchMarketData();
 
-    // Refresh every 60 seconds
-    const interval = setInterval(fetchMarketData, 60000);
+    // Refresh every 120 seconds
+    const interval = setInterval(fetchMarketData, 120000);
     return () => clearInterval(interval);
   }, [fetchMarketData]);
 
