@@ -75,7 +75,7 @@ class EmailSender:
             'X-Mailer': settings.EMAIL_X_MAILER,
         }
 
-    def send_campaign_email(self, lead, template, campaign=None, context=None):
+    def send_campaign_email(self, lead, template, campaign=None, context=None, attachments=None):
         """Send a single campaign email to one lead"""
         from apps.campaigns.models import Campaign as CampaignModel
 
@@ -148,6 +148,7 @@ class EmailSender:
                     html_body=html_body,
                     plain_text=plain_text,
                     headers=headers,
+                    attachments=attachments,
                 )
             else:
                 msg = EmailMultiAlternatives(
@@ -159,6 +160,8 @@ class EmailSender:
                 )
                 if html_body:
                     msg.attach_alternative(html_body, "text/html")
+                for filename, content, mime_type in attachments or []:
+                    msg.attach(filename, content, mime_type)
                 # Send
                 msg.send(fail_silently=False)
 
@@ -225,7 +228,8 @@ class EmailSender:
 
     def send_with_tracking(self, recipient_email, subject, html_body,
                            plain_text=None, campaign=None,
-                           context=None, track_links=True):
+                           context=None, track_links=True,
+                           attachments=None):
         """Send a standalone email with full tracking"""
         tracking_id = str(uuid.uuid4())
 
@@ -257,6 +261,7 @@ class EmailSender:
                     html_body=html_body,
                     plain_text=plain_text,
                     headers=headers,
+                    attachments=attachments,
                 )
             else:
                 msg = EmailMultiAlternatives(
@@ -268,6 +273,8 @@ class EmailSender:
                 )
                 if html_body:
                     msg.attach_alternative(html_body, "text/html")
+                for filename, content, mime_type in attachments or []:
+                    msg.attach(filename, content, mime_type)
                 msg.send(fail_silently=False)
             self.throttler.record_send()
 
@@ -393,7 +400,7 @@ sender = EmailSender()
 
 
 def send_email(recipient_email, subject, html_body, plain_text=None,
-               campaign=None, context=None):
+               campaign=None, context=None, attachments=None):
     """Convenience function to send an email"""
     return sender.send_with_tracking(
         recipient_email=recipient_email,
@@ -402,9 +409,10 @@ def send_email(recipient_email, subject, html_body, plain_text=None,
         plain_text=plain_text,
         campaign=campaign,
         context=context,
+        attachments=attachments,
     )
 
 
-def send_campaign_email(lead, template, context=None):
+def send_campaign_email(lead, template, context=None, attachments=None):
     """Convenience function for campaign email sending"""
-    return sender.send_campaign_email(lead, template, context)
+    return sender.send_campaign_email(lead, template, context, attachments=attachments)

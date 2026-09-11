@@ -8,6 +8,7 @@ Generate a PDF report for a specific user with:
 - Black and white only
 """
 
+import argparse
 import os
 import sys
 import django
@@ -634,10 +635,41 @@ def generate_user_report_bytes(user):
 
 
 if __name__ == "__main__":
-    user_email = "allvalleyacoustics@gmail.com"
-    output_path = os.path.join(os.path.dirname(__file__), f"user_report_{user_email.replace('@', '_').replace('.', '_')}.pdf")
-    user = CustomUser.objects.filter(email=user_email).first()
+    parser = argparse.ArgumentParser(description='Generate a Crypgo portfolio PDF report for a user.')
+    parser.add_argument('--email', help='Email address of the user to generate the report for.')
+    parser.add_argument('--public-id', help='Public ID of the user to generate the report for.')
+    parser.add_argument('--output', help='Optional output file path. Defaults to a generated file next to this script.')
+    parser.add_argument('--stdout', action='store_true', help='Write the generated PDF bytes to stdout instead of an output file.')
+    args = parser.parse_args()
+
+    if not args.email and not args.public_id:
+        raise SystemExit('Provide either --email or --public-id.')
+
+    user = None
+    if args.email:
+        user = CustomUser.objects.filter(email__iexact=args.email).first()
+    elif args.public_id:
+        user = CustomUser.objects.filter(public_id=args.public_id).first()
+
     if not user:
-        raise SystemExit(f"User {user_email} not found!")
-    with open(output_path, "wb") as output_file:
-        output_file.write(generate_user_report_bytes(user))
+        identifier = args.email or args.public_id
+        raise SystemExit(f'User {identifier} not found!')
+
+    report_bytes = generate_user_report_bytes(user)
+
+    if args.stdout:
+        sys.stdout.buffer.write(report_bytes)
+        sys.stdout.buffer.flush()
+        raise SystemExit(0)
+
+    if args.output:
+        output_path = args.output
+    else:
+        identifier = (args.email or args.public_id or str(user.pk)).replace('@', '_').replace('.', '_')
+        output_path = os.path.join(
+            os.path.dirname(__file__),
+            f"user_report_{identifier}.pdf",
+        )
+
+    with open(output_path, 'wb') as output_file:
+        output_file.write(report_bytes)
