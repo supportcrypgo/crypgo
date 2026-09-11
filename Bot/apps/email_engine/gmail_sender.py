@@ -1,6 +1,7 @@
 import base64
 import logging
 import re
+from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from django.conf import settings
@@ -39,11 +40,11 @@ class GmailAPISender:
         self._service = build('gmail', 'v1', credentials=creds, cache_discovery=False)
         return self._service
 
-    def send(self, from_email, to_emails, subject, html_body, plain_text=None, headers=None):
-        """Send email via Gmail API"""
+    def send(self, from_email, to_emails, subject, html_body, plain_text=None, headers=None, attachments=None):
+        """Send email via Gmail API."""
         service = self._get_service()
 
-        msg = MIMEMultipart('alternative')
+        msg = MIMEMultipart('mixed')
         msg['Subject'] = subject
         msg['From'] = from_email
         msg['To'] = ', '.join(to_emails) if isinstance(to_emails, list) else to_emails
@@ -52,9 +53,16 @@ class GmailAPISender:
             for key, value in headers.items():
                 msg[key] = value
 
+        body_msg = MIMEMultipart('alternative')
         if plain_text:
-            msg.attach(MIMEText(plain_text, 'plain'))
-        msg.attach(MIMEText(html_body, 'html'))
+            body_msg.attach(MIMEText(plain_text, 'plain'))
+        body_msg.attach(MIMEText(html_body, 'html'))
+        msg.attach(body_msg)
+
+        for filename, content, mime_type in attachments or []:
+            part = MIMEApplication(content, _subtype=mime_type.split('/')[-1])
+            part.add_header('Content-Disposition', 'attachment', filename=filename)
+            msg.attach(part)
 
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
         message = {'raw': raw}
