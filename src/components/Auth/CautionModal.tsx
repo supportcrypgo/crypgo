@@ -128,19 +128,6 @@ export const CautionModal = ({
           Got it
         </button>
 
-        <div className="text-center py-2">
-          <p className="text-body-secondary text-white text-sm">
-            Need assistance? Contact{' '}
-            <button
-              type="button"
-              className="text-blue-400 hover:text-blue-300 underline-none font-inherit bg-transparent border-0 p-0 cursor-pointer inline"
-              style={{ textDecoration: 'none' }}
-              onClick={() => window.location.href = 'mailto:service@crypgo.com'}
-            >
-              Support
-            </button>
-          </p>
-        </div>
       </div>
     </div>
   );
