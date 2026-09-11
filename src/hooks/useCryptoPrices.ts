@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Prices } from '@/app/dashboard/components/types';
 
 const CACHE_KEY = 'crypto_prices_cache';
-const CACHE_DURATION = 60000; // 60 seconds
+const CACHE_DURATION = 120000; // 120 seconds
 
 interface CacheEntry {
   data: Prices;
@@ -73,8 +73,8 @@ export function useCryptoPrices() {
   useEffect(() => {
     fetchPrices();
     
-    // Refresh every 60 seconds
-    const interval = setInterval(fetchPrices, 60000);
+    // Refresh every 120 seconds
+    const interval = setInterval(fetchPrices, 120000);
     return () => clearInterval(interval);
   }, [fetchPrices]);
 
