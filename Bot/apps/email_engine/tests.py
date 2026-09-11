@@ -69,6 +69,24 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(len(mail.outbox), start_len + 1)
         self.assertIn('Hello there', mail.outbox[-1].subject)
 
+    def test_sender_attaches_pdf_payloads(self):
+        start_len = len(mail.outbox)
+
+        result = self.sender.send_with_tracking(
+            recipient_email='pdf@example.com',
+            subject='Hello PDF',
+            html_body='<p>Hello PDF</p>',
+            plain_text='Hello PDF',
+            campaign=self.campaign,
+            attachments=[('report.pdf', b'%PDF-1.4', 'application/pdf')],
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(mail.outbox), start_len + 1)
+        self.assertEqual(len(mail.outbox[-1].attachments), 1)
+        self.assertEqual(mail.outbox[-1].attachments[0][0], 'report.pdf')
+        self.assertEqual(mail.outbox[-1].attachments[0][1], b'%PDF-1.4')
+
     def test_throttler_waits_around_90_seconds_between_campaign_sends(self):
         EmailLog.objects.create(
             campaign=self.campaign,
@@ -179,6 +197,37 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('Hi James Borunda', mail.outbox[0].body)
         self.assertIn('https://app.crypgo.com/auth/campaign-access?token=one', mail.outbox[0].body)
+
+    def test_recipient_does_not_attach_pdf_when_template_flag_is_off(self):
+        template = EmailTemplate.objects.create(
+            name='Crypgo User Campaign Template Without PDF',
+            subject='Account update',
+            html_content='<p>Hi {{ first_name }} {{ last_name }}</p><a href="{{ dashboard_url }}">Go to dashboard</a>',
+            plain_text='Hi {{ first_name }} {{ last_name }}: {{ dashboard_url }}',
+            is_active=True,
+            include_account_report_attachment=False,
+        )
+        campaign = Campaign.objects.create(
+            name='Crypgo User Campaign No PDF',
+            subject='Account update',
+            template=template,
+        )
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='crypgo-2',
+            recipient_email='user2@example.com',
+            recipient_first_name='James',
+            recipient_last_name='Borunda',
+            dashboard_url='https://app.crypgo.com/auth/campaign-access?token=two',
+        )
+
+        Command().send_crypgo_recipients(campaign, template, EmailSender(), Throttler())
+
+        recipient.refresh_from_db()
+        self.assertEqual(recipient.status, 'sent')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(len(mail.outbox[0].attachments), 0)
 
     @override_settings(
         SITE_URL='https://backend.example.com',
