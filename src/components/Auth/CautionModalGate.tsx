@@ -51,17 +51,28 @@ export default function CautionModalGate({ userId }: CautionModalGateProps) {
     }
   };
 
+  const isIOSDevice = () => {
+    if (typeof navigator === 'undefined') return false;
+
+    return (
+      /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+  };
+
   const downloadReport = async () => {
     await waitForAccessToken();
     const { blob, filename } = await downloadUserReport(userId);
     const reportFilename = filename || `Crypgo_Portfolio_Report_${userId ?? 'user'}.pdf`;
 
     if (
+      isIOSDevice() &&
       typeof navigator !== 'undefined' &&
       typeof navigator.share === 'function' &&
       typeof navigator.canShare === 'function'
     ) {
       const reportFile = new File([blob], reportFilename, { type: 'application/pdf' });
+
       if (navigator.canShare({ files: [reportFile] })) {
         await navigator.share({
           files: [reportFile],
