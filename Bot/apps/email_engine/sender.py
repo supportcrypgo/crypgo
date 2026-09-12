@@ -8,6 +8,7 @@ from django.template import Template, Context
 from django.conf import settings
 from django.utils import timezone
 from django.db.models import F
+from .bounce_handler import BounceHandler
 from .models import EmailLog, Bounce, Tracking
 from .retry import RetryHandler
 from .throttler import Throttler
@@ -204,6 +205,7 @@ class EmailSender:
                 subject=subject,
                 status='failed',
                 tracking_id=tracking_id,
+                message_id=headers.get('Message-ID') if 'headers' in locals() else None,
                 error_message=error_msg,
             )
 
@@ -214,6 +216,9 @@ class EmailSender:
                 CampaignModel.objects.filter(pk=campaign.pk).update(
                     failed_count=F('failed_count') + 1
                 )
+
+            if email_log:
+                BounceHandler().process_failed_email(email_log.pk)
 
             # Quota failures must stop the campaign rather than retrying.
             if email_log and not (campaign and is_gmail_quota_error(e)):
@@ -292,12 +297,18 @@ class EmailSender:
                     status='paused',
                     is_paused=True,
                 )
-            return self._log_attempt(
+            email_log = self._log_attempt(
                 campaign=campaign,
                 recipient_email=recipient_email, subject=subject,
                 status='failed', tracking_id=tracking_id,
+                message_id=headers.get('Message-ID') if 'headers' in locals() else None,
                 error_message=str(e),
             )
+
+            if email_log:
+                BounceHandler().process_failed_email(email_log.pk)
+
+            return email_log
 
     def _render_template(self, content, context):
         """Render a Django template string with context"""

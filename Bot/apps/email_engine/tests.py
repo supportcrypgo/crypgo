@@ -1,4 +1,5 @@
 from datetime import datetime, time as dt_time, timedelta
+from unittest.mock import patch
 
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -6,7 +7,7 @@ from django.utils import timezone
 
 from apps.campaigns.models import Campaign
 from apps.campaigns.models import CampaignLead
-from apps.email_engine.models import EmailLog
+from apps.email_engine.models import Bounce, EmailLog
 from apps.email_engine.sender import EmailSender
 from apps.email_engine.throttler import Throttler
 from apps.templates.models import EmailTemplate
@@ -86,6 +87,27 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(len(mail.outbox[-1].attachments), 1)
         self.assertEqual(mail.outbox[-1].attachments[0][0], 'report.pdf')
         self.assertEqual(mail.outbox[-1].attachments[0][1], b'%PDF-1.4')
+
+    def test_failed_send_creates_bounce_record(self):
+        with patch('apps.email_engine.sender.EmailMultiAlternatives.send', side_effect=Exception('mailbox full')):
+            email_log = self.sender.send_with_tracking(
+                recipient_email='bounce@example.com',
+                subject='Hello Bounce',
+                html_body='<p>Hello Bounce</p>',
+                plain_text='Hello Bounce',
+                campaign=self.campaign,
+            )
+
+        self.assertIsNotNone(email_log)
+        self.assertTrue(Bounce.objects.filter(
+            email='bounce@example.com',
+            bounce_type='soft',
+            reason='mailbox full',
+        ).exists())
+        self.assertEqual(
+            EmailLog.objects.get(pk=email_log.pk).status,
+            'bounced',
+        )
 
     def test_throttler_waits_around_90_seconds_between_campaign_sends(self):
         EmailLog.objects.create(
