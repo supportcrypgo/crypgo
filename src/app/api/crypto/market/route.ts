@@ -76,6 +76,14 @@ function setCache(data: CoinMarketData[]) {
   cacheTimestamp = Date.now();
 }
 
+function getCoinGeckoApiKeys(): string[] {
+  const rawKeys = process.env.COINGECKO_API_KEYS || process.env.COINGECKO_API_KEY || '';
+  return rawKeys
+    .split(',')
+    .map((key) => key.trim())
+    .filter(Boolean);
+}
+
 async function fetchFromCoinGecko(apiKey: string): Promise<CoinMarketData[]> {
   const ids = COIN_IDS.join(',');
   const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=true&price_change_percentage=24h&x_cg_demo_api_key=${apiKey}`;
@@ -128,24 +136,45 @@ async function fetchFromBinance(): Promise<CoinMarketData[]> {
   });
 }
 
+async function fetchFromCoinGeckoWithFallback(apiKeys: string[]): Promise<CoinMarketData[]> {
+  if (apiKeys.length === 0) {
+    throw new Error('CoinGecko API keys are not configured');
+  }
+
+  let lastError: unknown;
+
+  for (let index = 0; index < apiKeys.length; index += 1) {
+    const apiKey = apiKeys[index];
+
+    try {
+      return await fetchFromCoinGecko(apiKey);
+    } catch (error) {
+      lastError = error;
+      console.warn(`CoinGecko key ${index + 1}/${apiKeys.length} failed, trying next key...`, error);
+    }
+  }
+
+  throw lastError ?? new Error('All configured CoinGecko API keys failed');
+}
+
 export async function GET() {
   const cacheHit = getFromCache();
   if (cacheHit) {
     return NextResponse.json(cacheHit);
   }
 
-  const apiKey = process.env.COINGECKO_API_KEY;
+  const apiKeys = getCoinGeckoApiKeys();
 
   try {
-    if (apiKey) {
-      const data = await fetchFromCoinGecko(apiKey);
+    if (apiKeys.length > 0) {
+      const data = await fetchFromCoinGeckoWithFallback(apiKeys);
       setCache(data);
       return NextResponse.json(data);
     }
 
-    console.warn('CoinGecko API key is not configured; using Binance fallback.');
+    console.warn('CoinGecko API keys are not configured; using Binance fallback.');
   } catch (error) {
-    console.warn('CoinGecko failed, falling back to Binance:', error);
+    console.warn('All CoinGecko keys failed, falling back to Binance:', error);
   }
 
   try {

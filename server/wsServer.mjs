@@ -16,43 +16,59 @@ import http from 'node:http';
 import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.WS_PORT || process.env.PORT || 5001);
-const POLL_INTERVAL_MS = 10_000; // fetch fresh prices every 10s
-const BROADCAST_INTERVAL_MS = 10_000; // broadcast every 10s
+const POLL_INTERVAL_MS = 85_000; // fetch fresh prices every 85s
+const BROADCAST_INTERVAL_MS = 85_000; // broadcast every 85s
 
 // ── In-memory cache ──
 let cachedPrices = null;
-const apiKey = process.env.COINGECKO_API_KEY;
 const COIN_IDS = [
   'bitcoin', 'ethereum', 'binancecoin', 'solana', 'litecoin', 'tether',
   'dogecoin', 'cardano', 'polkadot', 'chainlink', 'ripple',
 ];
 
+function getCoinGeckoApiKeys() {
+  const rawKeys = process.env.COINGECKO_API_KEYS || process.env.COINGECKO_API_KEY || '';
+  return rawKeys
+    .split(',')
+    .map((key) => key.trim())
+    .filter(Boolean);
+}
+
 async function fetchPrices() {
-  if (!apiKey) {
-    console.error('[ws-server] COINGECKO_API_KEY is not configured; no prices will be published');
+  const apiKeys = getCoinGeckoApiKeys();
+
+  if (apiKeys.length === 0) {
+    console.error('[ws-server] COINGECKO_API_KEYS/COINGECKO_API_KEY is not configured; no prices will be published');
     return false;
   }
 
-  try {
-    const ids = COIN_IDS.join(',');
-    const url = `https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=${ids}&include_24hr_change=true&x_cg_demo_api_key=${apiKey}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`CoinGecko API status ${res.status}`);
-    }
+  let lastError;
 
-    const data = await res.json();
-    const missing = COIN_IDS.filter((id) => !data[id] || typeof data[id].usd !== 'number');
-    if (missing.length > 0) {
-      throw new Error(`CoinGecko response missing: ${missing.join(', ')}`);
-    }
+  for (const [index, apiKey] of apiKeys.entries()) {
+    try {
+      const ids = COIN_IDS.join(',');
+      const url = `https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=${ids}&include_24hr_change=true&x_cg_demo_api_key=${apiKey}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`CoinGecko API status ${res.status}`);
+      }
 
-    cachedPrices = data;
-    return true;
-  } catch (err) {
-    console.error('[ws-server] CoinGecko fetch failed; no prices published:', err.message);
-    return false;
+      const data = await res.json();
+      const missing = COIN_IDS.filter((id) => !data[id] || typeof data[id].usd !== 'number');
+      if (missing.length > 0) {
+        throw new Error(`CoinGecko response missing: ${missing.join(', ')}`);
+      }
+
+      cachedPrices = data;
+      return true;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[ws-server] CoinGecko key ${index + 1}/${apiKeys.length} failed, trying next key...`, err.message);
+    }
   }
+
+  console.error('[ws-server] All configured CoinGecko keys failed; no prices published:', lastError?.message || 'Unknown error');
+  return false;
 }
 
 // ── WebSocket server ──
