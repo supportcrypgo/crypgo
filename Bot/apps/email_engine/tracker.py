@@ -208,10 +208,11 @@ class EmailTracker:
         return hash_obj.hexdigest()[:32]
 
     def _get_client_ip(self, request):
-        """Extract client IP address from request"""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            return x_forwarded_for.split(',')[0].strip()
+        """Extract client IP address from request, preferring forwarded headers."""
+        for header in ('HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CF_CONNECTING_IP'):
+            value = request.META.get(header)
+            if value:
+                return value.split(',')[0].strip()
         return request.META.get('REMOTE_ADDR')
 
     def _update_campaign_stats(self, campaign):
