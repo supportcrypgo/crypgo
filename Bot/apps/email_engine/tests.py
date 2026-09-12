@@ -254,6 +254,25 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
         self.assertIn('https://public.example.com/track/click/tracking-123/?url=https%3A%2F%2Fdashboard.example.com%2Fauth%2Fcampaign-access%3Ftoken%3Dabc%26next%3D%252Fdashboard', tracked)
 
+    def test_open_tracking_uses_forwarded_ip_when_present(self):
+        email_log = EmailLog.objects.create(
+            tracking_id='forwarded-ip-123',
+            recipient_email='user@example.com',
+            subject='Test',
+            status='sent',
+            sent_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            '/track/open/forwarded-ip-123/',
+            HTTP_X_FORWARDED_FOR='203.0.113.10, 10.0.0.1',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        email_log.refresh_from_db()
+        self.assertEqual(email_log.ip_address, '203.0.113.10')
+        self.assertEqual(email_log.tracking_events.get().ip_address, '203.0.113.10')
+
     @override_settings(
         SITE_URL='https://public.example.com',
         FRONTEND_URL='https://public.example.com',

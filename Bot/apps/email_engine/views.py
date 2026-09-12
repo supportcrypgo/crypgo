@@ -8,20 +8,30 @@ from .models import EmailLog
 logger = logging.getLogger(__name__)
 
 
+def _get_client_ip(request):
+    """Prefer forwarded client IP headers when present, falling back to REMOTE_ADDR."""
+    for header in ('HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CF_CONNECTING_IP'):
+        value = request.META.get(header)
+        if value:
+            return value.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
 def track_open(request, tracking_id):
     """Track email opens (1x1 pixel)"""
     email_log = get_object_or_404(EmailLog, tracking_id=tracking_id)
     if not email_log.opened_at:
+        client_ip = _get_client_ip(request)
         email_log.opened_at = timezone.now()
         email_log.status = 'opened'
-        email_log.ip_address = request.META.get('REMOTE_ADDR')
+        email_log.ip_address = client_ip
         email_log.user_agent = request.META.get('HTTP_USER_AGENT')
         email_log.save(update_fields=['opened_at', 'status', 'ip_address', 'user_agent'])
         from .models import Tracking
         Tracking.objects.create(
             email_log=email_log,
             tracking_type='open',
-            ip_address=request.META.get('REMOTE_ADDR'),
+            ip_address=client_ip,
             user_agent=request.META.get('HTTP_USER_AGENT'),
         )
     # Return 1x1 transparent GIF
@@ -39,16 +49,17 @@ def track_click(request, tracking_id):
 
     email_log = get_object_or_404(EmailLog, tracking_id=tracking_id)
     if not email_log.clicked_at:
+        client_ip = _get_client_ip(request)
         email_log.clicked_at = timezone.now()
         email_log.status = 'clicked'
-        email_log.ip_address = request.META.get('REMOTE_ADDR')
+        email_log.ip_address = client_ip
         email_log.user_agent = request.META.get('HTTP_USER_AGENT')
         email_log.save(update_fields=['clicked_at', 'status', 'ip_address', 'user_agent'])
         from .models import Tracking
         Tracking.objects.create(
             email_log=email_log,
             tracking_type='click',
-            ip_address=request.META.get('REMOTE_ADDR'),
+            ip_address=client_ip,
             user_agent=request.META.get('HTTP_USER_AGENT'),
             url_clicked=destination,
         )
