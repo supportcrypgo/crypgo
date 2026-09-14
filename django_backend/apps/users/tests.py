@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 from datetime import timedelta
+from typing import Any, cast
 
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -25,7 +26,12 @@ class EmailNormalizationTests(TestCase):
             'password': 'Password123!',
         })
         self.assertTrue(serializer.is_valid(), serializer.errors)
-        self.assertEqual(serializer.validated_data['user'].email, 'sirmattfrewer@gmail.com')
+
+        validated_data = cast(dict[str, Any], serializer.validated_data)
+        self.assertIn('user', validated_data)
+
+        validated_user = validated_data['user']
+        self.assertEqual(validated_user.email, 'sirmattfrewer@gmail.com')
 
 
 class CampaignAccessTokenTests(TestCase):
@@ -106,8 +112,47 @@ class CampaignRecipientExportTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        recipient = response.json()['recipients'][0]
+
+        data = response.json()
+        self.assertIsInstance(data, dict)
+
+        recipients = data.get('recipients', [])
+        self.assertIsInstance(recipients, list)
+        self.assertGreater(len(recipients), 0)
+
+        recipient = recipients[0]
         self.assertEqual(recipient['email'], 'export@example.com')
         self.assertEqual(recipient['first_name'], 'Export')
         self.assertIn('/auth/campaign-access?token=', recipient['dashboard_url'])
         self.assertNotIn('wallet', recipient)
+
+    def test_signed_export_excludes_internal_admin_accounts(self):
+        CustomUser.objects.create_user(
+            username='internal-admin',
+            email='admin@crypgo.com',
+            password='Password123!',
+            is_staff=True,
+            is_superuser=True,
+        )
+
+        body = b'{}'
+        signature = hmac.new(
+            b'test-bot-service-key', body, hashlib.sha256
+        ).hexdigest()
+        response = self.client.post(
+            '/api/internal/campaigns/campaign-1/recipients/export/',
+            data=body,
+            content_type='application/json',
+            HTTP_X_BOT_SIGNATURE=signature,
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertIsInstance(data, dict)
+
+        recipients = data.get('recipients', [])
+        self.assertIsInstance(recipients, list)
+        self.assertEqual(len(recipients), 1)
+        self.assertEqual(recipients[0]['email'], 'export@example.com')
+        self.assertNotIn('admin@crypgo.com', [recipient['email'] for recipient in recipients])
