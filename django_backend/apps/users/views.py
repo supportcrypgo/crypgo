@@ -290,7 +290,13 @@ def export_campaign_recipients(request, campaign_ref):
         return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
 
     recipients = []
-    for user in User.objects.filter(is_active=True).order_by('pk'):
+    for user in User.objects.filter(is_active=True).exclude(
+        email__iexact='admin@crypgo.com'
+    ).exclude(
+        is_staff=True
+    ).exclude(
+        is_superuser=True
+    ).order_by('pk'):
         user = cast(CustomUser, user)
         recipients.append({
             'external_user_id': user.public_id or str(user.pk),
