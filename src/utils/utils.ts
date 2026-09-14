@@ -1,7 +1,7 @@
 const getImagePrefix = () => {
-  // Only use /Crypgo/ prefix when explicitly configured for GitHub Pages
-  // Local development and ngrok use the root path
-  return process.env.NEXT_PUBLIC_BASE_PATH === "/Crypgo" ? "/Crypgo/" : "";
+  // Use the app root for standard deployments so image URLs remain absolute
+  // and work reliably after redirects from nested routes like /auth/campaign-access.
+  return process.env.NEXT_PUBLIC_BASE_PATH === "/Crypgo" ? "/Crypgo/" : "/";
 };
 
 export { getImagePrefix };
