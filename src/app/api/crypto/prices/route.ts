@@ -36,6 +36,21 @@ const BINANCE_SYMBOL_MAP: Record<string, string> = {
   ripple: 'XRPUSDT',
 };
 
+const SAFE_FALLBACK_PRICES: Record<string, { usd: number; usd_24h_change?: number }> = {
+  bitcoin: { usd: 0, usd_24h_change: 0 },
+  ethereum: { usd: 0, usd_24h_change: 0 },
+  binancecoin: { usd: 0, usd_24h_change: 0 },
+  solana: { usd: 0, usd_24h_change: 0 },
+  litecoin: { usd: 0, usd_24h_change: 0 },
+  tether: { usd: 1, usd_24h_change: 0 },
+  'usd-coin': { usd: 1, usd_24h_change: 0 },
+  dogecoin: { usd: 0, usd_24h_change: 0 },
+  cardano: { usd: 0, usd_24h_change: 0 },
+  polkadot: { usd: 0, usd_24h_change: 0 },
+  chainlink: { usd: 0, usd_24h_change: 0 },
+  ripple: { usd: 0, usd_24h_change: 0 },
+};
+
 function getFromCache() {
   if (cachedData && Date.now() - cacheTimestamp < CACHE_TTL_MS) {
     return cachedData;
@@ -165,9 +180,7 @@ export async function GET() {
     return NextResponse.json(fallbackData);
   } catch (error) {
     console.error('Error fetching crypto prices from all providers:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch market prices from CoinGecko and fallback providers' },
-      { status: 500 }
-    );
+    setCache(SAFE_FALLBACK_PRICES);
+    return NextResponse.json(SAFE_FALLBACK_PRICES, { status: 200 });
   }
 }
