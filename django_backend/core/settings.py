@@ -14,8 +14,11 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-# Production: Get ALLOWED_HOSTS from environment or default to Render domain
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'crypgo-api.onrender.com').split(',')
+# Production: Get ALLOWED_HOSTS from environment or default to current PythonAnywhere domain
+ALLOWED_HOSTS = os.getenv(
+    'ALLOWED_HOSTS',
+    'crypgo.pythonanywhere.com,localhost,127.0.0.1'
+).split(',')
 
 # Application definition
 INSTALLED_APPS = [
@@ -123,7 +126,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.CustomUser'
 
 # CORS Configuration - use environment variable or default
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '["https://crypgo-6llg.onrender.com"]')
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    '["https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
+)
 if isinstance(CORS_ALLOWED_ORIGINS, str):
     import json
     CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
@@ -131,7 +137,10 @@ if isinstance(CORS_ALLOWED_ORIGINS, str):
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF Configuration - trust frontend origin
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '["https://crypgo-6llg.onrender.com"]')
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    '["https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
+)
 if isinstance(CSRF_TRUSTED_ORIGINS, str):
     import json
     CSRF_TRUSTED_ORIGINS = json.loads(CSRF_TRUSTED_ORIGINS)

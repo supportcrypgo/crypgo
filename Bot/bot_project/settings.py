@@ -158,7 +158,10 @@ SPECTACULAR_SETTINGS = {
 
 # CORS - use environment variable or default
 CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '["https://crypgo-6llg.onrender.com"]')
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ALLOWED_ORIGINS',
+    '["https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
+)
 if isinstance(CORS_ALLOWED_ORIGINS, str):
     import json
     CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
@@ -172,10 +175,10 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom Settings
-SITE_URL = os.getenv('SITE_URL', 'https://crypgo-email.onrender.com')
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-6llg.onrender.com')
+SITE_URL = os.getenv('SITE_URL', 'https://crypgo.pythonanywhere.com')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-gamma.vercel.app')
 CRYPGO_SERVICE_KEY = os.getenv('CRYPGO_SERVICE_KEY', '')
-CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'http://localhost:8000')
+CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'https://crypgo.pythonanywhere.com')
 
 # Rate Limiting
 MAX_EMAILS_PER_DAY = int(os.getenv('MAX_EMAILS_PER_DAY', 90))
