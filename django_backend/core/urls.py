@@ -1,13 +1,66 @@
+import hashlib
+import hmac
+import os
+import subprocess
+
+import requests
 from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 
 def health_check(request):
     return HttpResponse('OK', status=200)
+
+
+@csrf_exempt
+@require_POST
+def github_webhook(request):
+    """Handle GitHub webhook events, pull latest code, and reload both PythonAnywhere web apps."""
+    secret = os.getenv('GITHUB_WEBHOOK_SECRET', '').encode('utf-8')
+    signature = request.META.get('HTTP_X_HUB_SIGNATURE_256', '')
+
+    if not secret:
+        return JsonResponse({'ok': False, 'error': 'Missing GITHUB_WEBHOOK_SECRET'}, status=500)
+
+    expected = 'sha256=' + hmac.new(secret, request.body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(signature, expected):
+        return JsonResponse({'ok': False, 'error': 'Invalid signature'}, status=403)
+
+    repo_path = os.getenv('PYTHONANYWHERE_REPO_PATH', '/home/crypgo/crypgo')
+    reload_jobs = [
+        (
+            os.getenv('PYTHONANYWHERE_USERNAME_1', 'crypgo'),
+            os.getenv('PYTHONANYWHERE_WEBAPP_1', 'crypgo.pythonanywhere.com'),
+            os.getenv('PYTHONANYWHERE_TOKEN_1', '')
+        ),
+        (
+            os.getenv('PYTHONANYWHERE_USERNAME_2', 'Crypgoemail'),
+            os.getenv('PYTHONANYWHERE_WEBAPP_2', 'crypgoemail.pythonanywhere.com'),
+            os.getenv('PYTHONANYWHERE_TOKEN_2', '')
+        ),
+    ]
+
+    try:
+        subprocess.run(['git', '-C', repo_path, 'pull', 'origin', 'main'], check=True, capture_output=True, text=True)
+
+        for username, webapp_name, token in reload_jobs:
+            if not token:
+                continue
+            requests.post(
+                f'https://www.pythonanywhere.com/api/v0/user/{username}/webapps/{webapp_name}/reload/',
+                headers={'Authorization': f'Token {token}'},
+                timeout=30,
+            )
+
+        return JsonResponse({'ok': True, 'status': 'Triggered pull and reloaded both accounts'})
+    except Exception as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
 
 
 def api_root(request):
@@ -212,6 +265,7 @@ urlpatterns = [
     path('api/', include('apps.users.urls')),
     path('admin/', admin.site.urls),
     path('health/', health_check, name='health'),
+    path('webhook/github/', github_webhook, name='github_webhook'),
 ]
 
 if settings.DEBUG:
