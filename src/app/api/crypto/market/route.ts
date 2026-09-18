@@ -61,6 +61,22 @@ const FALLBACK_METADATA: Record<string, { name: string; symbol: string; image: s
   'bitcoin-cash': { name: 'Bitcoin Cash', symbol: 'BCH', image: 'https://assets.coingecko.com/coins/images/780/large/bitcoin-cash.png' },
 };
 
+const SAFE_FALLBACK_MARKET: CoinMarketData[] = COIN_IDS.map((coinId) => {
+  const metadata = FALLBACK_METADATA[coinId] ?? { name: coinId, symbol: coinId.toUpperCase(), image: '' };
+
+  return {
+    id: coinId,
+    name: metadata.name,
+    symbol: metadata.symbol,
+    image: metadata.image,
+    current_price: 0,
+    price_change_percentage_24h: 0,
+    market_cap: 0,
+    total_volume: 0,
+    sparkline_in_7d: null,
+  };
+});
+
 let cachedData: CoinMarketData[] | null = null;
 let cacheTimestamp = 0;
 
@@ -183,9 +199,7 @@ export async function GET() {
     return NextResponse.json(fallbackData);
   } catch (error) {
     console.error('Error fetching crypto market data from all providers:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch market data from CoinGecko and fallback providers' },
-      { status: 500 }
-    );
+    setCache(SAFE_FALLBACK_MARKET);
+    return NextResponse.json(SAFE_FALLBACK_MARKET, { status: 200 });
   }
 }
