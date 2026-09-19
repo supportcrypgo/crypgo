@@ -75,6 +75,9 @@ const Header: React.FC = () => {
       setMagicLinkToken(null);
       setIsSignInOpen(true);
     }
+    if (searchParams.get('signup') === '1') {
+      setIsSignUpOpen(true);
+    }
   }, [pathUrl, searchParams]);
 
   useEffect(() => {
@@ -126,7 +129,7 @@ const Header: React.FC = () => {
               </svg>
             </button> */}
             <Link
-              href="#"
+              href="/?signin=1"
               className="hidden lg:block bg-transparent text-primary border hover:bg-primary border-primary hover:text-darkmode px-4 py-2 rounded-lg"
               onClick={() => {
                 setIsSignInOpen(true);
@@ -172,7 +175,7 @@ const Header: React.FC = () => {
               </div>
             )}
             <Link
-              href="#"
+              href="/?signup=1"
               className="hidden lg:block bg-primary text-darkmode hover:bg-transparent hover:text-primary border border-primary px-4 py-2 rounded-lg"
               onClick={() => {
                 setIsSignUpOpen(true);
@@ -241,7 +244,7 @@ const Header: React.FC = () => {
             ))}
             <div className="mt-4 flex flex-col space-y-4 w-full">
               <Link
-                href="#"
+                href="/?signin=1"
                 className="bg-transparent border border-primary text-primary px-4 py-2 rounded-lg hover:bg-blue-600 hover:text-white"
                 onClick={() => {
                   setIsSignInOpen(true);
@@ -251,7 +254,7 @@ const Header: React.FC = () => {
                 Sign In
               </Link>
               <Link
-                href="#"
+                href="/?signup=1"
                 className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                 onClick={() => {
                   setIsSignUpOpen(true);

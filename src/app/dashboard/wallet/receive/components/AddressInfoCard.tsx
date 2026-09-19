@@ -204,7 +204,7 @@ export default function AddressInfoCard({
             <p className="text-xs text-charcoalGray mt-1">Est. arrival</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-white">1%</p>
+            <p className="text-2xl font-bold text-white"></p>
             <p className="text-xs text-charcoalGray mt-1">Network fee</p>
           </div>
           <div className="text-center">

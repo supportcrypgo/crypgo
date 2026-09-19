@@ -54,10 +54,10 @@ export default function SendSummary({
     </svg>
   );
 
-  // Format fee for display with 1% label
+  // Format fee for display
   const formatFee = (fee: number, ticker: string): string => {
-    if (fee === 0) return `~0 ${ticker} (1%)`;
-    return `${fee.toFixed(8)} ${ticker} (1%)`;
+    if (fee === 0) return `0 ${ticker}`;
+    return `${fee.toFixed(8)} ${ticker}`;
   };
 
   // Mock USD conversion for display (same logic as AmountField)

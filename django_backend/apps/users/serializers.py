@@ -15,7 +15,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name',
-            'phone', 'country', 'city', 'address', 'avatar_url',
+            'date_of_birth', 'phone', 'country', 'city', 'address', 'avatar_url',
             'role', 'date_joined', 'is_active',
             'kyc_status', 'kyc_rejection_reason', 'two_fa_enabled',
         ]

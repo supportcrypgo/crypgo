@@ -65,8 +65,8 @@ export default function AmountField({
 
   // Format fee for display
   const formatFee = (fee: number, ticker: string): string => {
-    if (fee === 0) return `~0 ${ticker} (1%)`;
-    return `${fee.toFixed(8)} ${ticker} (1%)`;
+    if (fee === 0) return `0 ${ticker}`;
+    return `${fee.toFixed(8)} ${ticker}`;
   };
 
   return (

@@ -1,10 +1,8 @@
-import { title } from "process";
-
 export const footerlabels: { label: string; herf: string }[] = [
-  { label: "Terms", herf: "#" },
-  { label: "Disclosures", herf: "#" },
-  { label: "Disclosures", herf: "#" },
-  { label: "Latest News", herf: "#" },
+  { label: "How it works", herf: "/#how-it-works" },
+  { label: "Portfolio", herf: "/#portfolio" },
+  { label: "Security", herf: "/#security" },
+  { label: "Support", herf: "/#support" },
 ];
 
 export const pricedeta: {
@@ -89,23 +87,23 @@ export const pricedeta: {
 export const portfolioData: { image: string; title: string }[] = [
   {
     image: "/images/portfolio/icon-wallet.svg",
-    title: "Manage your portfolio",
+    title: "Track live portfolio value",
   },
   {
     image: "/images/portfolio/icon-vault.svg",
-    title: "Vault protection",
+    title: "Keep account activity visible",
   },
   {
     image: "/images/portfolio/icon-mobileapp.svg",
-    title: "Mobile apps",
+    title: "Review every transaction",
   },
 ];
 
 export const upgradeData: { title: string }[] = [
-  { title: "100% Secure" },
-  { title: "A Fraction of the Cost" },
-  { title: "More Durable" },
-  { title: "Easier to Use" },
+  { title: "Live market pricing" },
+  { title: "Clear wallet balances" },
+  { title: "Send, receive, and swap" },
+  { title: "Built for everyday decisions" },
 ];
 
 export const perksData: {
@@ -116,20 +114,20 @@ export const perksData: {
 }[] = [
   {
     icon: "/images/perks/icon-support.svg",
-    title: "24/7 Support",
-    text: "Need help? Get your requests solved quickly via support team.",
+    title: "Account support",
+    text: "Get help with your account, wallet activity, and profile settings.",
     space: "lg:mt-8",
   },
   {
     icon: "/images/perks/icon-community.svg",
-    title: "Community",
-    text: "Join the conversations on our worldwide OKEx communities",
+    title: "Market clarity",
+    text: "Follow live prices and understand how market movement affects your portfolio.",
     space: "lg:mt-14",
   },
   {
     icon: "/images/perks/icon-academy.svg",
-    title: "Academy",
-    text: "Learn blockchain and<br /> crypto for free.",
+    title: "Simple controls",
+    text: "Move from portfolio view to send, receive, swap, or history when you need it.",
     space: "lg:mt-4",
   },
 ];
@@ -142,26 +140,26 @@ export const timelineData: {
 }[] = [
   {
     icon: "/images/timeline/icon-planning.svg",
-    title: "Planning",
-    text: "Map the project's scope and architecture",
+    title: "Create your account",
+    text: "Set up your Crypgo profile and keep your account details in one place.",
     position: "md:top-0 md:left-0",
   },
   {
     icon: "/images/timeline/icon-refinement.svg",
-    title: "Refinement",
-    text: "Refine and improve your solution",
+    title: "Fund your wallet",
+    text: "Receive assets and see balances update with live market prices.",
     position: "md:top-0 md:right-0",
   },
   {
     icon: "/images/timeline/icon-prototype.svg",
-    title: "Prototype",
-    text: "Build a working prototype to test your product",
+    title: "Manage your portfolio",
+    text: "Track holdings, market movement, and available balance at a glance.",
     position: "md:bottom-0 md:left-0",
   },
   {
     icon: "/images/timeline/icon-support.svg",
-    title: "Support",
-    text: "Deploy the product and ensure full support by us",
+    title: "Move with confidence",
+    text: "Send, receive, swap, and review your transaction history from one platform.",
     position: "md:bottom-0 md:right-0",
   },
 ];

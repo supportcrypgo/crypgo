@@ -37,29 +37,21 @@ const Hero = () => {
                 height={40}
               />
               <p className="text-white sm:text-28 text-18 mb-0">
-                Crypto On The <span className="text-primary">Go</span>
+                Your portfolio, <span className="text-primary">clearly managed</span>
               </p>
             </div>
             <h1 className="font-medium lg:text-76 md:text-70 text-54 lg:text-start text-center text-white mb-10">
-              Buy and Sell <span className="text-primary">Crypto</span> of your{" "}
-              <span className="text-primary">choice</span>!
+              See where your <span className="text-primary">crypto</span> stands.
             </h1>
-            <div className="flex items-center md:justify-start justify-center gap-12 mt-20">
-              <Link href="#" className="hover:scale-110 duration-300">
-                <Image
-                  src={`${getImagePrefix()}images/hero/playstore.png`}
-                  alt="Play Store"
-                  width={240}
-                  height={70}
-                />
+            <p className="max-w-xl text-muted text-opacity-80 text-lg leading-8 lg:text-start text-center">
+              Follow live market prices, understand your wallet balance, and move assets from one focused account.
+            </p>
+            <div className="hidden md:flex items-center md:justify-start justify-center gap-4 mt-10">
+              <Link href="/?signup=1" className="text-darkmode bg-primary border border-primary px-5 py-3 rounded-lg font-medium hover:bg-transparent hover:text-primary transition-colors">
+                Create account
               </Link>
-              <Link href="#" className="hover:scale-110 duration-300">
-                <Image
-                  src={`${getImagePrefix()}images/hero/applestore.png`}
-                  alt="App Store"
-                  width={240}
-                  height={70}
-                />
+              <Link href="#portfolio" className="text-white border border-white/20 px-5 py-3 rounded-lg font-medium hover:border-primary hover:text-primary transition-colors">
+                Explore the platform
               </Link>
             </div>
           </motion.div>

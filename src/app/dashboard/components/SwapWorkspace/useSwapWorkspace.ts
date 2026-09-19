@@ -11,7 +11,7 @@ const LIQUIDITY_FEE_RATE = 0.003;
 const DEFAULT_SLIPPAGE = 0.5;
 
 export function useSwapWorkspace() {
-  const { walletAssets, executeSwapTransaction } = useUnified();
+  const { walletAssets } = useUnified();
 
   const availableAssets = useMemo<SwapAsset[]>(() => {
     if (walletAssets.length === 0) return SWAP_ASSETS;
@@ -40,6 +40,7 @@ export function useSwapWorkspace() {
   const [payAmount, setPayAmount] = useState('');
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   const [isSwapping, setIsSwapping] = useState(false);
+  const [isCautionOpen, setIsCautionOpen] = useState(false);
   const [swapResult, setSwapResult] = useState<QuickSwapResult | null>(null);
   const [error, setError] = useState('');
 
@@ -108,35 +109,8 @@ export function useSwapWorkspace() {
   // Handle swap execution
   const handleSwap = useCallback(async () => {
     if (!isValid || !payAsset || !receiveAsset || !quote) return;
-
-    setIsSwapping(true);
-    setError('');
-
-    try {
-      const response = await executeSwapTransaction({
-        from_asset: payAsset.ticker,
-        to_asset: receiveAsset.ticker,
-        amount: parseFloat(payAmount),
-      });
-
-      const result: QuickSwapResult = {
-        txId: response?.transaction?.txid || response?.transaction?.id || '0x' + Math.random().toString(16).substr(2, 64),
-        payTicker: payAsset.ticker,
-        payAmount: parseFloat(payAmount),
-        receiveTicker: receiveAsset.ticker,
-        receiveAmount: quote.receiveAmount,
-        rate: `1 ${payAsset.ticker} = ${quote.rate.toFixed(6)} ${receiveAsset.ticker}`,
-        fee: quote.fee,
-        date: response?.transaction?.created_at || new Date().toISOString(),
-      };
-
-      setSwapResult(result);
-    } catch (err) {
-      setError('Swap failed. Please try again.');
-    } finally {
-      setIsSwapping(false);
-    }
-  }, [isValid, payAsset, receiveAsset, quote, payAmount, minimumReceived]);
+    setIsCautionOpen(true);
+  }, [isValid, payAsset, receiveAsset, quote]);
 
   // Handle success close
   const handleSuccessClose = useCallback(() => {
@@ -174,6 +148,7 @@ export function useSwapWorkspace() {
     slippage,
     setSlippage,
     isSwapping,
+    isCautionOpen,
     swapResult,
     error,
     isCalculating,
@@ -189,6 +164,7 @@ export function useSwapWorkspace() {
     handleSwap,
     handleSuccessClose,
     handleRetry,
+    setIsCautionOpen,
     handleReset,
   };
 }

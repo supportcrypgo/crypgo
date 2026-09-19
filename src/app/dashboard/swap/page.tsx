@@ -8,7 +8,6 @@ import MobileHeader from '@/app/dashboard/components/MobileHeader';
 import BottomNav from '@/app/dashboard/components/BottomNav';
 import DesktopSidebar, { SIDEBAR_OFFSET_CLASS } from '@/app/dashboard/components/DesktopSidebar';
 import DesktopHeader from '@/app/dashboard/components/DesktopHeader';
-import CautionModalGate from '@/components/Auth/CautionModalGate';
 import { SwapWorkspace } from '@/app/dashboard/components/SwapWorkspace';
 
 export default function SwapPage() {
@@ -18,7 +17,6 @@ export default function SwapPage() {
   if (!isDesktop) {
     return (
       <div className="min-h-screen bg-darkmode">
-        <CautionModalGate />
         {/* Mobile Header */}
         <MobileHeader 
           title="Swap" 
@@ -43,7 +41,6 @@ export default function SwapPage() {
   // Desktop view
   return (
     <div className="min-h-screen bg-darkmode">
-      <CautionModalGate />
       {/* Desktop Sidebar */}
       <DesktopSidebar />
       

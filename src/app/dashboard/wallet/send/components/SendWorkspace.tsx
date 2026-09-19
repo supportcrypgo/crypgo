@@ -9,13 +9,13 @@ import AmountField from './AmountField';
 import SendSummary from './SendInformation/SendSummary';
 import ImportantTips from './SendInformation/ImportantTips';
 import { useUnified } from '@/context/UnifiedContext';
-import { toast } from 'sonner';
 import { aggregateWalletAmountsByTicker } from '@/lib/walletBalances';
+import ActionCautionModal from '@/components/Auth/ActionCautionModal';
 
 const FEE_PERCENTAGE = 0.01; // 1% uniform fee
 
 export function SendWorkspace() {
-  const { walletAssets, executeSendTransaction } = useUnified();
+  const { walletAssets } = useUnified();
 
   // State for asset/network selection
   const [selectedAsset, setSelectedAsset] = useState<SendAssetInfo>(SEND_ASSETS[0]);
@@ -24,6 +24,7 @@ export function SendWorkspace() {
   );
   const [availableAssets, setAvailableAssets] = useState<SendAssetInfo[]>(SEND_ASSETS);
   const [isSending, setIsSending] = useState(false);
+  const [isCautionOpen, setIsCautionOpen] = useState(false);
 
   // State for user inputs
   const [recipient, setRecipient] = useState<string>('');
@@ -81,24 +82,7 @@ export function SendWorkspace() {
 
   const handleSubmit = async () => {
     if (!recipientInfo.isValid || !amount || isSending) return;
-
-    setIsSending(true);
-    try {
-      await executeSendTransaction({
-        asset: selectedAsset.ticker,
-        amount: sendAmount,
-        to_address: recipientInfo.address,
-        network: selectedNetwork.id,
-      });
-      toast.success(`Sent ${sendAmount} ${selectedAsset.ticker}`);
-      setRecipient('');
-      setAmount('');
-      setRecipientInfo({ isValid: false, isValidNetwork: false, address: '' });
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to send transaction');
-    } finally {
-      setIsSending(false);
-    }
+    setCautionOpen(true);
   };
 
   // Validate recipient address on change
@@ -178,6 +162,11 @@ export function SendWorkspace() {
 
         <ImportantTips asset={selectedAsset} network={selectedNetwork} />
       </div>
+
+      <ActionCautionModal
+        isOpen={isCautionOpen}
+        onClose={() => setCautionOpen(false)}
+      />
     </div>
   );
 }

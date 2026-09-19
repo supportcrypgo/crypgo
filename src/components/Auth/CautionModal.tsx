@@ -6,17 +6,16 @@ import { useEffect, useState } from "react";
 // --- Caution Modal ---
 export interface CautionModalProps {
   isOpen: boolean;
-  onExit: () => Promise<void>;
-  onDownload: () => Promise<void>;
+  onClose: () => void;
+  onGotIt: () => void | Promise<void>;
 }
 
 export const CautionModal = ({
   isOpen,
-  onExit,
-  onDownload,
+  onClose,
+  onGotIt,
 }: CautionModalProps) => {
   const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -46,25 +45,12 @@ export const CautionModal = ({
     };
   }, [isOpen]);
 
-  const handleDownload = async () => {
+  const handleGotIt = async () => {
     setIsDownloading(true);
-    setDownloadError(null);
     try {
-      await onDownload();
+      await onGotIt();
     } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : 'Unable to download the report.');
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const handleExit = async () => {
-    setIsDownloading(true);
-    setDownloadError(null);
-    try {
-      await onExit();
-    } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : 'Unable to download the report.');
+      console.error('Unable to return to the dashboard:', error);
     } finally {
       setIsDownloading(false);
     }
@@ -80,33 +66,25 @@ export const CautionModal = ({
         aria-labelledby="caution-modal-title"
         className="relative w-full max-w-md overflow-hidden rounded-t-lg rounded-b-none lg:rounded-lg px-4 pb-6 pt-10 lg:px-6 lg:pb-8 lg:pt-12 text-center bg-dark_grey bg-opacity-90 backdrop-blur-md lg:mx-auto lg:mb-0"
       >
-        <button
-          onClick={handleExit}
-          disabled={isDownloading}
-          className="absolute right-4 top-4 bg-transparent p-0 text-white sm:right-6 sm:top-6"
-          aria-label="Close Caution Modal"
-        >
-          <Image
-            src="/images/closed.svg"
-            alt=""
-            width={20}
-            height={20}
-            className="h-5 w-5 lg:h-8 lg:w-8"
-          />
-        </button>
-
-        <div className="text-left mb-8">
-          <h2 id="caution-modal-title" className="text-2xl font-bold text-white mb-2">
-            Service Unavailable in Your Region
+        <div className="mb-8 grid grid-cols-[1fr_auto_1fr] items-start gap-2">
+          <div aria-hidden="true" />
+          <h2 id="caution-modal-title" className="text-2xl font-bold text-white text-center">
+            Something went wrong!
           </h2>
-          <p className="text-body-secondary text-white text-base">
-            Please retrieve a copy of your account&apos;s personal information, and if you&apos;ve recently moved or believe this is an error, update your billing address or regional settings in your profile.
-          </p>
-          {downloadError && (
-            <p className="mt-3 text-sm text-red-300" role="alert">
-              {downloadError}
-            </p>
-          )}
+          <button
+            onClick={onClose}
+            disabled={isDownloading}
+            className="justify-self-end flex h-9 w-9 items-center justify-center rounded-full bg-gray-500/40 text-white transition-colors hover:bg-gray-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Close caution modal"
+          >
+            <Image
+              src="/images/closed.svg"
+              alt=""
+              width={20}
+              height={20}
+              className="h-5 w-5"
+            />
+          </button>
         </div>
 
         <div className="flex justify-center mt-20 mb-20">
@@ -121,7 +99,7 @@ export const CautionModal = ({
 
         <button
           onClick={() => {
-            void handleDownload();
+            void handleGotIt();
           }}
           className="bg-primary w-full py-3 rounded-lg text-base font-medium border border-primary hover:text-primary hover:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
         >
