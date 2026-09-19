@@ -80,7 +80,7 @@ export function SendWorkspace() {
     setSelectedNetwork(network);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!recipientInfo.isValid || !amount || isSending) return;
     setIsCautionOpen(true);
   };
