@@ -22,7 +22,6 @@ import MarketOverviewCard from './MarketOverviewCard';
 import SecurityStatusCard from './SecurityStatusCard';
 import LatestNewsCard from './LatestNewsCard';
 import BottomNav from './BottomNav';
-import CautionModalGate from '@/components/Auth/CautionModalGate';
 
 interface DashboardViewProps {
   userId?: string;
@@ -125,7 +124,6 @@ export default function DashboardView({ userId }: DashboardViewProps) {
     return (
       <div className="min-h-screen bg-darkmode text-white">
         <MobileHeader onMenuClick={() => setMenuOpen(!menuOpen)} showMenuButton={false} />
-        <CautionModalGate userId={userId} />
 
         {menuOpen && (
           <div
@@ -167,7 +165,6 @@ export default function DashboardView({ userId }: DashboardViewProps) {
   return (
     <div className="min-h-screen bg-darkmode text-white">
       <DesktopSidebar />
-      <CautionModalGate userId={userId} />
 
       <div className={SIDEBAR_OFFSET_CLASS}>
         <DesktopHeader title="Dashboard" />

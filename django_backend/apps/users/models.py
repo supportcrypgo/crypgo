@@ -56,6 +56,7 @@ class CustomUser(AbstractUser):
     # Profile fields that can be edited by admin
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
+    date_of_birth = models.DateField(blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True, default='')
     country = models.CharField(max_length=100, blank=True, default='')
     city = models.CharField(max_length=100, blank=True, default='')

@@ -2,8 +2,6 @@ import React, { FC } from "react";
 import Link from "next/link";
 import { headerData } from "../Header/Navigation/menuData";
 import { footerlabels } from "@/app/api/data";
-import Image from "next/image";
-import { Icon } from "@iconify/react";
 import Logo from "../Header/Logo";
 
 const Footer: FC = () => {
@@ -13,34 +11,11 @@ const Footer: FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-12 lg:gap-20 md:gap-6 sm:gap-12 gap-6  pb-16">
           <div className="lg:col-span-4 md:col-span-6 col-span-6">
             <Logo />
-            <div className="flex gap-6 items-center mt-8">
-              <Link href="#" className="group">
-                <Icon
-                  icon="fa6-brands:facebook-f"
-                  width="24"
-                  height="24"
-                  className="text-white group-hover:text-primary"
-                />
-              </Link>
-              <Link href="#" className="group">
-                <Icon
-                  icon="fa6-brands:instagram"
-                  width="24"
-                  height="24"
-                  className="text-white group-hover:text-primary"
-                />
-              </Link>
-              <Link href="#" className="group">
-                <Icon
-                  icon="fa6-brands:x-twitter"
-                  width="24"
-                  height="24"
-                  className="text-white group-hover:text-primary"
-                />
-              </Link>
-            </div>
+            <p className="text-muted text-opacity-70 text-17 mt-8 max-w-xs">
+              A clearer way to manage your crypto portfolio and wallet activity.
+            </p>
             <h3 className="text-white text-24 font-medium sm:mt-20 mt-12">
-              2025 Copyright | Crypgo
+              2026 Copyright | Crypgo
             </h3>
           </div>
           <div className="lg:col-span-2 md:col-span-3 col-span-6">
@@ -74,25 +49,17 @@ const Footer: FC = () => {
             </ul>
           </div>
           <div className="lg:col-span-4 md:col-span-4 col-span-6">
-            <h3 className="text-white text-24 font-medium">Subscribe</h3>
+            <h3 className="text-white text-24 font-medium">Ready when you are</h3>
             <p className="text-muted text-opacity-60 text-18 mt-5">
-              Subscribe to get the latest
-              <br /> news form us
+              Sign in to review your portfolio or create a new Crypgo account.
             </p>
-            <div className="relative lg:w-80%">
-              <input
-                type="email"
-                name="mail"
-                id="mail"
-                placeholder="Enter Email"
-                className="bg-transparent border border-dark_border border-opacity-60 py-4 text-white rounded-lg w-full mt-6 px-6"
-              />
-              <Icon
-                icon="tabler:send"
-                width="24"
-                height="24"
-                className="text-primary absolute right-7 bottom-4"
-              />
+            <div className="flex flex-wrap gap-3 mt-6">
+              <Link href="/?signin=1" className="text-primary border border-primary px-4 py-2 rounded-lg hover:bg-primary hover:text-darkmode">
+                Sign in
+              </Link>
+              <Link href="/?signup=1" className="text-darkmode bg-primary border border-primary px-4 py-2 rounded-lg hover:bg-transparent hover:text-primary">
+                Create account
+              </Link>
             </div>
           </div>
         </div>

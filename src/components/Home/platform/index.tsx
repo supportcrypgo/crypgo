@@ -11,8 +11,8 @@ const Platform = () => {
               Platform
             </h2>
             <p className="text-muted text-opacity-60 text-18">
-              Our products empower people to have safer and more
-              <br /> trustworthy experiences.
+              One account for live portfolio value, wallet activity, and
+              <br /> the decisions that follow.
             </p>
           </div>
           <div className="lg:col-span-4 col-span-12">
@@ -21,7 +21,7 @@ const Platform = () => {
                 href="#"
                 className="text-darkmode bg-primary border border-primary py-3 px-5 rounded-lg sm:text-21 text-18 font-medium hover:bg-transparent hover:text-primary"
               >
-                Get Started
+                Open your account
               </Link>
             </div>
           </div>

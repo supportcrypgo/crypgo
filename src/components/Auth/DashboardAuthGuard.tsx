@@ -2,22 +2,12 @@
 
 import { useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { isCautionRestrictionActive } from '@/lib/cautionRestriction';
 
 export default function DashboardAuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, loading, logout } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
 
   useEffect(() => {
-    if (loading) return;
-
-    if (isCautionRestrictionActive()) {
-      void logout();
-      return;
-    }
-  }, [isAuthenticated, loading, logout]);
-
-  useEffect(() => {
-    if (!loading && !isAuthenticated && !isCautionRestrictionActive()) {
+    if (!loading && !isAuthenticated) {
       window.location.replace('/');
     }
   }, [isAuthenticated, loading]);
@@ -25,7 +15,7 @@ export default function DashboardAuthGuard({ children }: { children: React.React
   useEffect(() => {
     const handlePageShow = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
-      if (isCautionRestrictionActive() || !window.localStorage.getItem('access_token')) {
+      if (!window.localStorage.getItem('access_token')) {
         window.location.replace('/');
       }
     };

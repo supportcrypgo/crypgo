@@ -32,12 +32,11 @@ const Portfolio = () => {
               Cryptocurrency <span className="text-primary">Portfolio</span>
             </p>
             <h2 className="text-white sm:text-40 text-30 mb-4 font-medium">
-              Create your crypto portfolio today with Cryp
-              <span className="text-primary">Go</span>!
+              Understand your portfolio before you move it.
             </h2>
             <p className="text-muted text-opacity-60 text-18">
-              Coinbase has a variety of features that make it the best
-              <br className="md:block hidden" /> place to start trading.
+              Crypgo brings live pricing, wallet balances, and transaction
+              <br className="md:block hidden" /> history into one clear view.
             </p>
 
             <table className="w-full sm:w-[80%]">
@@ -50,7 +49,7 @@ const Portfolio = () => {
                     <td className="py-5">
                       <div className="bg-primary p-4 rounded-full bg-opacity-20 w-fit">
                         <Image
-                          src= {`${getImagePrefix()}${item.image}`}
+                          src={`${getImagePrefix()}${item.image.replace(/^\//, '')}`}
                           alt={item.title}
                           width={35}
                           height={35}

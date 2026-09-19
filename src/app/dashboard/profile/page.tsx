@@ -13,7 +13,6 @@ import DesktopSidebar, { SIDEBAR_OFFSET_CLASS } from '@/app/dashboard/components
 import DesktopHeader from '@/app/dashboard/components/DesktopHeader';
 import BottomNav from '@/app/dashboard/components/BottomNav';
 import { useAuth } from '@/hooks/useAuth';
-import CautionModalGate from '@/components/Auth/CautionModalGate';
 
 type ProfileSection =
   | 'profile'
@@ -47,7 +46,6 @@ export default function ProfilePage() {
   if (isDesktop) {
     return (
       <div className="min-h-screen bg-darkmode text-white">
-        <CautionModalGate />
         {/* Sidebar */}
         <DesktopSidebar />
 
@@ -67,7 +65,6 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-darkmode text-white flex flex-col overflow-hidden">
-      <CautionModalGate />
       <div className="sticky top-0 z-40 bg-darkmode/95 backdrop-blur-md">
         <div className="max-w-md mx-auto px-6 pt-safe-top">
           <ProfileHeader

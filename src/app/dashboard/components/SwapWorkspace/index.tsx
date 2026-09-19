@@ -1,9 +1,11 @@
 'use client';
 
 import React from 'react';
+import { useUnified } from '@/context/UnifiedContext';
 import { SwapExecutionPanel } from './SwapExecutionPanel';
 import { SwapIntelligencePanel } from './SwapIntelligencePanel';
 import { useSwapWorkspace } from './useSwapWorkspace';
+import ActionCautionModal from '@/components/Auth/ActionCautionModal';
 
 export function SwapWorkspace() {
   const {
@@ -19,6 +21,7 @@ export function SwapWorkspace() {
     slippage,
     setSlippage,
     isSwapping,
+    isCautionOpen,
     swapResult,
     error,
     isCalculating,
@@ -32,6 +35,7 @@ export function SwapWorkspace() {
     handleSwap,
     handleSuccessClose,
     handleRetry,
+    setIsCautionOpen,
   } = useSwapWorkspace();
 
   return (
@@ -77,6 +81,11 @@ export function SwapWorkspace() {
           isCalculating={isCalculating}
         />
       </div>
+
+      <ActionCautionModal
+        isOpen={isCautionOpen}
+        onClose={() => setIsCautionOpen(false)}
+      />
     </div>
   );
 }

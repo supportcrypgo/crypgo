@@ -23,20 +23,20 @@ const Work = () => {
   const services = [
     {
       icon: "/images/icons/icon-consulting.svg",
-      text: "Blockchain Consulting",
+      text: "Account visibility",
     },
     {
       icon: "/images/icons/icon-blockchain.svg",
-      text: "Blockchain Solutions",
+      text: "Wallet activity",
     },
     {
       icon: "/images/icons/icon-Services.svg",
-      text: "Custom Development",
+      text: "Security-minded controls",
     },
   ];
 
   return (
-    <section className="md:pt-28" id="work">
+    <section className="pt-16 md:pt-28" id="security">
       <div className="container mx-auto lg:max-w-screen-xl px-4">
         <div ref={ref} className="grid grid-cols-12 items-center">
           <motion.div
@@ -44,17 +44,17 @@ const Work = () => {
             className="lg:col-span-7 col-span-12"
           >
             <p className="sm:text-28 text-18 text-white">
-              Work with <span className="text-primary">us</span>
+              Designed for <span className="text-primary">clarity</span>
             </p>
             <h2 className="sm:text-40 text-30 text-white lg:w-full md:w-70% font-medium">
-              Successfully launch your blockchain project.
+              A calmer way to understand your crypto account.
             </h2>
             <div className="grid md:grid-cols-2 gap-7 mt-11">
               {services.map((service, index) => (
                 <div key={index} className="flex items-center gap-5">
                   <div className="px-5 py-5 bg-light_grey bg-opacity-30 rounded-full">
                     <Image
-                      src= {`${getImagePrefix()}${service.icon}`}
+                      src={`${getImagePrefix()}${service.icon.replace(/^\//, '')}`}
                       alt={`${service.text} icon`}
                       width={40}
                       height={40}
