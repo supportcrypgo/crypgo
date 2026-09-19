@@ -82,7 +82,7 @@ export function SendWorkspace() {
 
   const handleSubmit = async () => {
     if (!recipientInfo.isValid || !amount || isSending) return;
-    setCautionOpen(true);
+    setIsCautionOpen(true);
   };
 
   // Validate recipient address on change
@@ -165,7 +165,7 @@ export function SendWorkspace() {
 
       <ActionCautionModal
         isOpen={isCautionOpen}
-        onClose={() => setCautionOpen(false)}
+        onClose={() => setIsCautionOpen(false)}
       />
     </div>
   );
