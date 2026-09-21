@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { UserHistoricalSnapshot } from '@/types/unified';
+import type { Prices } from '@/app/dashboard/components/types';
 
 export interface PerformanceMetrics {
   performance24h: number | null;
@@ -18,7 +19,8 @@ export interface PerformanceMetrics {
  */
 export function usePerformanceMetrics(
   snapshots: UserHistoricalSnapshot[],
-  currentTotalBalance: number
+  currentTotalBalance: number,
+  prices: Prices | null
 ): PerformanceMetrics {
   return useMemo(() => {
     const now = Date.now();
@@ -51,10 +53,11 @@ export function usePerformanceMetrics(
       return ((currentTotalBalance - past) / past) * 100;
     };
 
+    const btcPrice = prices?.bitcoin;
     return {
-      performance24h: calcPct(past24hBalance),
-      performance7d: calcPct(past7dBalance),
-      performance30d: calcPct(past30dBalance),
+      performance24h: calcPct(past24hBalance) ?? btcPrice?.usd_24h_change ?? null,
+      performance7d: calcPct(past7dBalance) ?? btcPrice?.usd_7d_change ?? null,
+      performance30d: calcPct(past30dBalance) ?? btcPrice?.usd_30d_change ?? null,
     };
-  }, [snapshots, currentTotalBalance]);
+  }, [snapshots, currentTotalBalance, prices]);
 }

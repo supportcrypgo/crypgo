@@ -11,6 +11,7 @@ import {
   ArrowDownLeft,
   ArrowUpFromLine,
   ArrowDownToLine,
+  RefreshCw,
   CheckCircle,
   PieChart,
 } from 'lucide-react';
@@ -22,6 +23,7 @@ function getTypeIcon(type: string) {
     case 'sell': return <ArrowUpRight className="w-3.5 h-3.5 text-red-400" />;
     case 'deposit': return <ArrowDownToLine className="w-3.5 h-3.5 text-blue-400" />;
     case 'withdrawal': return <ArrowUpFromLine className="w-3.5 h-3.5 text-orange-400" />;
+    case 'swap': return <RefreshCw className="w-3.5 h-3.5 text-primary" />;
     default: return null;
   }
 }
@@ -31,6 +33,7 @@ const volumeColors: Record<string, string> = {
   sell: 'bg-red-400',
   deposit: 'bg-blue-400',
   withdrawal: 'bg-orange-400',
+  swap: 'bg-primary',
 };
 
 export default function DesktopTransactionSidebar() {
@@ -160,7 +163,8 @@ export default function DesktopTransactionSidebar() {
                   <div className={`w-2 h-2 rounded-full ${
                     tx.type === 'buy' ? 'bg-green-400' :
                     tx.type === 'sell' ? 'bg-red-400' :
-                    tx.type === 'deposit' ? 'bg-blue-400' : 'bg-orange-400'
+                    tx.type === 'deposit' ? 'bg-blue-400' :
+                    tx.type === 'swap' ? 'bg-primary' : 'bg-orange-400'
                   }`} />
                   <span className="text-xs text-charcoalGray">
                     {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.asset}

@@ -74,7 +74,12 @@ TEMPLATES = [
 WSGI_APPLICATION = 'core.wsgi.application'
 
 # Use PostgreSQL in hosted environments and keep SQLite as the local fallback.
-DATABASE_URL = os.getenv('DATABASE_URL')
+# If the app is running locally and a stale hosted database URL is still present,
+# prefer the local SQLite database so the app remains usable without external infra.
+DATABASE_URL = (os.getenv('DATABASE_URL') or '').strip()
+if DEBUG and ('supabase.com' in DATABASE_URL or 'pooler' in DATABASE_URL):
+    DATABASE_URL = ''
+
 DATABASE_SCHEMA = os.getenv('DB_SCHEMA', 'public')
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
@@ -135,6 +140,7 @@ if isinstance(CORS_ALLOWED_ORIGINS, str):
     CORS_ALLOWED_ORIGINS = json.loads(CORS_ALLOWED_ORIGINS)
 
 CORS_ALLOW_CREDENTIALS = True
+BOT_SERVICE_KEY = os.getenv('BOT_SERVICE_KEY', os.getenv('CRYPGO_SERVICE_KEY', ''))
 
 # CSRF Configuration - trust frontend origin
 CSRF_TRUSTED_ORIGINS = os.getenv(

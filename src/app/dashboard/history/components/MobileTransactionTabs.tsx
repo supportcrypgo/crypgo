@@ -10,6 +10,7 @@ const tabs: { id: TransactionTabType; label: string }[] = [
   { id: 'withdrawal', label: 'Withdrawal' },
   { id: 'send', label: 'Send' },
   { id: 'receive', label: 'Receive' },
+  { id: 'swap', label: 'Swap' },
 ];
 
 interface Props {

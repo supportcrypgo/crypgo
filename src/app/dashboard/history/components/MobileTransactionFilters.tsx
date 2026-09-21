@@ -10,6 +10,7 @@ const transactionTypeOptions = [
   { value: 'sell', label: 'Sell' },
   { value: 'deposit', label: 'Deposit' },
   { value: 'withdrawal', label: 'Withdrawal' },
+  { value: 'swap', label: 'Swap' },
 ];
 
 const statusOptions = [

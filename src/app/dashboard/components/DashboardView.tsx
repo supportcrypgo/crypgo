@@ -9,6 +9,7 @@ import { usePerformanceMetrics } from '@/hooks/usePerformanceMetrics';
 import { Asset, ASSET_CONFIG } from './types';
 import { adminApi } from '@/data/api';
 import { aggregateWalletAmountsByTicker, enrichWalletAssetsWithLivePrices, deriveWalletSummary } from '@/lib/walletBalances';
+import { TICKER_TO_COINGECKO_KEY } from '@/lib/priceMapping';
 import type { UnifiedWalletAsset } from '@/types/unified';
 
 import MobileHeader from './MobileHeader';
@@ -89,7 +90,8 @@ export default function DashboardView({ userId }: DashboardViewProps) {
     }
 
     const assetsWithPrices: Asset[] = ASSET_CONFIG.map((config) => {
-      const priceData = prices[config.id as keyof typeof prices];
+      const priceKey = TICKER_TO_COINGECKO_KEY[config.ticker] as keyof typeof prices;
+      const priceData = prices[priceKey];
       const price = priceData?.usd || 0;
       const change24h = priceData?.usd_24h_change || 0;
       const quantity = walletDataLoaded ? (userAssetMap[config.ticker] ?? 0) : config.quantity;
@@ -118,7 +120,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
   const displayedTotalBalance = currentWalletSummary.totalBalance;
 
   const { allSnapshots } = useSnapshotCapture(userId, prices);
-  const performanceMetrics = usePerformanceMetrics(allSnapshots, displayedTotalBalance);
+  const performanceMetrics = usePerformanceMetrics(allSnapshots, displayedTotalBalance, prices);
 
   if (!isDesktop) {
     return (

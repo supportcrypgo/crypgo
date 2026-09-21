@@ -16,7 +16,7 @@ export interface Asset {
 }
 
 export interface Prices {
-  bitcoin?: { usd: number; usd_24h_change?: number };
+  bitcoin?: { usd: number; usd_24h_change?: number; usd_7d_change?: number; usd_30d_change?: number };
   ethereum?: { usd: number; usd_24h_change?: number };
   solana?: { usd: number; usd_24h_change?: number };
   litecoin?: { usd: number; usd_24h_change?: number };

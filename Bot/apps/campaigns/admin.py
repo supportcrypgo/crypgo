@@ -159,6 +159,10 @@ class CampaignAdmin(ModelAdmin):
         return True, f"Campaign '{campaign.name}' started sending in the background."
 
     def _sync_crypgo_users(self, campaign):
+        if settings.CRYPGO_CAMPAIGN_OWNER_EMAIL:
+            campaign.save(update_fields=['updated_at'])
+            return True, 'Campaign configured to issue links for the selected owner account.'
+
         if not settings.CRYPGO_SERVICE_KEY:
             return False, 'Crypgo sync is not configured: CRYPGO_SERVICE_KEY is missing.'
 

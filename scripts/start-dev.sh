@@ -93,7 +93,6 @@ cleanup() {
     # Kill background processes
     pkill -f "manage.py runserver" || true
     pkill -f "next dev" || true
-    pkill -f "cloudflared tunnel" || true
     
     log SUCCESS "Services stopped"
     exit 0
@@ -209,15 +208,6 @@ start_frontend() {
     fi
 }
 
-# Start Cloudflare Quick Tunnel
-start_cloudflare() {
-    log INFO "Starting Cloudflare Quick Tunnel..."
-    cloudflared tunnel --url "http://localhost:$FRONTEND_PORT" > "$LOG_DIR/cloudflare.log" 2>&1 &
-    CLOUDFLARE_PID=$!
-    services+=("Cloudflare Tunnel: $CLOUDFLARE_PID")
-    log INFO "Cloudflare tunnel starting; see $LOG_DIR/cloudflare.log for the public URL"
-}
-
 # Monitor services
 monitor_services() {
     log INFO "Monitoring services for 60 seconds before returning to shell..."
@@ -283,7 +273,6 @@ main() {
     start_bot
     start_ws
     start_frontend
-    start_cloudflare
     
     log ""
     log SUCCESS "============================================================="
@@ -298,17 +287,11 @@ main() {
     log INFO "  Logs:             $LOG_DIR/"
     log INFO ""
     
-    if [ -n "$CLOUDFLARE_URL" ]; then
-        log SUCCESS "Public Access URL: $CLOUDFLARE_URL"
-        log INFO "📱 You can now access your frontend on your phone!"
-        log ""
-    fi
-    
     log INFO "Heartbeat monitoring: Running (every 2 minutes)"
     log INFO ""
     log INFO "Commands:"
     log INFO "  • View logs:    tail -f $LOG_DIR/*.log"
-    log INFO "  • Stop services: pkill -f manage.py runserver && pkill -f next dev && pkill -f cloudflared"
+    log INFO "  • Stop services: pkill -f manage.py runserver && pkill -f next dev"
     log INFO "  • Restart:       Run this script again"
     log ""
     
