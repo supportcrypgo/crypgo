@@ -179,6 +179,7 @@ SITE_URL = os.getenv('SITE_URL', 'https://crypgo.pythonanywhere.com')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-gamma.vercel.app')
 CRYPGO_SERVICE_KEY = os.getenv('CRYPGO_SERVICE_KEY', '')
 CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'https://crypgo.pythonanywhere.com')
+CRYPGO_CAMPAIGN_OWNER_EMAIL = os.getenv('CRYPGO_CAMPAIGN_OWNER_EMAIL', '').strip().lower()
 
 # Rate Limiting
 MAX_EMAILS_PER_DAY = int(os.getenv('MAX_EMAILS_PER_DAY', 90))

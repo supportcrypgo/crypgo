@@ -22,11 +22,12 @@ export function useCryptoPrices() {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         const parsed: CacheEntry = JSON.parse(cached);
-        if (Date.now() - parsed.timestamp < CACHE_DURATION) {
+        if (Date.now() - parsed.timestamp < CACHE_DURATION && Number(parsed.data?.bitcoin?.usd) > 0) {
           setPrices(parsed.data);
           setIsLoading(false);
           return;
         }
+        localStorage.removeItem(CACHE_KEY);
       }
 
       const response = await fetch('/api/crypto/prices');

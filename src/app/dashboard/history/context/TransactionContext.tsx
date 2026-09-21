@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { useUnified } from '@/context/UnifiedContext';
 import type { UnifiedTransaction } from '@/types/unified';
 import type { 
@@ -13,6 +13,7 @@ import type {
 } from '../types';
 
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined);
+const PAGE_SIZE = 50;
 
 // Helper: Convert UnifiedTransaction to Transaction
 function convertTransaction(tx: UnifiedTransaction, index: number): Transaction {
@@ -58,7 +59,7 @@ function calculateSummaryMetrics(transactions: Transaction[]): SummaryMetrics {
 // Helper: Calculate volume by type
 function calculateVolumeByType(transactions: Transaction[]): VolumeByType[] {
   const typeMap: Record<string, number> = {};
-  const types: string[] = ['buy', 'sell', 'deposit', 'withdrawal', 'send', 'receive'];
+  const types: string[] = ['buy', 'sell', 'deposit', 'withdrawal', 'send', 'receive', 'swap'];
   
   // Initialize all types
   types.forEach(t => { typeMap[t] = 0; });
@@ -133,6 +134,7 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
     status: '',
   });
   const [activeTab, setActiveTab] = useState<TransactionTabType>('all');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Convert UnifiedTransactions to Transaction format
   const transactions = useMemo(() => 
@@ -158,6 +160,19 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
     [transactions, filters, activeTab]
   );
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filters, activeTab]);
+
+  const visibleTransactions = useMemo(
+    () => filteredTransactions.slice(0, visibleCount),
+    [filteredTransactions, visibleCount]
+  );
+
+  const loadMore = useCallback(() => {
+    setVisibleCount((count) => Math.min(count + PAGE_SIZE, filteredTransactions.length));
+  }, [filteredTransactions.length]);
+
   // Calculate metrics
   const summaryMetrics = useMemo(() => 
     calculateSummaryMetrics(filteredTransactions),
@@ -172,6 +187,9 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
   const value: TransactionContextType = {
     transactions,
     filteredTransactions,
+    visibleTransactions,
+    hasMore: visibleCount < filteredTransactions.length,
+    loadMore,
     filters,
     setFilters,
     activeTab,
@@ -196,6 +214,9 @@ export function useTransactions(): TransactionContextType {
     return {
       transactions: [],
       filteredTransactions: [],
+      visibleTransactions: [],
+      hasMore: false,
+      loadMore: () => {},
       filters: {
         dateFrom: '',
         dateTo: '',

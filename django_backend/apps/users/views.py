@@ -308,6 +308,33 @@ def export_campaign_recipients(request, campaign_ref):
     return Response({'recipients': recipients})
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def create_campaign_access_link(request, campaign_ref):
+    """Issue one independent campaign link for a Bot lead."""
+    signature = request.headers.get('X-Bot-Signature', '')
+    expected = hmac.new(
+        settings.BOT_SERVICE_KEY.encode('utf-8'), request.body, hashlib.sha256
+    ).hexdigest()
+
+    if not settings.BOT_SERVICE_KEY or not hmac.compare_digest(signature, expected):
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = get_request_data(request)
+    owner_email = payload.get('owner_email')
+    if not isinstance(owner_email, str) or not owner_email.strip():
+        return Response({'error': 'owner_email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    owner = User.objects.filter(email__iexact=owner_email.strip(), is_active=True).first()
+    if owner is None:
+        return Response({'error': 'Campaign owner was not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response({
+        'dashboard_url': build_campaign_access_url(owner, str(campaign_ref)),
+        'owner_email': owner.email,
+    })
+
+
 class RegisterView(APIView):
     """
     POST /api/auth/register/

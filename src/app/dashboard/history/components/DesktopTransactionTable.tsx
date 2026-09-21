@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useTransactions } from '../context/TransactionContext';
 import { Transaction } from '../types';
@@ -9,6 +9,7 @@ import {
   ArrowDownLeft,
   ArrowUpFromLine,
   ArrowDownToLine,
+  RefreshCw,
   CheckCircle,
   Clock,
   XCircle,
@@ -38,6 +39,7 @@ function getTypeIcon(type: string) {
     case 'withdrawal': return <ArrowUpFromLine className="w-4 h-4 text-orange-400" />;
     case 'send': return <ArrowUpRight className="w-4 h-4 text-red-400" />;
     case 'receive': return <ArrowDownLeft className="w-4 h-4 text-green-400" />;
+    case 'swap': return <RefreshCw className="w-4 h-4 text-primary" />;
     default: return null;
   }
 }
@@ -48,6 +50,7 @@ function getTypeBg(type: string) {
     case 'sell': case 'send': return 'bg-red-500/10';
     case 'deposit': return 'bg-blue-500/10';
     case 'withdrawal': return 'bg-orange-500/10';
+    case 'swap': return 'bg-primary/10';
     default: return 'bg-deepSlate';
   }
 }
@@ -116,7 +119,18 @@ function CounterpartyCell({ tx }: { tx: Transaction }) {
 }
 
 export default function DesktopTransactionTable() {
-  const { filteredTransactions, loading } = useTransactions();
+  const { visibleTransactions, loading, hasMore, loadMore } = useTransactions();
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasMore) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) loadMore();
+    }, { rootMargin: '240px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
 
   if (loading) {
     return (
@@ -128,7 +142,7 @@ export default function DesktopTransactionTable() {
     );
   }
 
-  if (filteredTransactions.length === 0) {
+  if (visibleTransactions.length === 0) {
     return (
       <div className="text-center py-16">
         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-deepSlate/50 flex items-center justify-center">
@@ -159,7 +173,7 @@ export default function DesktopTransactionTable() {
 
         {/* Table Body */}
         <tbody>
-          {filteredTransactions.map((tx: Transaction) => {
+          {visibleTransactions.map((tx: Transaction) => {
             return (
               <tr
                 key={tx.id}
@@ -239,6 +253,9 @@ export default function DesktopTransactionTable() {
           })}
         </tbody>
       </table>
+      <div ref={loadMoreRef} className="h-8 flex items-center justify-center text-xs text-charcoalGray">
+        {hasMore ? 'Loading more transactions...' : 'End of history'}
+      </div>
     </div>
   );
 }

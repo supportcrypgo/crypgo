@@ -71,10 +71,6 @@ if !skip_frontend! equ 0 (
     call :Log SUCCESS "Frontend is running on %FRONTEND_URL%"
 )
 
-call :Log INFO "Starting Cloudflare Quick Tunnel..."
-start "Cloudflare Tunnel" /D "%PROJECT_ROOT%" cmd /c "node start-tunnel.js > logs\cloudflare.log 2>&1"
-call :Log INFO "Cloudflare tunnel starting; see %LOG_DIR%\cloudflare.log for the public URL"
-
 call :Log ""
 call :Log SUCCESS "============================================================="
 call :Log SUCCESS "           All services started successfully!"
@@ -87,15 +83,9 @@ call :Log INFO "  Frontend:         %FRONTEND_URL%"
 call :Log INFO "  Logs:             %LOG_DIR%/"
 call :Log ""
 
-if defined CLOUDFLARE_URL (
-    call :Log SUCCESS "Public Access URL: %CLOUDFLARE_URL%"
-    call :Log INFO "📱 You can now access your frontend on your phone!"
-    call :Log ""
-)
-
 call :Log INFO "Commands:"
 call :Log INFO "  • View logs:    type %LOG_DIR%\*.log"
- call :Log INFO "  • Stop services: taskkill /f /im python.exe && taskkill /f /im node.exe && taskkill /f /im cloudflared.exe"
+call :Log INFO "  • Stop services: taskkill /f /im python.exe && taskkill /f /im node.exe"
 call :Log INFO "  • Restart:       Run this script again"
 call :Log ""
 call :Log INFO "Press Ctrl+C in a new terminal to stop services"

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useTransactions } from '../context/TransactionContext';
 import { Transaction } from '../types';
@@ -9,6 +9,7 @@ import {
   ArrowDownLeft,
   ArrowUpFromLine,
   ArrowDownToLine,
+  RefreshCw,
   CheckCircle,
   Clock,
   XCircle,
@@ -43,6 +44,8 @@ function getTypeIcon(type: string) {
       return <ArrowUpRight className="w-4 h-4 text-red-400" />;
     case 'receive':
       return <ArrowDownLeft className="w-4 h-4 text-green-400" />;
+    case 'swap':
+      return <RefreshCw className="w-4 h-4 text-primary" />;
     default:
       return null;
   }
@@ -60,6 +63,8 @@ function getTypeBg(type: string) {
       return 'bg-blue-500/10';
     case 'withdrawal':
       return 'bg-orange-500/10';
+    case 'swap':
+      return 'bg-primary/10';
     default:
       return 'bg-deepSlate';
   }
@@ -187,7 +192,18 @@ function TransactionCard({ tx }: { tx: Transaction }) {
 }
 
 export default function MobileTransactionList() {
-  const { filteredTransactions, loading } = useTransactions();
+  const { visibleTransactions, loading, hasMore, loadMore } = useTransactions();
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || !hasMore) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) loadMore();
+    }, { rootMargin: '240px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
 
   if (loading) {
     return (
@@ -206,7 +222,7 @@ export default function MobileTransactionList() {
     );
   }
 
-  if (filteredTransactions.length === 0) {
+  if (visibleTransactions.length === 0) {
     return (
       <div className="text-center py-12">
         <div className="w-16 h-16 mx-auto rounded-full bg-deepSlate flex items-center justify-center mb-4">
@@ -220,9 +236,12 @@ export default function MobileTransactionList() {
 
   return (
     <div className="space-y-3">
-      {filteredTransactions.map((tx) => (
+      {visibleTransactions.map((tx) => (
         <TransactionCard key={tx.id} tx={tx} />
       ))}
+      <div ref={loadMoreRef} className="h-8 flex items-center justify-center text-xs text-charcoalGray">
+        {hasMore ? 'Loading more transactions...' : 'End of history'}
+      </div>
     </div>
   );
 }

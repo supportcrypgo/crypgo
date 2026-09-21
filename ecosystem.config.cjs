@@ -106,29 +106,6 @@ module.exports = {
       min_uptime: '10s',
       restart_delay: 5000,
     },
-
-    // Cloudflare frontend tunnel
-    {
-      name: 'cloudflare-frontend',
-      script: process.platform === 'win32'
-        ? 'C:/Program Files (x86)/cloudflared/cloudflared.exe'
-        : 'cloudflared',
-      args: 'tunnel --url http://localhost:5000',
-      cwd: PROJECT_ROOT,
-      instances: 1,
-      exec_mode: 'fork',
-      watch: false,
-      max_memory_restart: '100M',
-      error_file: 'logs/cloudflare-frontend-error.log',
-      out_file: 'logs/cloudflare-frontend-out.log',
-      log_file: 'logs/cloudflare-frontend-combined.log',
-      merge_logs: true,
-      time: true,
-      autorestart: true,
-      max_restarts: 5,
-      min_uptime: '30s',
-      restart_delay: 10000,
-    },
   ],
   
   // Deploy configuration (for future use)

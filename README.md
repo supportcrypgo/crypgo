@@ -32,7 +32,6 @@ npm run pm2:health  # Check service status
 ### Option 3: Manual Start
 ```bash
 # Terminal 1: Start Backend Services
-npx ngrok config add-authtoken YOUR_NGROK_TOKEN  # If using ngrok
 npm run dev              # Frontend (Next.js) - Port 5000
 node server/wsServer.mjs # WebSocket server - Port 5001
 
@@ -46,27 +45,7 @@ cd ../django_backend
 .venv\Scripts\python.exe manage.py runserver 8000 # Crypgo API
 ```
 
-## 📱 Mobile Access
-
-To access your frontend from your phone:
-
-1. **Set your ngrok authtoken:**
-   - Update `.env` file with: `NGROK_AUTHTOKEN=your_token_here`
-   - Get token from: https://dashboard.ngrok.com/get-started/your-authtoken
-
-2. **Start the dev environment:**
-   ```bash
-   npm run start-dev
-   ```
-
-3. **Open your phone and visit:**
-   - Frontend: `https://your-unique-name.ngrok-free.app`
-   - Bot API: `https://your-unique-name.ngrok-free.app/api/`
-   - Crypgo API: `http://localhost:8000/api/schema/swagger-ui/`
-
-⚠️ **Free ngrok tier warning:** ngrok free tier shows a browser warning page. Paid tier removes this. For development, you can accept the warning or use a VPN for mobile testing.
-
-For local or ngrok hosting, the frontend uses root-relative assets. Set
+For local hosting, the frontend uses root-relative assets. Set
 `NEXT_PUBLIC_BASE_PATH=/Crypgo` only when building for the GitHub Pages path.
 
 ## 📋 Available Scripts
@@ -94,13 +73,6 @@ npm run logs:crypgo      # View Crypgo backend logs
 
 # Cleanup
 npm run clean            # Clear log files and build cache
-
-# Tunneling (legacy)
-npm run tunnel:all       # Start all ngrok tunnels
-npm run tunnel:frontend  # Start Frontend ngrok
-npm run tunnel:crypgo    # Start Crypgo ngrok
-npm run tunnel:bot       # Start Bot ngrok
-npm run tunnel:ws        # Start WebSocket ngrok
 ```
 
 ## 🔧 Environment Variables
@@ -110,9 +82,6 @@ npm run tunnel:ws        # Start WebSocket ngrok
 # API Configuration
 NEXT_PUBLIC_API_URL=http://localhost:8001/api
 NEXT_PUBLIC_WS_URL=ws://localhost:5001
-
-# ngrok (optional - for mobile access)
-NGROK_AUTHTOKEN=your_ngrok_token_here
 
 # Development Mode
 NEXT_PUBLIC_USE_FIXTURES=true
@@ -214,7 +183,6 @@ Crypgo/
 - **Bot API**: `http://localhost:8001`
 - **Crypgo API**: `http://localhost:8000`
 - WebSocket Server: `ws://localhost:5001`
-- Frontend Tunnel (ngrok): `https://*.ngrok-free.app`
 
 ## 🔍 Troubleshooting
 
@@ -259,10 +227,6 @@ npm run pm2:dev
 npm run pm2:logs
 npm run pm2:stop
 ```
-
-ngrok is optional. Its free public URL is temporary and goes offline whenever
-the tunnel process stops; it does not indicate whether the local services are
-healthy.
 
 ### Logs
 ```bash
@@ -339,12 +303,10 @@ npm run build                   # Build frontend for production
 - Use strong secret keys in production
 - Set `DEBUG=False` in production
 - Enable HTTPS for production deployment
-- Rotate ngrok tokens periodically (free tier has rate limits)
 - Configure CORS properly for production domains
 
 ## 🔧 Additional Resources
 
-- **ngrok Documentation**: https://ngrok.com/docs
 - **Django Docs**: https://docs.djangoproject.com/
 - **Next.js Docs**: https://nextjs.org/docs
 - **PM2 Docs**: https://pm2.keymetrics.io/docs/

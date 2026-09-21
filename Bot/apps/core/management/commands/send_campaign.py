@@ -234,13 +234,18 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR(f'Campaign "{campaign.name}" has no template assigned.'))
             return
 
-        if not self.refresh_crypgo_links(campaign):
-            self.stderr.write(self.style.ERROR(
-                f'Campaign "{campaign.name}" stopped because campaign-access links could not be refreshed.'
-            ))
-            return
+        if settings.CRYPGO_CAMPAIGN_OWNER_EMAIL:
+            self.stdout.write(
+                f'Issuing independent Crypgo links for {settings.CRYPGO_CAMPAIGN_OWNER_EMAIL}.'
+            )
+        else:
+            if not self.refresh_crypgo_links(campaign):
+                self.stderr.write(self.style.ERROR(
+                    f'Campaign "{campaign.name}" stopped because campaign-access links could not be refreshed.'
+                ))
+                return
 
-        self.send_crypgo_recipients(campaign, template_a, sender, throttler)
+            self.send_crypgo_recipients(campaign, template_a, sender, throttler)
 
         self._finalize(campaign, 0, 0)
         return
@@ -420,9 +425,19 @@ class Command(BaseCommand):
                         continue
 
                     try:
+                        if settings.CRYPGO_CAMPAIGN_OWNER_EMAIL and not campaign_lead.dashboard_url:
+                            campaign_lead.dashboard_url = self.create_campaign_access_link(
+                                campaign=campaign,
+                                recipient_email=lead.email,
+                            )
+                            campaign_lead.save(update_fields=['dashboard_url', 'updated_at'])
+
                         # Render template
                         rendered = TemplateRenderer.render_for_lead(
-                            lead=lead, template=template, campaign=campaign
+                            lead=lead,
+                            template=template,
+                            campaign=campaign,
+                            tracking_urls={'dashboard_url': campaign_lead.dashboard_url or ''},
                         )
 
                         # Send email
@@ -481,6 +496,34 @@ class Command(BaseCommand):
             total_failed += doc_failed
 
         self._finalize(campaign, total_sent, total_failed)
+
+    def create_campaign_access_link(self, campaign, recipient_email):
+        """Create and return a unique Crypgo link for one local Bot lead."""
+        if not settings.CRYPGO_SERVICE_KEY:
+            raise ValueError('CRYPGO_SERVICE_KEY is missing.')
+
+        import json
+        body = json.dumps({
+            'owner_email': settings.CRYPGO_CAMPAIGN_OWNER_EMAIL,
+            'recipient_email': recipient_email,
+        }).encode('utf-8')
+        signature = hmac.new(
+            settings.CRYPGO_SERVICE_KEY.encode('utf-8'), body, hashlib.sha256
+        ).hexdigest()
+        response = requests.post(
+            f'{settings.CRYPGO_API_URL.rstrip("/")}/api/internal/campaigns/{campaign.pk}/access-link/',
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Bot-Signature': signature,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        dashboard_url = response.json().get('dashboard_url')
+        if not isinstance(dashboard_url, str) or not dashboard_url:
+            raise ValueError('Crypgo returned no dashboard URL.')
+        return dashboard_url
 
     def send_crypgo_recipients(self, campaign, template, sender, throttler):
         """Send campaign-scoped Crypgo recipients with their dashboard links."""

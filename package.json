@@ -11,7 +11,6 @@
     "lint": "next lint",
     "predeploy": "npm run build",
     "deploy": "touch out/.nojekyll && gh-pages -d out --dotfiles",
-    "tunnel:frontend": "node start-tunnel.js",
     "start-dev": "cmd /c scripts/start-dev.bat",
     "start-dev:nix": "bash scripts/start-dev.sh",
     "pm2:dev": "npm run migrate:all && pm2 start ecosystem.config.cjs",

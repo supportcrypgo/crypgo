@@ -20,7 +20,7 @@ const TimeLine = () => {
         <div className="text-center">
           <motion.div
             whileInView={{ y: 0, opacity: 1 }}
-            initial={{ y: "-100%", opacity: 0 }}
+            initial={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.6 }}
           >
             <p className="text-muted sm:text-28 text-18 mb-9">
@@ -32,7 +32,7 @@ const TimeLine = () => {
           </motion.div>
           <motion.div
             whileInView={{ scale: 1, opacity: 1 }}
-            initial={{ scale: 0.8, opacity: 0 }}
+            initial={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6 }}
           >
             <div className="md:block hidden relative">
