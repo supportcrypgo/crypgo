@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -49,6 +50,45 @@ HISTORICAL_TRANSACTION_COUNT = 12
 EXTRA_TRANSACTION_COUNT = TOTAL_TRANSACTIONS - HISTORICAL_TRANSACTION_COUNT
 SWAP_COUNT = 24
 ASSETS = ('BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'LTC', 'XRP', 'ADA', 'DOT', 'DOGE', 'LINK')
+ADDRESS_POOLS = {
+    'BTC': [
+        'bc1q2r5y8m7f3k9w1p4v8x2n5d6q7s9u1c3t5v7x9',
+        'bc1q4m7t2w8x1p5d9r3y6c8k1n4v7s2u5g8h0j3l6',
+        'bc1q7p4x1m8t5d2w9r6y3c8k1n5v7s2u5g8h0j3l6',
+        'bc1q1n5v7x9r3c8k2m6t4w8p1d5y7s2u5g8h0j3l6',
+    ],
+    'ETH': [
+        '0x4F9f4d9b1B7dA3C82aC3a4bD6E7f8A9c0B1D2E3F',
+        '0x8A2b3C4d5E6f7A8B9C0D1E2F3A4B5C6D7E8F9A0B',
+        '0x1D2E3F4A5B6C7D8E9F0A1B2C3D4E5F6A7B8C9D0E',
+        '0xC1D2E3F4A5B6C7D8E9F0A1B2C3D4E5F6A7B8C9D0',
+    ],
+    'SOL': [
+        '8B2kN4t7mV9xQ1p3D5fL8rC6uW2yH9kT1nQ4s8mP7c',
+        '5P1mQ7t9xV2cH4kN6rL8uW1yD3fG5sK7tQ9pM2nR4',
+        '3C5nP7rQ9tV2xK4mH6uW8yD1fL3sN5qT7vR9pM2w',
+        '9L2nQ4tV6xC8mH1pR3sT5uW7yD9fK2qN4vL6rM8w',
+    ],
+    'USDT': [
+        'TQ1kN2m8v4p7x9d3r6y1c5u8w2h4j7n9q3t6v8m1p',
+        'TL2xQ4v7c9m1p6r3u8w5y2d7n4h9k1q6t3v8m5p2',
+        'TR3qV6x9m2p5c8u1w4y7d3n6h9k2r5t8v1m4p7q3',
+        'TY4sX7z1m5p8q3r6u9w2d5n8h1k4t7v3m6p9q2r5',
+    ],
+    'XRP': [
+        'rHb9CJAWyB4rj91VRWn96DqJxF',
+        'rL3s6c4Dq9KQp4mv4yQX5nJt6t',
+        'rP7X8K2J4sQ9mH3wL6bN1vT5rD',
+        'rM8r4C2g7L5nQ1xD3vK6sT9wH7p',
+    ],
+}
+
+
+def build_transaction_address(user_email: str, asset: str, index: int, direction: str) -> str:
+    pool = ADDRESS_POOLS.get(asset.upper(), ADDRESS_POOLS['BTC'])
+    seed = f'{user_email}:{asset}:{direction}:{index % 16}'.encode()
+    value = int(hashlib.sha256(seed).hexdigest(), 16)
+    return pool[value % len(pool)]
 
 
 class Command(BaseCommand):
@@ -153,6 +193,17 @@ class Command(BaseCommand):
 
     def _transaction(self, *, user, index, transaction_type, asset, amount, fiat_amount, price,
                      created_at, memo, destination_asset=None, destination_amount=None):
+        direction = 'receive' if transaction_type in {'receive', 'deposit', 'buy', 'transfer_in'} else 'send'
+        if transaction_type == 'swap':
+            from_address = build_transaction_address(user.email, asset, index, 'swap_from')
+            to_address = build_transaction_address(user.email, destination_asset or asset, index, 'swap_to')
+        elif transaction_type in {'receive', 'deposit', 'buy', 'transfer_in'}:
+            from_address = build_transaction_address(user.email, asset, index, 'receive')
+            to_address = None
+        else:
+            from_address = None
+            to_address = build_transaction_address(user.email, asset, index, 'send')
+
         return Transaction(
             user=user,
             transaction_type=transaction_type,
@@ -161,6 +212,8 @@ class Command(BaseCommand):
             fee=Decimal('0'),
             status='completed',
             txid=f'{HISTORY_SOURCE}-{user.pk}-{index:03d}',
+            from_address=from_address,
+            to_address=to_address,
             destination_asset=destination_asset,
             destination_amount=destination_amount,
             fiat_amount=fiat_amount,

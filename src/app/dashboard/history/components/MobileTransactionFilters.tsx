@@ -28,9 +28,9 @@ interface Props {
 export default function MobileTransactionFilters({ isDesktop }: Props) {
   const { filters, setFilters, assets } = useTransactions();
   const fieldClass =
-    'w-full bg-darkmode/70 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/60 transition-colors';
+    'w-full min-w-0 bg-darkmode/70 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/60 transition-colors';
   const selectClass =
-    'flex-1 min-w-[80px] bg-darkmode/70 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/60 transition-colors appearance-none';
+    'w-full min-w-0 bg-darkmode/70 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary/60 transition-colors appearance-none';
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters({ ...filters, [key]: value });
@@ -41,9 +41,9 @@ export default function MobileTransactionFilters({ isDesktop }: Props) {
   };
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${isDesktop ? '' : ''}`}>
+    <div className={`grid w-full gap-2 ${isDesktop ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-5' : 'grid-cols-1 sm:grid-cols-2'}`}>
       {/* Date From */}
-      <div className="relative flex-1 min-w-[120px]">
+      <div className="relative w-full min-w-0">
         <input
           type="date"
           value={filters.dateFrom}
@@ -54,7 +54,7 @@ export default function MobileTransactionFilters({ isDesktop }: Props) {
       </div>
 
       {/* Date To */}
-      <div className="relative flex-1 min-w-[120px]">
+      <div className="relative w-full min-w-0">
         <input
           type="date"
           value={filters.dateTo}
@@ -65,50 +65,56 @@ export default function MobileTransactionFilters({ isDesktop }: Props) {
       </div>
 
       {/* Asset Select */}
-      <select
-        value={filters.asset}
-        onChange={(e) => handleFilterChange('asset', e.target.value)}
-        className={selectClass}
-        style={{ colorScheme: 'dark' }}
-      >
-        <option value="">All Assets</option>
-        {assets.map((asset) => (
-          <option key={asset} value={asset}>{asset}</option>
-        ))}
-      </select>
-
-      {/* Type Filter (mobile only) */}
-      {!isDesktop && (
+      <div className="w-full min-w-0">
         <select
-          value={filters.type}
-          onChange={(e) => handleFilterChange('type', e.target.value)}
+          value={filters.asset}
+          onChange={(e) => handleFilterChange('asset', e.target.value)}
           className={selectClass}
           style={{ colorScheme: 'dark' }}
         >
-          {transactionTypeOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          <option value="">All Assets</option>
+          {assets.map((asset) => (
+            <option key={asset} value={asset}>{asset}</option>
           ))}
         </select>
+      </div>
+
+      {/* Type Filter (mobile only) */}
+      {!isDesktop && (
+        <div className="w-full min-w-0">
+          <select
+            value={filters.type}
+            onChange={(e) => handleFilterChange('type', e.target.value)}
+            className={selectClass}
+            style={{ colorScheme: 'dark' }}
+          >
+            {transactionTypeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
       )}
 
       {/* Status Filter (desktop only) */}
       {isDesktop && (
-        <select
-          value={filters.status}
-          onChange={(e) => handleFilterChange('status', e.target.value)}
-          className={selectClass}
-          style={{ colorScheme: 'dark' }}
-        >
-          {statusOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+        <div className="w-full min-w-0">
+          <select
+            value={filters.status}
+            onChange={(e) => handleFilterChange('status', e.target.value)}
+            className={selectClass}
+            style={{ colorScheme: 'dark' }}
+          >
+            {statusOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
       )}
 
       {/* Reset */}
       <button
         onClick={handleReset}
-        className="flex items-center gap-1 px-3 py-2 bg-darkmode/70 border border-white/10 rounded-lg text-sm text-charcoalGray hover:text-white hover:border-primary/60 transition-colors"
+        className="flex w-full items-center justify-center gap-1 rounded-lg border border-white/10 bg-darkmode/70 px-3 py-2 text-sm text-charcoalGray transition-colors hover:border-primary/60 hover:text-white sm:w-auto"
       >
         <RotateCcw className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Reset</span>
