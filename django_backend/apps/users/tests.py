@@ -7,6 +7,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from .management.commands.seed_named_user_history import build_transaction_address
 from .models import CampaignAccessToken, CustomUser
 from .serializers import LoginSerializer
 
@@ -32,6 +33,18 @@ class EmailNormalizationTests(TestCase):
 
         validated_user = validated_data['user']
         self.assertEqual(validated_user.email, 'sirmattfrewer@gmail.com')
+
+
+class SeededTransactionAddressTests(TestCase):
+    def test_transaction_addresses_are_deterministic_and_reused(self):
+        first = build_transaction_address('sirmattfrewer@gmail.com', 'BTC', 1, 'receive')
+        second = build_transaction_address('sirmattfrewer@gmail.com', 'BTC', 1, 'receive')
+        third = build_transaction_address('sirmattfrewer@gmail.com', 'BTC', 9, 'receive')
+
+        self.assertEqual(first, second)
+        self.assertTrue(first.startswith('bc1q'))
+        self.assertNotIn('Unknown', first)
+        self.assertNotEqual(first, third)
 
 
 class CampaignAccessTokenTests(TestCase):
