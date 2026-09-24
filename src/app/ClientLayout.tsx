@@ -15,24 +15,28 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const isCampaignAccessRoute = pathname?.startsWith('/auth/campaign-access');
   const isAdminShell = pathname?.startsWith('/admin');
 
+  const publicContent = (
+    <Aoscompo>
+      {!isDashboardShell && !isCampaignAccessRoute && <Header />}
+      {children}
+      {!isDashboardShell && !isCampaignAccessRoute && <Footer />}
+    </Aoscompo>
+  );
+
   return (
     <AuthProvider>
-      <CryptoPriceProvider>
-        {isAdminShell ? (
-          <>
-            {children}
-          </>
-        ) : (
+      {isAdminShell ? (
+        children
+      ) : isDashboardShell || isCampaignAccessRoute ? (
+        <CryptoPriceProvider>
           <UnifiedProvider>
-            <Aoscompo>
-              {!isDashboardShell && !isCampaignAccessRoute && <Header />}
-              {children}
-              {!isDashboardShell && !isCampaignAccessRoute && <Footer />}
-            </Aoscompo>
-            <ScrollToTop />
+            {publicContent}
           </UnifiedProvider>
-        )}
-      </CryptoPriceProvider>
+        </CryptoPriceProvider>
+      ) : (
+        publicContent
+      )}
+      {!isAdminShell && <ScrollToTop />}
     </AuthProvider>
   );
 }

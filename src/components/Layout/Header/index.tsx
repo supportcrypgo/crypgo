@@ -131,7 +131,8 @@ const Header: React.FC = () => {
             <Link
               href="/?signin=1"
               className="hidden lg:block bg-transparent text-primary border hover:bg-primary border-primary hover:text-darkmode px-4 py-2 rounded-lg"
-              onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                 setIsSignInOpen(true);
               }}
             >
@@ -177,7 +178,8 @@ const Header: React.FC = () => {
             <Link
               href="/?signup=1"
               className="hidden lg:block bg-primary text-darkmode hover:bg-transparent hover:text-primary border border-primary px-4 py-2 rounded-lg"
-              onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                 setIsSignUpOpen(true);
               }}
             >
@@ -246,7 +248,8 @@ const Header: React.FC = () => {
               <Link
                 href="/?signin=1"
                 className="bg-transparent border border-primary text-primary px-4 py-2 rounded-lg hover:bg-blue-600 hover:text-white"
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   setIsSignInOpen(true);
                   setNavbarOpen(false);
                 }}
@@ -256,7 +259,8 @@ const Header: React.FC = () => {
               <Link
                 href="/?signup=1"
                 className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                onClick={() => {
+                onClick={(event) => {
+                  event.preventDefault();
                   setIsSignUpOpen(true);
                   setNavbarOpen(false);
                 }}
