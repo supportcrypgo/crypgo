@@ -18,6 +18,7 @@ interface BalanceCardProps {
   performanceMetrics?: PerformanceMetrics | null;
   availableBalance?: number;
   maskBalance?: boolean;
+  walletError?: string | null;
 }
 
 function formatCurrency(value: number) {
@@ -91,7 +92,7 @@ function AnimatedCurrency({ value, isDesktop }: { value: number; isDesktop: bool
   );
 }
 
-export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop = false, editable = false, userId, performanceMetrics, availableBalance, maskBalance = false }: BalanceCardProps) {
+export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop = false, editable = false, userId, performanceMetrics, availableBalance, maskBalance = false, walletError = null }: BalanceCardProps) {
   const getLivePrice = (ticker: string) => {
     const keyMap: Record<string, keyof Prices> = {
       BTC: 'bitcoin',
@@ -116,9 +117,11 @@ export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop
         days30: performanceMetrics.performance30d ?? null,
       }
     : null;
-  const balanceStr = isLoading || maskBalance ? '$0.00' : formatCurrency(totalBalance);
+  const balanceStr = walletError ? '--' : isLoading || maskBalance ? '$0.00' : formatCurrency(totalBalance);
   const [balanceWhole, balanceCents] = balanceStr.split('.');
-  const balanceDigits = isLoading || maskBalance ? (
+  const balanceDigits = walletError ? (
+    <span>--</span>
+  ) : isLoading || maskBalance ? (
     <>
       <span>{balanceWhole}</span>
       <span className={isDesktop ? 'text-[0.5em] align-baseline ml-[0.05em] tabular-nums' : 'text-[1em] align-baseline ml-0 tabular-nums'}>

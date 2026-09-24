@@ -41,10 +41,10 @@ const Hero = () => {
               </p>
             </div>
             <h1 className="font-medium lg:text-76 md:text-70 text-54 lg:text-start text-center text-white mb-10">
-              See your full <span className="text-primary">portfolio.</span>
+              Earn on your <span className="text-primary">Crypto.</span>
             </h1>
             <p className="max-w-xl text-muted text-opacity-80 text-lg leading-8 lg:text-start text-center">
-              See your full portfolio, understand every movement, and manage your assets from one focused account.
+              Global infrastructure platform for digital assets
             </p>
             <div className="hidden md:flex items-center md:justify-start justify-center gap-4 mt-10">
               <Link href="/?signup=1" className="text-darkmode bg-primary border border-primary px-5 py-3 rounded-lg font-medium hover:bg-transparent hover:text-primary transition-colors">

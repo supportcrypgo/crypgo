@@ -31,7 +31,7 @@ interface DashboardViewProps {
 
 export default function DashboardView({ userId }: DashboardViewProps) {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const { walletAssets: unifiedWalletAssets, walletSummary: unifiedWalletSummary, isLoading: unifiedLoading } = useUnified();
+  const { walletAssets: unifiedWalletAssets, walletSummary: unifiedWalletSummary, walletError: unifiedWalletError, isLoading: unifiedLoading } = useUnified();
   const [menuOpen, setMenuOpen] = useState(false);
   const [adminRawWalletAssets, setAdminRawWalletAssets] = useState<UnifiedWalletAsset[]>([]);
   const [walletLoading, setWalletLoading] = useState(false);
@@ -117,6 +117,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
 
   const watchlistAssets = useMemo(() => assets, [assets]);
   const isLoading = pricesLoading || walletLoading || unifiedLoading;
+  const walletErrorMessage = userId ? walletError : unifiedWalletError;
   const displayedTotalBalance = currentWalletSummary.totalBalance;
 
   const { allSnapshots } = useSnapshotCapture(userId, prices);
@@ -140,6 +141,11 @@ export default function DashboardView({ userId }: DashboardViewProps) {
               <p className="text-xs text-amber-400">{pricesError}</p>
             </div>
           )}
+          {walletErrorMessage && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+              <p className="text-xs text-amber-400">Wallet data is temporarily unavailable. Retrying automatically...</p>
+            </div>
+          )}
 
           <BalanceCard
             totalBalance={displayedTotalBalance}
@@ -149,6 +155,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
             userId={userId}
             performanceMetrics={performanceMetrics}
             availableBalance={currentWalletSummary.availableBalance}
+            walletError={walletErrorMessage}
           />
 
           <section className="space-y-3">
@@ -179,6 +186,11 @@ export default function DashboardView({ userId }: DashboardViewProps) {
                   <p className="text-xs text-amber-400">{pricesError}</p>
                 </div>
               )}
+              {walletErrorMessage && (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+                  <p className="text-xs text-amber-400">Wallet data is temporarily unavailable. Retrying automatically...</p>
+                </div>
+              )}
 
               <BalanceCard
                 totalBalance={displayedTotalBalance}
@@ -189,6 +201,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
                 userId={userId}
                 performanceMetrics={performanceMetrics}
                 availableBalance={currentWalletSummary.availableBalance}
+                walletError={walletErrorMessage}
               />
 
               <Watchlist assets={watchlistAssets} isLoading={isLoading} />
