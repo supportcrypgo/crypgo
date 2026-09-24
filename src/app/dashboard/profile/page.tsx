@@ -16,7 +16,6 @@ import { useAuth } from '@/hooks/useAuth';
 
 type ProfileSection =
   | 'profile'
-  | 'edit'
   | 'id-verify'
   | 'security'
   | 'password'

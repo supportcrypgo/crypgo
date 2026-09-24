@@ -56,7 +56,7 @@ export default function MobileTransactionSummary() {
     'bg-orange-400',
   ];
 
-  const donutLabels = ['Buy', 'Sell', 'Deposit', 'Withdrawal'];
+  const donutLabels = ['Send', 'Receive', 'Swap'];
 
   return (
     <div className="grid grid-cols-2 gap-3">

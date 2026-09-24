@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import Logo from "@/components/Layout/Header/Logo";
 import { useState } from "react";
+import { authApi } from "@/data/api";
 const SignUp = () => {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -13,21 +14,14 @@ const SignUp = () => {
 
     setLoading(true);
     const data = new FormData(e.currentTarget);
-    const value = Object.fromEntries(data.entries());
-    const finalData = { ...value };
+    const email = String(data.get("email") || "");
+    const password = String(data.get("password") || "");
 
-    fetch("/api/register", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(finalData),
-    })
-      .then((res) => res.json())
-      .then((data) => {
+    authApi.register({ email, password })
+      .then(() => {
         toast.success("Successfully registered");
         setLoading(false);
-        router.push("/signin");
+        router.push("/?signin=1");
       })
       .catch((err) => {
         toast.error(err.message);
@@ -42,15 +36,6 @@ const SignUp = () => {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <div className="mb-[22px]">
-          <input
-            type="text"
-            placeholder="Name"
-            name="name"
-            required
-            className="w-full rounded-md border border-dark_border border-opacity-60 border-solid bg-transparent px-5 py-3 text-base text-dark outline-none transition placeholder:text-grey focus:border-primary focus-visible:shadow-none text-white dark:focus:border-primary"
-          />
-        </div>
         <div className="mb-[22px]">
           <input
             type="email"

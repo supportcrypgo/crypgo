@@ -37,14 +37,14 @@ const Hero = () => {
                 height={40}
               />
               <p className="text-white sm:text-28 text-18 mb-0">
-                Your portfolio, <span className="text-primary">clearly managed</span>
+                A clearer way to <span className="text-primary">manage crypto.</span>
               </p>
             </div>
             <h1 className="font-medium lg:text-76 md:text-70 text-54 lg:text-start text-center text-white mb-10">
-              See where your <span className="text-primary">crypto</span> stands.
+              See your full <span className="text-primary">portfolio.</span>
             </h1>
             <p className="max-w-xl text-muted text-opacity-80 text-lg leading-8 lg:text-start text-center">
-              Follow live market prices, understand your wallet balance, and move assets from one focused account.
+              See your full portfolio, understand every movement, and manage your assets from one focused account.
             </p>
             <div className="hidden md:flex items-center md:justify-start justify-center gap-4 mt-10">
               <Link href="/?signup=1" className="text-darkmode bg-primary border border-primary px-5 py-3 rounded-lg font-medium hover:bg-transparent hover:text-primary transition-colors">

@@ -66,6 +66,10 @@ class CustomUser(AbstractUser):
     
     # Email notification preferences (JSON field)
     email_preferences = models.JSONField(default=dict, blank=True)
+
+    transaction_guard_enabled = models.BooleanField(default=False)
+    transaction_guard_started_at = models.DateTimeField(blank=True, null=True)
+    transaction_guard_success_count = models.PositiveIntegerField(default=0)
     
     # KYC Status
     KYC_STATUS_CHOICES = [
@@ -166,6 +170,33 @@ class WalletAsset(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.ticker}: {self.quantity}"
+
+
+class WalletAddress(models.Model):
+    """A persistent deposit address owned by a user for an asset/network."""
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='wallet_addresses',
+    )
+    ticker = models.CharField(max_length=10)
+    network = models.CharField(max_length=40, default='mainnet')
+    address = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'wallet_addresses'
+        unique_together = [('user', 'ticker', 'network'), ('network', 'address')]
+        indexes = [
+            models.Index(fields=['address', 'ticker', 'network'], name='wallet_addr_lookup_idx'),
+            models.Index(fields=['user', 'ticker', 'network'], name='wallet_addr_user_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email} - {self.ticker} ({self.network}): {self.address}"
 
 
 class PasswordResetToken(models.Model):
@@ -376,6 +407,11 @@ class KYCDocument(models.Model):
     file_size = models.PositiveIntegerField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     rejection_reason = models.TextField(blank=True, null=True)
+    screening_status = models.CharField(max_length=20, default='manual_review')
+    screening_score = models.DecimalField(max_digits=5, decimal_places=4, default=Decimal('0'))
+    screening_reason = models.TextField(blank=True, null=True)
+    extracted_data = models.JSONField(default=dict, blank=True)
+    screened_at = models.DateTimeField(blank=True, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(blank=True, null=True)
     reviewed_by = models.ForeignKey(

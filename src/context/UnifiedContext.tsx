@@ -68,6 +68,7 @@ export interface UnifiedContextValue {
   // API actions
   refreshProfile: () => Promise<void>;
   refreshWallet: () => Promise<void>;
+  refreshTransactions: () => Promise<void>;
   refreshAll: () => Promise<void>;
 
   // ─── Transaction Execution ───
@@ -152,15 +153,21 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
         setWalletAssets(enrichedAssets);
         setWalletSummary(deriveWalletSummary(enrichedAssets));
       } else {
-        setWalletAssets([]);
-        setWalletSummary({
-          totalBalance: 0,
-          availableBalance: 0,
-          lockedBalance: 0,
-          change24h: 0,
-          change24hPercentage: 0,
-        });
+        // Preserve the last known wallet when a refresh fails transiently.
       }
+    }
+  };
+
+  const refreshTransactions = async () => {
+    if (!isAuthenticated) return;
+    try {
+      setTransactions(await walletApi.getTransactions());
+    } catch (error) {
+      console.error('Failed to refresh transactions:', error);
+      if (shouldUseFixtures() && userId) {
+        setTransactions(getTransactionsForUser(userId));
+      }
+      // Preserve the last known history on API/auth failures.
     }
   };
 
@@ -186,6 +193,7 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
         setWalletSummary(deriveWalletSummary(enrichedAssets));
         setTransactions(getTransactionsForUser(userId));
       }
+      // Preserve existing wallet and history when the API refresh fails.
     }
   };
 
@@ -225,24 +233,13 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
             const enrichedAssets = enrichWalletAssetsWithLivePrices(seedWalletAssets, prices);
             setWalletAssets(enrichedAssets);
             setWalletSummary(deriveWalletSummary(enrichedAssets));
-          } else {
-            setWalletAssets([]);
-            setWalletSummary({
-              totalBalance: 0,
-              availableBalance: 0,
-              lockedBalance: 0,
-              change24h: 0,
-              change24hPercentage: 0,
-            });
           }
 
-          setTransactions(
-            transactionsResult.status === 'fulfilled'
-              ? transactionsResult.value
-              : shouldUseFixtures()
-                ? getTransactionsForUser(userId)
-                : []
-          );
+          if (transactionsResult.status === 'fulfilled') {
+            setTransactions(transactionsResult.value);
+          } else if (shouldUseFixtures()) {
+            setTransactions(getTransactionsForUser(userId));
+          }
         }
       } catch (error) {
         console.error('Initial data fetch failed:', error);
@@ -254,16 +251,6 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
             setWalletAssets(enrichedAssets);
             setWalletSummary(summary);
             setTransactions(getTransactionsForUser(userId));
-          } else {
-            setWalletAssets([]);
-            setWalletSummary({
-              totalBalance: 0,
-              availableBalance: 0,
-              lockedBalance: 0,
-              change24h: 0,
-              change24hPercentage: 0,
-            });
-            setTransactions([]);
           }
         }
       } finally {
@@ -301,9 +288,9 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
       network: data.network,
       memo: data.memo,
     });
-    await refreshWallet();
+    await refreshAll();
     return result;
-  }, [refreshWallet]);
+  }, [refreshAll]);
 
   const executeReceiveTransaction = useCallback(async (data: { asset: string }) => {
     const result = await walletApi.getDepositAddress(data.asset);
@@ -317,9 +304,9 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
     amount: number;
   }) => {
     const result = await walletApi.swap(data);
-    await refreshWallet();
+    await refreshAll();
     return result;
-  }, [refreshWallet]);
+  }, [refreshAll]);
 
   const executeInternalTransfer = useCallback(async (data: {
     recipient: string;
@@ -328,9 +315,9 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
     memo?: string;
   }) => {
     const result = await walletApi.transfer(data);
-    await refreshWallet();
+    await refreshAll();
     return result;
-  }, [refreshWallet]);
+  }, [refreshAll]);
 
   // ─── Profile ───
   const updateUserProfile = useCallback(async (data: Partial<UnifiedUser>) => {
@@ -372,6 +359,7 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
 
       refreshProfile,
       refreshWallet,
+      refreshTransactions,
       refreshAll,
 
       // Transaction Execution
@@ -434,6 +422,7 @@ export function useUnified(): UnifiedContextValue {
       addProfile: () => undefined,
       refreshProfile: async () => undefined,
       refreshWallet: async () => undefined,
+      refreshTransactions: async () => undefined,
       refreshAll: async () => undefined,
 
       executeSendTransaction: async () => undefined,

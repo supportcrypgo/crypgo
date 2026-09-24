@@ -14,14 +14,21 @@ export function enrichWalletAssetsWithLivePrices(
       coingeckoKey && typeof coingeckoKey === 'string'
         ? prices[coingeckoKey as keyof Prices]
         : undefined;
-    const livePrice = priceEntry ? Number(priceEntry.usd ?? asset.price) : asset.price;
-    const live24hChange = priceEntry ? Number(priceEntry.usd_24h_change ?? asset.change24h) : asset.change24h;
+
+    const fallbackPrice = Number(asset.price ?? 0);
+    const livePriceValue = priceEntry ? Number(priceEntry.usd ?? fallbackPrice) : fallbackPrice;
+    const hasValidLivePrice = Number.isFinite(livePriceValue) && livePriceValue > 0;
+    const livePrice = hasValidLivePrice ? livePriceValue : fallbackPrice;
+
+    const live24hChangeValue = priceEntry ? Number(priceEntry.usd_24h_change ?? asset.change24h) : Number(asset.change24h ?? 0);
+    const live24hChange = Number.isFinite(live24hChangeValue) ? live24hChangeValue : Number(asset.change24h ?? 0);
+    const quantity = Number(asset.quantity ?? asset.availableQuantity ?? 0);
 
     return {
       ...asset,
       price: livePrice,
       change24h: live24hChange,
-      value: asset.quantity * livePrice,
+      value: quantity * livePrice,
     };
   });
 }

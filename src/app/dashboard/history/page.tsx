@@ -90,7 +90,7 @@ export default function TransactionHistoryPage() {
         {/* Summary metrics cards */}
         <MobileTransactionSummary />
 
-        {/* All / Buy / Sell / Deposit / Withdrawal tabs */}
+        {/* All / Send / Receive / Swap tabs */}
         <MobileTransactionTabs />
 
         {/* Filter controls row */}

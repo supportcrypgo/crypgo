@@ -35,30 +35,15 @@ export function PreviewSwapButton({
   if (swapResult) {
     return (
       <div className="space-y-4">
-        <div className="flex flex-col items-center gap-4 py-4">
-          <div className="w-16 h-16 rounded-full bg-success/20 flex items-center justify-center">
-            <CheckCircle2 className="w-8 h-8 text-success" />
+        <div className="flex items-center justify-center gap-3 py-4">
+          <div className="flex items-center gap-2 text-white font-medium">
+            <span>{swapResult.payAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+            <span>{swapResult.payTicker}</span>
           </div>
-          <p className="text-lg text-white font-semibold text-center">Swap Successful!</p>
-          <p className="text-xs text-charcoalGray text-center">Transaction completed</p>
-        </div>
-        
-        <div className="space-y-3 p-4 bg-white/3 rounded-xl border border-white/5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-charcoalGray">Transaction ID</span>
-            <span className="text-white font-mono truncate max-w-[180px]">{swapResult.txId}</span>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-charcoalGray">Date</span>
-            <span className="text-white">{new Date(swapResult.date).toLocaleString()}</span>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-charcoalGray">Rate</span>
-            <span className="text-white">{swapResult.rate}</span>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-charcoalGray">Network Fee</span>
-            <span className="text-white">{swapResult.fee.toFixed(6)} {swapResult.payTicker}</span>
+          <RefreshCw className="w-4 h-4 text-primary" />
+          <div className="flex items-center gap-2 text-white font-medium">
+            <span>{swapResult.receiveAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+            <span>{swapResult.receiveTicker}</span>
           </div>
         </div>
 
@@ -66,7 +51,7 @@ export function PreviewSwapButton({
           onClick={onSuccessClose}
           className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
         >
-          <RefreshCw className="w-5 h-5" />
+          <CheckCircle2 className="w-5 h-5" />
           <span>Done</span>
         </button>
       </div>

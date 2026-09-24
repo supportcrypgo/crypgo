@@ -5,9 +5,24 @@ import { useUnified } from '@/context/UnifiedContext';
 import { SwapExecutionPanel } from './SwapExecutionPanel';
 import { SwapIntelligencePanel } from './SwapIntelligencePanel';
 import { useSwapWorkspace } from './useSwapWorkspace';
-import ActionCautionModal from '@/components/Auth/ActionCautionModal';
+import CautionModal from '@/components/CautionModal';
 
-export function SwapWorkspace() {
+interface SwapWorkspaceProps {
+  onSuccessPageChange?: (visible: boolean) => void;
+  onSuccessDetailsChange?: (details: {
+    fromAmount: string;
+    fromTicker: string;
+    fromLogo: string;
+    toAmount: string;
+    toTicker: string;
+    toLogo: string;
+  } | null) => void;
+}
+
+export function SwapWorkspace({
+  onSuccessPageChange,
+  onSuccessDetailsChange,
+}: SwapWorkspaceProps) {
   const {
     tradeMode,
     setTradeMode,
@@ -21,9 +36,9 @@ export function SwapWorkspace() {
     slippage,
     setSlippage,
     isSwapping,
-    isCautionOpen,
     swapResult,
     error,
+    cautionOpen,
     isCalculating,
     quote,
     receiveAmount,
@@ -35,11 +50,34 @@ export function SwapWorkspace() {
     handleSwap,
     handleSuccessClose,
     handleRetry,
-    setIsCautionOpen,
+    closeCaution,
   } = useSwapWorkspace();
 
+  React.useEffect(() => {
+    if (swapResult && payAsset && receiveAsset) {
+      const details = {
+        fromAmount: String(swapResult.payAmount),
+        fromTicker: swapResult.payTicker,
+        fromLogo: payAsset.logo,
+        toAmount: String(swapResult.receiveAmount),
+        toTicker: swapResult.receiveTicker,
+        toLogo: receiveAsset.logo,
+      };
+      onSuccessDetailsChange?.(details);
+      onSuccessPageChange?.(true);
+      return;
+    }
+
+    if (!swapResult) {
+      onSuccessDetailsChange?.(null);
+      onSuccessPageChange?.(false);
+    }
+  }, [swapResult, payAsset, receiveAsset, onSuccessDetailsChange, onSuccessPageChange]);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[minmax(420px,1.25fr)_minmax(300px,0.8fr)] gap-4 max-w-[1400px] mx-auto h-full">
+    <>
+      <CautionModal isOpen={cautionOpen} onClose={closeCaution} />
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(420px,1.25fr)_minmax(300px,0.8fr)] gap-4 max-w-[1400px] mx-auto h-full">
       {/* Column 1 - Execution */}
       <SwapExecutionPanel
         tradeMode={tradeMode}
@@ -79,13 +117,11 @@ export function SwapWorkspace() {
           slippage={slippage}
           onSlippageChange={setSlippage}
           isCalculating={isCalculating}
+          swapResult={swapResult}
+          onSuccessClose={handleSuccessClose}
         />
       </div>
-
-      <ActionCautionModal
-        isOpen={isCautionOpen}
-        onClose={() => setIsCautionOpen(false)}
-      />
-    </div>
+      </div>
+    </>
   );
 }

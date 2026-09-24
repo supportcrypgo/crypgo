@@ -6,10 +6,8 @@ import { RotateCcw } from 'lucide-react';
 
 const transactionTypeOptions = [
   { value: '', label: 'All Types' },
-  { value: 'buy', label: 'Buy' },
-  { value: 'sell', label: 'Sell' },
-  { value: 'deposit', label: 'Deposit' },
-  { value: 'withdrawal', label: 'Withdrawal' },
+  { value: 'send', label: 'Send' },
+  { value: 'receive', label: 'Receive' },
   { value: 'swap', label: 'Swap' },
 ];
 

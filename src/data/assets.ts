@@ -583,40 +583,41 @@ export const ASSET_CONFIG = CRYPTO_ASSETS.map(toAssetConfig);
 
 // ─── Validation Helpers (re-exported for backward compatibility) ───
 
-/** Validate an address against network format rules */
+/** Validate a recipient address using real-world crypto compatibility rules.
+ * We intentionally avoid asset-specific prefix and charset enforcement because
+ * valid wallet addresses vary significantly across chains and address formats.
+ */
 export function validateAddress(address: string, network: SendNetworkOption): { isValid: boolean; isValidNetwork: boolean; error?: string } {
   if (!address || address.trim().length === 0) {
     return { isValid: false, isValidNetwork: false, error: 'Enter recipient address' };
   }
 
   const cleanAddress = address.trim();
-  
-  if (network.addressPrefix && !cleanAddress.startsWith(network.addressPrefix)) {
-    return { 
-      isValid: false, 
-      isValidNetwork: false, 
-      error: `This address does not match the selected network (${network.name}). Expected prefix: ${network.addressPrefix}` 
+
+  if (cleanAddress.includes(' ') || cleanAddress.includes('\n') || cleanAddress.includes('\t')) {
+    return {
+      isValid: false,
+      isValidNetwork: true,
+      error: 'Address cannot contain spaces or line breaks',
     };
   }
 
-  if (cleanAddress.length < network.addressLength - 5 || cleanAddress.length > network.addressLength + 5) {
-    return { 
-      isValid: false, 
-      isValidNetwork: true, 
-      error: `Invalid ${network.name} address length` 
+  const minLength = Math.max(10, network.addressLength - 20);
+  const maxLength = Math.max(network.addressLength + 40, 128);
+  if (cleanAddress.length < minLength || cleanAddress.length > maxLength) {
+    return {
+      isValid: false,
+      isValidNetwork: true,
+      error: `Address length is not valid for ${network.name}`,
     };
   }
 
-  if (network.addressCharset) {
-    const validChars = new Set(network.addressCharset.split(''));
-    const hasInvalidChar = cleanAddress.split('').some(c => !validChars.has(c.toLowerCase()));
-    if (hasInvalidChar) {
-      return { 
-        isValid: false, 
-        isValidNetwork: true, 
-        error: `Invalid characters in ${network.name} address` 
-      };
-    }
+  if (!/^[A-Za-z0-9]+$/.test(cleanAddress) && !/^0x[A-Fa-f0-9]+$/.test(cleanAddress)) {
+    return {
+      isValid: false,
+      isValidNetwork: true,
+      error: 'Address contains unsupported characters',
+    };
   }
 
   return { isValid: true, isValidNetwork: true };

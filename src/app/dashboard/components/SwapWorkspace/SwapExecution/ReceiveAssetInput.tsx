@@ -24,6 +24,8 @@ export function ReceiveAssetInput({
   excludedAsset,
   onSelectAsset,
 }: ReceiveAssetInputProps) {
+  const hasQuote = Boolean(receiveAsset && typeof quoteAmount === 'number' && quoteAmount > 0);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -53,7 +55,7 @@ export function ReceiveAssetInput({
               <Loader2 className="w-6 h-6 text-primary animate-spin" />
               <span className="text-base font-bold text-white">Calculating...</span>
             </div>
-          ) : receiveAsset && quoteAmount !== null ? (
+          ) : receiveAsset && typeof quoteAmount === 'number' && quoteAmount > 0 ? (
             <div className="h-full flex flex-col justify-between">
               <div>
                 <p className="text-[28px] font-medium text-white">

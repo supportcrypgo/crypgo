@@ -7,8 +7,6 @@ import { Transaction } from '../types';
 import {
   ArrowUpRight,
   ArrowDownLeft,
-  ArrowUpFromLine,
-  ArrowDownToLine,
   RefreshCw,
   CheckCircle,
   Clock,
@@ -36,10 +34,6 @@ function getTypeIcon(type: string) {
       return <ArrowDownLeft className="w-4 h-4 text-green-400" />;
     case 'sell':
       return <ArrowUpRight className="w-4 h-4 text-red-400" />;
-    case 'deposit':
-      return <ArrowDownToLine className="w-4 h-4 text-blue-400" />;
-    case 'withdrawal':
-      return <ArrowUpFromLine className="w-4 h-4 text-orange-400" />;
     case 'send':
       return <ArrowUpRight className="w-4 h-4 text-red-400" />;
     case 'receive':
@@ -59,10 +53,6 @@ function getTypeBg(type: string) {
     case 'sell':
     case 'send':
       return 'bg-red-500/10';
-    case 'deposit':
-      return 'bg-blue-500/10';
-    case 'withdrawal':
-      return 'bg-orange-500/10';
     case 'swap':
       return 'bg-primary/10';
     default:
@@ -171,7 +161,7 @@ function TransactionCard({ tx }: { tx: Transaction }) {
       <div className="flex items-center justify-between">
         <div>
           <span className={`text-lg font-bold ${tx.amountPositive ? 'text-green-400' : 'text-red-400'}`}>
-            {tx.amountPositive ? '+' : '-'}{tx.amount.toLocaleString()} {tx.asset}
+            {tx.amountPositive ? '+' : '-'}{Math.abs(tx.amount).toLocaleString()} {tx.asset}
           </span>
         </div>
         <span className="text-sm text-charcoalGray">

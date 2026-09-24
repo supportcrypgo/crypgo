@@ -22,7 +22,7 @@ export interface Transaction {
 
 export type CounterpartyType = 'send' | 'receive';
 
-export type TransactionType = 'buy' | 'sell' | 'deposit' | 'withdrawal' | 'send' | 'receive' | 'swap';
+export type TransactionType = 'send' | 'receive' | 'swap';
 
 export type TransactionStatus = 'completed' | 'pending' | 'failed' | 'cancelled';
 
@@ -46,7 +46,7 @@ export interface TransactionFilterState {
   status: string;
 }
 
-export type TransactionTabType = 'all' | 'buy' | 'sell' | 'deposit' | 'withdrawal' | 'send' | 'receive' | 'swap';
+export type TransactionTabType = 'all' | 'send' | 'receive' | 'swap';
 
 export interface TransactionContextType {
   transactions: Transaction[];

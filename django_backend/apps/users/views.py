@@ -12,7 +12,7 @@ from .models import (
     CustomUser,
     PasswordResetToken, MagicLinkToken, CampaignAccessToken, WalletAsset, UserHistoricalSnapshot, UserSession, KYCDocument,
     UserActivityLog, Transaction,
-    Notification, PushSubscription, DeviceFingerprint,
+    Notification, PushSubscription, DeviceFingerprint, WalletAddress,
     TransactionTranslation, InternalTransfer,
 )
 from .serializers import (
@@ -28,7 +28,12 @@ from .serializers import (
     InternalTransferSerializer, ResetPasswordConfirmSerializer, TwoFASetupSerializer,
     TwoFAVerifySerializer, TwoFADisableSerializer, AvatarUploadSerializer,
 )
-from .services import send_reset_password_email, send_magic_link_email, build_campaign_access_url
+from .wallet_address import build_wallet_address
+from .kyc_screening import screen_document
+from .services import (
+    send_reset_password_email, send_magic_link_email, build_campaign_access_url,
+    begin_guarded_transaction, record_guarded_transaction, send_transaction_caution_email,
+)
 import logging
 import time
 import hashlib
@@ -1081,14 +1086,29 @@ class MyKYCDocumentCreateView(generics.CreateAPIView):
         except Exception as exc:
             return Response({'error': 'Failed to process upload', 'details': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Create KYCDocument record
-        doc = KYCDocument.objects.create(
+        screening = screen_document(saved_path, upload_file.content_type or '', document_type)
+        screening_status = screening['screening_status']
+        document_status = 'rejected' if screening_status == 'rejected' else 'pending'
+
+        # Replace the user's existing submission for this document slot so
+        # rejected documents can be resubmitted without violating uniqueness.
+        doc, _created = KYCDocument.objects.update_or_create(
             user=request.user,
             document_type=document_type,
-            file_url=file_url,
-            original_filename=original_filename,
-            file_size=saved_size,
-            status='pending'
+            defaults={
+                'file_url': file_url,
+                'original_filename': original_filename,
+                'file_size': saved_size,
+                'status': document_status,
+                'rejection_reason': screening['screening_reason'] if document_status == 'rejected' else None,
+                'screening_status': screening_status,
+                'screening_score': screening['screening_score'],
+                'screening_reason': screening['screening_reason'],
+                'extracted_data': screening['extracted_data'],
+                'screened_at': timezone.now(),
+                'reviewed_at': None,
+                'reviewed_by': None,
+            },
         )
 
         UserActivityLog.objects.create(
@@ -1302,18 +1322,13 @@ class DepositAddressView(APIView):
         asset = validated_data['asset']
         user = request.user
         
-        # Deterministic address generation based on user ID + asset
-        address_seed = hashlib.sha256(f"crypgo:{user.id}:{asset}:mainnet".encode('utf-8')).hexdigest()
-        if asset == 'BTC':
-            address = f"bc1{address_seed[:30]}"
-        elif asset in ['ETH', 'USDT', 'USDC']:
-            address = f"0x{address_seed[:40]}"
-        elif asset == 'SOL':
-            address = f"{address_seed[:44]}"
-        elif asset == 'LTC':
-            address = f"L{address_seed[:33]}"
-        else:
-            address = f"{address_seed[:40]}"
+        wallet_address, _ = WalletAddress.objects.get_or_create(
+            user=user,
+            ticker=asset,
+            network='mainnet',
+            defaults={'address': build_wallet_address(user.id, asset)},
+        )
+        address = wallet_address.address
         
         return Response({
             'success': True,
@@ -1402,8 +1417,89 @@ class WithdrawView(APIView):
         fee = validated_data['fee']
         address = validated_data['destination_address']
         wallet = validated_data['wallet']
+
+        internal_address = WalletAddress.objects.filter(
+            address__iexact=address,
+            ticker=asset,
+            network='mainnet',
+            is_active=True,
+        ).select_related('user').first()
+
+        if internal_address and internal_address.user_id != user.id:
+            recipient = internal_address.user
+            with transaction.atomic():
+                locked_user, blocked = begin_guarded_transaction(user)
+                if blocked:
+                    send_transaction_caution_email(locked_user)
+                    return Response({
+                        'code': 'TRANSACTION_CAUTION_REQUIRED',
+                        'message': 'This transaction was blocked by your account safety limit.',
+                    }, status=status.HTTP_409_CONFLICT)
+
+                recipient_wallet, _ = WalletAsset.objects.select_for_update().get_or_create(
+                    user=recipient,
+                    ticker=asset,
+                    defaults={'name': wallet.name, 'quantity': 0, 'available_quantity': 0, 'locked_quantity': 0},
+                )
+                wallet.available_quantity -= amount
+                wallet.quantity -= amount
+                wallet.save(update_fields=['available_quantity', 'quantity'])
+                recipient_wallet.available_quantity += amount
+                recipient_wallet.quantity += amount
+                recipient_wallet.save(update_fields=['available_quantity', 'quantity'])
+
+                sender_address = WalletAddress.objects.filter(
+                    user=user, ticker=asset, network='mainnet', is_active=True
+                ).values_list('address', flat=True).first()
+                sender_tx = Transaction.objects.create(
+                    user=user,
+                    transaction_type='transfer_out',
+                    asset=asset,
+                    amount=amount,
+                    status='completed',
+                    counterparty=recipient,
+                    to_address=address,
+                    memo='Internal transfer',
+                    completed_at=timezone.now(),
+                )
+                recipient_tx = Transaction.objects.create(
+                    user=recipient,
+                    transaction_type='transfer_in',
+                    asset=asset,
+                    amount=amount,
+                    status='completed',
+                    counterparty=user,
+                    from_address=sender_address,
+                    memo='Internal transfer',
+                    completed_at=timezone.now(),
+                )
+                InternalTransfer.objects.create(
+                    sender=user,
+                    recipient=recipient,
+                    asset=asset,
+                    amount=amount,
+                    status='COMPLETED',
+                    sender_transaction=sender_tx,
+                    recipient_transaction=recipient_tx,
+                    completed_at=timezone.now(),
+                )
+                record_guarded_transaction(locked_user)
+
+            return Response({
+                'success': True,
+                'message': f'Transferred {amount} {asset} to {recipient.email}.',
+                'transaction': TransactionSerializer(sender_tx).data,
+            })
         
         with transaction.atomic():
+            locked_user, blocked = begin_guarded_transaction(user)
+            if blocked:
+                send_transaction_caution_email(locked_user)
+                return Response({
+                    'code': 'TRANSACTION_CAUTION_REQUIRED',
+                    'message': 'This transaction was blocked by your account safety limit.',
+                }, status=status.HTTP_409_CONFLICT)
+
             # Deduct from wallet
             wallet.available_quantity -= (amount + fee)
             wallet.quantity -= (amount + fee)
@@ -1427,6 +1523,7 @@ class WithdrawView(APIView):
                 status='success',
                 metadata={'amount': str(amount), 'asset': asset, 'txid': tx.txid, 'address': address},
             )
+            record_guarded_transaction(locked_user)
         
         return Response({
             'success': True,
@@ -1489,6 +1586,14 @@ class TransferView(APIView):
         wallet = validated_data['wallet']
         
         with transaction.atomic():
+            locked_user, blocked = begin_guarded_transaction(user)
+            if blocked:
+                send_transaction_caution_email(locked_user)
+                return Response({
+                    'code': 'TRANSACTION_CAUTION_REQUIRED',
+                    'message': 'This transaction was blocked by your account safety limit.',
+                }, status=status.HTTP_409_CONFLICT)
+
             # Get or create recipient wallet
             recipient_wallet, _ = WalletAsset.objects.get_or_create(
                 user=recipient,
@@ -1505,6 +1610,13 @@ class TransferView(APIView):
             recipient_wallet.available_quantity += amount
             recipient_wallet.quantity += amount
             recipient_wallet.save(update_fields=['available_quantity', 'quantity'])
+
+            sender_address = WalletAddress.objects.filter(
+                user=user, ticker=asset, network='mainnet', is_active=True
+            ).values_list('address', flat=True).first()
+            recipient_address = WalletAddress.objects.filter(
+                user=recipient, ticker=asset, network='mainnet', is_active=True
+            ).values_list('address', flat=True).first()
             
             # Create transactions for both users
             sender_tx = Transaction.objects.create(
@@ -1514,6 +1626,7 @@ class TransferView(APIView):
                 amount=amount,
                 status='completed',
                 counterparty=recipient,
+                to_address=recipient_address,
                 memo=memo,
                 completed_at=timezone.now(),
             )
@@ -1525,7 +1638,19 @@ class TransferView(APIView):
                 amount=amount,
                 status='completed',
                 counterparty=user,
+                from_address=sender_address,
                 memo=memo,
+                completed_at=timezone.now(),
+            )
+
+            InternalTransfer.objects.create(
+                sender=user,
+                recipient=recipient,
+                asset=asset,
+                amount=amount,
+                status='COMPLETED',
+                sender_transaction=sender_tx,
+                recipient_transaction=recipient_tx,
                 completed_at=timezone.now(),
             )
             
@@ -1536,6 +1661,7 @@ class TransferView(APIView):
                 status='success',
                 metadata={'amount': str(amount), 'asset': asset, 'recipient': recipient.email, 'txid': sender_tx.txid},
             )
+            record_guarded_transaction(locked_user)
         
         return Response({
             'success': True,
@@ -1570,8 +1696,10 @@ class BuyCryptoView(APIView):
         
         # Simulated prices (would come from CoinGecko)
         prices = {
-            'BTC': 43000, 'ETH': 2200, 'USDT': 1.0,
-            'USDC': 1.0, 'SOL': 95, 'LTC': 72,
+            'BTC': Decimal('86316.205'), 'ETH': Decimal('2750.955'), 'USDT': Decimal('1.0'),
+            'USDC': Decimal('1.0'), 'BNB': Decimal('786.575'), 'SOL': Decimal('118.02'),
+            'LTC': Decimal('62.6135'), 'XRP': Decimal('1.582'), 'ADA': Decimal('0.25266'),
+            'DOT': Decimal('1.17765'), 'DOGE': Decimal('0.09987'), 'LINK': Decimal('12.9545'),
         }
         price = prices.get(asset, 100)
         crypto_amount = amount_usd / price
@@ -1644,8 +1772,10 @@ class SwapCryptoView(APIView):
         
         # Simulated prices
         prices = {
-            'BTC': 43000, 'ETH': 2200, 'USDT': 1.0,
-            'USDC': 1.0, 'SOL': 95, 'LTC': 72,
+            'BTC': Decimal('86316.205'), 'ETH': Decimal('2750.955'), 'USDT': Decimal('1.0'),
+            'USDC': Decimal('1.0'), 'BNB': Decimal('786.575'), 'SOL': Decimal('118.02'),
+            'LTC': Decimal('62.6135'), 'XRP': Decimal('1.582'), 'ADA': Decimal('0.25266'),
+            'DOT': Decimal('1.17765'), 'DOGE': Decimal('0.09987'), 'LINK': Decimal('12.9545'),
         }
         from_price = prices.get(from_asset, 100)
         to_price = prices.get(to_asset, 100)
@@ -1653,6 +1783,14 @@ class SwapCryptoView(APIView):
         to_amount = usd_value / to_price
         
         with transaction.atomic():
+            locked_user, blocked = begin_guarded_transaction(user)
+            if blocked:
+                send_transaction_caution_email(locked_user)
+                return Response({
+                    'code': 'TRANSACTION_CAUTION_REQUIRED',
+                    'message': 'This transaction was blocked by your account safety limit.',
+                }, status=status.HTTP_409_CONFLICT)
+
             # Deduct from asset
             wallet.available_quantity -= amount
             wallet.quantity -= amount
@@ -1691,6 +1829,7 @@ class SwapCryptoView(APIView):
                 status='success',
                 metadata={'from_asset': from_asset, 'from_amount': str(amount), 'to_asset': to_asset, 'to_amount': str(to_amount)},
             )
+            record_guarded_transaction(locked_user)
         
         return Response({
             'success': True,

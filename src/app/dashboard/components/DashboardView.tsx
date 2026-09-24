@@ -135,7 +135,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
         )}
 
         <main className="px-5 pt-4 pb-[88px] space-y-5">
-          {pricesError && (
+          {pricesError && !pricesLoading && !prices && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
               <p className="text-xs text-amber-400">{pricesError}</p>
             </div>
@@ -174,7 +174,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
         <main className="px-6 pt-6 pb-10 space-y-5">
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_460px] gap-5">
             <div className="space-y-5">
-              {pricesError && (
+              {pricesError && !pricesLoading && !prices && (
                 <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
                   <p className="text-xs text-amber-400">{pricesError}</p>
                 </div>

@@ -111,9 +111,9 @@ export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop
 
   const perf = performanceMetrics
     ? {
-        today: performanceMetrics.performance24h ?? 0,
-        days7: performanceMetrics.performance7d ?? 0,
-        days30: performanceMetrics.performance30d ?? 0,
+        today: performanceMetrics.performance24h ?? null,
+        days7: performanceMetrics.performance7d ?? null,
+        days30: performanceMetrics.performance30d ?? null,
       }
     : null;
   const balanceStr = isLoading || maskBalance ? '$0.00' : formatCurrency(totalBalance);
@@ -215,8 +215,8 @@ export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop
   const mobilePerformance = perf && (
     <div className="mt-2 flex items-center justify-center gap-2 text-xs">
       <span className="text-charcoalGray">30D</span>
-      <span className={`font-semibold ${perf.days30 >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-        {perf.days30 >= 0 ? '+' : ''}{perf.days30.toFixed(2)}%
+      <span className={`font-semibold ${((perf.days30 ?? 0) >= 0 ? 'text-green-400' : 'text-red-400')}`}>
+        {(perf.days30 ?? 0) >= 0 ? '+' : ''}{(perf.days30 ?? 0).toFixed(2)}%
       </span>
     </div>
   );
@@ -260,14 +260,14 @@ export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop
               <>
                 <div className="min-w-0 text-center rounded-lg border border-charcoalGray/20 px-3 py-2 xl:rounded-none xl:border-0 xl:border-r xl:border-charcoalGray/30 xl:px-4 xl:py-0">
                   <p className="text-xs text-charcoalGray mb-1">7 Days</p>
-                  <p className={`text-sm font-semibold ${perf.days7 >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {perf.days7 >= 0 ? '+' : ''}{perf.days7.toFixed(2)}%
+                  <p className={`text-sm font-semibold ${((perf.days7 ?? 0) >= 0 ? 'text-green-400' : 'text-red-400')}`}>
+                    {(perf.days7 ?? 0) >= 0 ? '+' : ''}{(perf.days7 ?? 0).toFixed(2)}%
                   </p>
                 </div>
                 <div className="min-w-0 text-center rounded-lg border border-charcoalGray/20 px-3 py-2 xl:rounded-none xl:border-0 xl:px-4 xl:py-0">
                   <p className="text-xs text-charcoalGray mb-1">30 Days</p>
-                  <p className={`text-sm font-semibold ${perf.days30 >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {perf.days30 >= 0 ? '+' : ''}{perf.days30.toFixed(2)}%
+                  <p className={`text-sm font-semibold ${((perf.days30 ?? 0) >= 0 ? 'text-green-400' : 'text-red-400')}`}>
+                    {(perf.days30 ?? 0) >= 0 ? '+' : ''}{(perf.days30 ?? 0).toFixed(2)}%
                   </p>
                 </div>
               </>

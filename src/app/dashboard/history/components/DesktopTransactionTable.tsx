@@ -7,8 +7,6 @@ import { Transaction } from '../types';
 import {
   ArrowUpRight,
   ArrowDownLeft,
-  ArrowUpFromLine,
-  ArrowDownToLine,
   RefreshCw,
   CheckCircle,
   Clock,
@@ -35,8 +33,6 @@ function getTypeIcon(type: string) {
   switch (type) {
     case 'buy': return <ArrowDownLeft className="w-4 h-4 text-green-400" />;
     case 'sell': return <ArrowUpRight className="w-4 h-4 text-red-400" />;
-    case 'deposit': return <ArrowDownToLine className="w-4 h-4 text-blue-400" />;
-    case 'withdrawal': return <ArrowUpFromLine className="w-4 h-4 text-orange-400" />;
     case 'send': return <ArrowUpRight className="w-4 h-4 text-red-400" />;
     case 'receive': return <ArrowDownLeft className="w-4 h-4 text-green-400" />;
     case 'swap': return <RefreshCw className="w-4 h-4 text-primary" />;
@@ -48,8 +44,6 @@ function getTypeBg(type: string) {
   switch (type) {
     case 'buy': case 'receive': return 'bg-green-500/10';
     case 'sell': case 'send': return 'bg-red-500/10';
-    case 'deposit': return 'bg-blue-500/10';
-    case 'withdrawal': return 'bg-orange-500/10';
     case 'swap': return 'bg-primary/10';
     default: return 'bg-deepSlate';
   }
@@ -212,7 +206,7 @@ export default function DesktopTransactionTable() {
                 {/* Amount */}
                 <td className="py-4 px-3 text-right">
                   <span className={`text-sm font-semibold ${tx.amountPositive ? 'text-green-400' : 'text-red-400'}`}>
-                    {tx.amountPositive ? '+' : '-'}{tx.amount.toLocaleString()}
+                    {tx.amountPositive ? '+' : '-'}{Math.abs(tx.amount).toLocaleString()}
                   </span>
                 </td>
 

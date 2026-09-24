@@ -12,7 +12,7 @@ from apps.users.models import CustomUser, Transaction, WalletAsset
 TARGET_EMAILS = (
     'sirmattfrewer@gmail.com',
     'austin433433@gmail.com',
-    'team.drharrignton@gmail.com',
+    'team.drharrington@gmail.com',
 )
 TARGET_USERS = {
     'sirmattfrewer@gmail.com': {
@@ -31,7 +31,7 @@ TARGET_USERS = {
         'phone': '+12352145862',
         'country': 'United States',
     },
-    'team.drharrignton@gmail.com': {
+    'team.drharrington@gmail.com': {
         'username': 'matthewharrington',
         'first_name': 'Matthew',
         'last_name': 'Harrington',

@@ -196,7 +196,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken }: { onSuccess?: 
 
       <p className="text-body-secondary text-white text-base">
         Not a member yet?{" "}
-        <Link href="/signup" className="text-primary hover:underline">
+        <Link href="/?signup=1" className="text-primary hover:underline">
           Sign Up
         </Link>
       </p>

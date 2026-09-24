@@ -6,8 +6,6 @@ import { TransactionTabType } from '../types';
 
 const tabs: { id: TransactionTabType; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'deposit', label: 'Deposit' },
-  { id: 'withdrawal', label: 'Withdrawal' },
   { id: 'send', label: 'Send' },
   { id: 'receive', label: 'Receive' },
   { id: 'swap', label: 'Swap' },
