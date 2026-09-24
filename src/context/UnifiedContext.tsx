@@ -51,6 +51,7 @@ export interface UnifiedContextValue {
   // Wallet
   walletAssets: UnifiedWalletAsset[];
   walletSummary: UnifiedWalletSummary;
+  walletError: string | null;
 
   // Transactions
   transactions: UnifiedTransaction[];
@@ -117,7 +118,32 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
   const [transactions, setTransactions] = useState<UnifiedTransaction[]>([]);
   const [profiles, setProfiles] = useState<UnifiedUser[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [walletError, setWalletError] = useState<string | null>(null);
   const walletAssetsRef = useRef<UnifiedWalletAsset[]>([]);
+
+  const loadWalletWithRetry = useCallback(async () => {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const apiAssets = await walletApi.getMyWallet();
+        const enrichedAssets = enrichWalletAssetsWithLivePrices(apiAssets, prices);
+        setWalletAssets(enrichedAssets);
+        setWalletSummary(deriveWalletSummary(enrichedAssets));
+        setWalletError(null);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+        }
+      }
+    }
+
+    const message = lastError instanceof Error ? lastError.message : 'Unable to load wallet data.';
+    setWalletError(message);
+    console.error('Failed to load wallet after retries:', lastError);
+  }, [prices]);
 
   useEffect(() => {
     walletAssetsRef.current = walletAssets;
@@ -139,12 +165,7 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
   const refreshWallet = async () => {
     if (!isAuthenticated) return;
     try {
-      const apiAssets = await walletApi.getMyWallet();
-      const seedAssets = apiAssets as UnifiedWalletAsset[];
-      const enrichedAssets = enrichWalletAssetsWithLivePrices(seedAssets, prices);
-      const summary = deriveWalletSummary(enrichedAssets);
-      setWalletAssets(enrichedAssets);
-      setWalletSummary(summary);
+      await loadWalletWithRetry();
     } catch (error) {
       console.error('Failed to refresh wallet:', error);
       if (shouldUseFixtures() && userId) {
@@ -157,6 +178,23 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
       }
     }
   };
+
+  useEffect(() => {
+    if (!isAuthenticated || !userId) return;
+
+    const refreshOnReturn = () => {
+      if (document.visibilityState === 'visible') {
+        void loadWalletWithRetry();
+      }
+    };
+
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
+  }, [isAuthenticated, userId, loadWalletWithRetry]);
 
   const refreshTransactions = async () => {
     if (!isAuthenticated) return;
@@ -228,11 +266,15 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
             const enrichedAssets = enrichWalletAssetsWithLivePrices(seedWalletAssets, prices);
             setWalletAssets(enrichedAssets);
             setWalletSummary(deriveWalletSummary(enrichedAssets));
+            setWalletError(null);
           } else if (shouldUseFixtures()) {
             const seedWalletAssets = getWalletForUser(userId);
             const enrichedAssets = enrichWalletAssetsWithLivePrices(seedWalletAssets, prices);
             setWalletAssets(enrichedAssets);
             setWalletSummary(deriveWalletSummary(enrichedAssets));
+            setWalletError(null);
+          } else {
+            await loadWalletWithRetry();
           }
 
           if (transactionsResult.status === 'fulfilled') {
@@ -347,6 +389,7 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
 
       walletAssets: enrichedAssets,
       walletSummary,
+      walletError,
 
       transactions,
       txMetrics: deriveTxMetrics(transactions),
@@ -381,6 +424,7 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
     isLoadingData,
     enrichedAssets,
     walletSummary,
+    walletError,
     transactions,
     profiles,
     executeSendTransaction,
@@ -415,6 +459,7 @@ export function useUnified(): UnifiedContextValue {
         change24h: 0,
         change24hPercentage: 0,
       },
+      walletError: null,
       transactions: [],
       txMetrics: { totalVolume: 0, totalTransactions: 0, completionRate: 0 },
       profiles: [],

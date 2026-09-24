@@ -1080,7 +1080,10 @@ export const walletApi = {
    */
   async getMyWallet(): Promise<UnifiedWalletAsset[]> {
     const response = await authenticatedRequest<any[]>('/wallet/assets/');
-    return Array.isArray(response) ? response.map(normalizeWalletAsset) : [];
+    if (!Array.isArray(response)) {
+      throw new ApiRequestError('Wallet data was returned in an unexpected format.', 502);
+    }
+    return response.map(normalizeWalletAsset);
   },
 
   /**
