@@ -10,11 +10,10 @@ const configuredApiBaseUrl = (() => {
   const normalized = value.replace(/\/+$/, '');
   return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
 })();
-const isLocalBrowser =
-  typeof window === 'undefined' ||
-  window.location.hostname === 'localhost' ||
-  window.location.hostname === '127.0.0.1';
-const API_BASE_URL = isLocalBrowser ? configuredApiBaseUrl : '/backend-api';
+// Browser requests stay same-origin so HttpOnly access/refresh cookies are
+// always sent to the same host as the frontend. The Next.js rewrite forwards
+// /backend-api to the configured Django API in local and production builds.
+const API_BASE_URL = typeof window === 'undefined' ? configuredApiBaseUrl : '/backend-api';
 const ACCESS_TOKEN_STORAGE_KEY = 'access_token';
 
 function getAccessToken(): string | null {
@@ -95,7 +94,23 @@ function extractErrorMessage(errorData: unknown, status?: number): string {
   return status ? `Login failed (${status}). Check console for details.` : 'Something went wrong.';
 }
 
-function handleUnauthorized(): Promise<never> {
+export class ApiRequestError extends Error {
+  code?: string;
+  status: number;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export function isTransactionCautionError(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.code === 'TRANSACTION_CAUTION_REQUIRED';
+}
+
+function handleUnauthorized(): never {
   clearAccessToken();
   if (
     typeof window !== 'undefined' &&
@@ -105,7 +120,7 @@ function handleUnauthorized(): Promise<never> {
   ) {
     window.location.replace('/');
   }
-  return new Promise<never>(() => {});
+  throw new Error('Your session has expired. Please sign in again.');
 }
 
 function normalizeUser(user: any): UnifiedUser {
@@ -215,10 +230,27 @@ function resolveWalletAddress(tx: any): string | undefined {
 }
 
 function normalizeTransaction(tx: any): UnifiedTransaction {
+  const rawType = String(tx?.transaction_type || tx?.type || 'deposit').toLowerCase();
+  const explicitDirection = tx?.direction === 'send' || tx?.direction === 'receive' || tx?.direction === 'swap'
+    ? tx.direction
+    : undefined;
+  const typeMap: Record<string, UnifiedTransaction['type']> = {
+    withdrawal: 'send',
+    transfer_out: 'send',
+    transfer_in: 'receive',
+    deposit: 'receive',
+    buy: 'receive',
+    receive: 'receive',
+    send: 'send',
+    swap: 'swap',
+    transfer: 'send',
+  };
+  const normalizedType = typeMap[rawType] ?? explicitDirection ?? 'receive';
+
   return {
     id: String(tx?.id ?? ''),
     userId: String(tx?.user ?? tx?.user_id ?? ''),
-    type: (tx?.transaction_type || tx?.type || 'deposit') as UnifiedTransaction['type'],
+    type: normalizedType,
     asset: (tx?.asset || 'BTC') as UnifiedTransaction['asset'],
     amount: Number(tx?.amount ?? 0),
     price: Number(tx?.price_at_time ?? tx?.price ?? 0),
@@ -248,7 +280,7 @@ export interface LoginCredentials {
 
 export interface RegisterCredentials {
   email: string;
-  username: string;
+  username?: string;
   password: string;
   first_name?: string;
   last_name?: string;
@@ -294,6 +326,11 @@ export interface KYCDocument {
   file_name: string;
   file_size: number;
   status: 'pending' | 'approved' | 'rejected';
+  screening_status?: 'manual_review' | 'rejected';
+  screening_score?: number;
+  screening_reason?: string;
+  extracted_data?: Record<string, unknown>;
+  screened_at?: string;
   uploaded_at: string;
   reviewed_at?: string;
   reviewed_by?: string;
@@ -543,7 +580,8 @@ export interface TwoFAVerifyData {
 // ─── Helper: Make authenticated API request ───
 async function authenticatedRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  canRefresh = true
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -563,6 +601,15 @@ async function authenticatedRequest<T>(
 
   // Handle 401 Unauthorized
   if (response.status === 401) {
+    if (canRefresh && endpoint !== '/auth/refresh/') {
+      try {
+        await authApi.refreshToken();
+        return authenticatedRequest<T>(endpoint, options, false);
+      } catch {
+        // Fall through to the normal session-expired handling below.
+      }
+    }
+
     return handleUnauthorized();
   }
 
@@ -580,8 +627,10 @@ async function authenticatedRequest<T>(
   // Handle other errors
   if (response.status >= 400) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.detail || errorData.message || 'An error occurred.'
+    throw new ApiRequestError(
+      errorData.detail || errorData.message || 'An error occurred.',
+      response.status,
+      errorData.code
     );
   }
 
@@ -945,10 +994,14 @@ export const profileApi = {
 // ─── Wallet API (Authenticated User) ───
 
 export interface DepositAddressResponse {
+  success?: boolean;
   asset: string;
   address: string;
+  qrcode_url?: string;
+  minimum_deposit?: string;
+  estimated_confirmation?: string;
+  network?: string;
   qrCode?: string;
-  network: string;
   minDeposit?: string;
   memo?: string;
 }

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ShieldCheck, Upload, FileText, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import type { UnifiedUser } from '@/types/unified';
+import { kycApi, type KYCDocument as ApiKYCDocument } from '@/data/api';
 
 interface KYCDocument {
-  id: string;
-  type: 'id_card' | 'passport' | 'drivers_license' | 'selfie';
+  id: number | string;
+  type: 'id_front' | 'id_back' | 'proof_address';
   name: string;
   status: 'pending' | 'approved' | 'rejected' | 'not_submitted';
   file?: File;
@@ -16,21 +17,46 @@ interface KYCDocument {
 }
 
 const DOCUMENT_TYPES: { type: KYCDocument['type']; name: string; icon: React.ReactNode; description: string }[] = [
-  { type: 'id_card', name: 'Government ID', icon: <FileText className="w-5 h-5" />, description: 'National ID card or residence permit' },
-  { type: 'passport', name: 'Passport', icon: <ShieldCheck className="w-5 h-5" />, description: 'Valid international passport' },
-  { type: 'drivers_license', name: 'Driver\'s License', icon: <FileText className="w-5 h-5" />, description: 'Valid driving license with photo' },
-  { type: 'selfie', name: 'Selfie Verification', icon: <Upload className="w-5 h-5" />, description: 'Selfie holding your ID document' },
+  { type: 'id_front', name: 'Government ID - Front', icon: <FileText className="w-5 h-5" />, description: 'Front of a valid government-issued ID' },
+  { type: 'id_back', name: 'Government ID - Back', icon: <FileText className="w-5 h-5" />, description: 'Back of the same government-issued ID' },
+  { type: 'proof_address', name: 'Proof of Address', icon: <ShieldCheck className="w-5 h-5" />, description: 'Recent document showing your name and address' },
 ];
 
+function mapApiDocument(document: ApiKYCDocument): KYCDocument {
+  return {
+    id: document.id,
+    type: document.document_type as KYCDocument['type'],
+    name: DOCUMENT_TYPES.find((item) => item.type === document.document_type)?.name ?? document.document_type,
+    status: document.status,
+    uploadedAt: document.uploaded_at,
+    rejectionReason: document.rejection_reason ?? document.screening_reason ?? undefined,
+  };
+}
+
 export function IDVerificationContent({ user }: { user: UnifiedUser }) {
-  const [documents, setDocuments] = useState<KYCDocument[]>([
-    { id: '1', type: 'id_card', name: 'Government ID', status: 'not_submitted' },
-    { id: '2', type: 'passport', name: 'Passport', status: 'not_submitted' },
-    { id: '3', type: 'drivers_license', name: 'Driver\'s License', status: 'not_submitted' },
-    { id: '4', type: 'selfie', name: 'Selfie Verification', status: 'not_submitted' },
-  ]);
+  const [documents, setDocuments] = useState<KYCDocument[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement>>({});
+
+  useEffect(() => {
+    let active = true;
+    kycApi.getDocuments()
+      .then((uploadedDocuments) => {
+        if (!active) return;
+        const byType = new Map(uploadedDocuments.map((document) => [document.document_type, mapApiDocument(document)]));
+        setDocuments(DOCUMENT_TYPES.map(({ type, name }) => byType.get(type) ?? ({
+          id: `new-${type}`,
+          type,
+          name,
+          status: 'not_submitted',
+        })));
+      })
+      .catch((error) => console.error('Failed to load KYC documents:', error));
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleFileSelect = (docType: KYCDocument['type'], e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -48,16 +74,26 @@ export function IDVerificationContent({ user }: { user: UnifiedUser }) {
     }
 
     setUploading(docType);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setDocuments(prev => prev.map(doc => 
-        doc.type === docType 
-          ? { ...doc, status: 'pending' as const, file, preview: reader.result as string, uploadedAt: new Date().toISOString() }
-          : doc
-      ));
-      setUploading(null);
-    };
-    reader.readAsDataURL(file);
+    const formData = new FormData();
+    formData.append('document_type', docType);
+    formData.append('file', file);
+
+    kycApi.uploadDocument(formData)
+      .then((uploadedDocument) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setDocuments((previous) => previous.map((document) => (
+            document.type === docType
+              ? { ...mapApiDocument(uploadedDocument), file, preview: reader.result as string }
+              : document
+          )));
+        };
+        reader.readAsDataURL(file);
+      })
+      .catch((error) => {
+        alert(error instanceof Error ? error.message : 'Document upload failed.');
+      })
+      .finally(() => setUploading(null));
   };
 
   const getStatusIcon = (status: KYCDocument['status']) => {
@@ -207,7 +243,6 @@ export function IDVerificationContent({ user }: { user: UnifiedUser }) {
           <ul className="space-y-2 text-sm text-muted-foreground">
             <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" /> Documents must be valid and not expired</li>
             <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" /> All four corners of the document must be visible</li>
-            <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" /> Selfie must clearly show your face and the document</li>
             <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" /> Maximum file size: 5MB per document</li>
             <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" /> Accepted formats: JPG, PNG, WebP, PDF</li>
           </ul>

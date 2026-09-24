@@ -83,7 +83,7 @@ export default function DesktopTransactionSummary() {
           <PieChart className="w-4 h-4 text-primary" />
           <h3 className="text-sm font-semibold text-white">Volume by Type</h3>
         </div>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           {volumeByType.map((v) => (
             <div key={v.type} className="flex flex-col gap-1">
               <span className="text-xs text-charcoalGray capitalize">{v.type}</span>
@@ -93,9 +93,8 @@ export default function DesktopTransactionSummary() {
               <div className="w-full bg-deepSlate rounded-full h-1.5">
                 <div
                   className={`h-1.5 rounded-full ${
-                    v.type === 'buy' ? 'bg-green-400' :
-                    v.type === 'sell' ? 'bg-red-400' :
-                    v.type === 'deposit' ? 'bg-blue-400' : 'bg-orange-400'
+                    v.type === 'receive' ? 'bg-green-400' :
+                    v.type === 'send' ? 'bg-red-400' : 'bg-primary'
                   }`}
                   style={{ width: `${v.percentage}%` }}
                 />

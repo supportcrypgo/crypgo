@@ -8,7 +8,8 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
 
-from apps.users.models import WalletAsset
+from apps.users.models import WalletAsset, WalletAddress
+from apps.users.wallet_address import build_wallet_address
 
 User = get_user_model()
 
@@ -17,6 +18,7 @@ ASSET_DEFS = [
     ("BTC", "Bitcoin"),
     ("ETH", "Ethereum"),
     ("USDT", "Tether"),
+    ("USDC", "USD Coin"),
     ("BNB", "BNB"),
     ("SOL", "Solana"),
     ("LTC", "Litecoin"),
@@ -47,6 +49,7 @@ def create_wallet_assets_for_new_user(sender, instance, created, **kwargs):
     )
 
     to_create = []
+    address_to_create = []
     for ticker, name in ASSET_DEFS:
         if ticker not in existing_tickers:
             to_create.append(
@@ -59,6 +62,15 @@ def create_wallet_assets_for_new_user(sender, instance, created, **kwargs):
                     locked_quantity=0,
                 )
             )
+        address_to_create.append(
+            WalletAddress(
+                user=instance,
+                ticker=ticker,
+                network='mainnet',
+                address=build_wallet_address(instance.id, ticker),
+            )
+        )
 
     if to_create:
         WalletAsset.objects.bulk_create(to_create, ignore_conflicts=True)
+    WalletAddress.objects.bulk_create(address_to_create, ignore_conflicts=True)

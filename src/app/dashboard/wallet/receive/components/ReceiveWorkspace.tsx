@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { ReceiveAssetInfo, NetworkOption, ReceiveAddressInfo } from './types';
-import { RECEIVE_ASSETS, generateAddress, generateMemo } from './assetData';
+import { RECEIVE_ASSETS, generateMemo } from './assetData';
 import ReceiveWorkspaceLeft from './ReceiveWorkspace/ReceiveWorkspaceLeft';
 import ReceiveInformationPanel from './ReceiveWorkspace/ReceiveInformationPanel';
 import { useUnified } from '@/context/UnifiedContext';
@@ -30,7 +30,11 @@ export function ReceiveWorkspace() {
     setIsGenerating(true);
     try {
       const response = await executeReceiveTransactionRef.current({ asset: selectedAsset.ticker });
-      const address = response?.address || generateAddress(selectedNetwork);
+      if (!response?.address) {
+        throw new Error('The deposit address service returned no address.');
+      }
+
+      const address = response.address;
       const memo = response?.memo || generateMemo(selectedNetwork);
 
       const newAddressInfo: ReceiveAddressInfo = {
@@ -43,16 +47,8 @@ export function ReceiveWorkspace() {
 
       setAddressInfo(newAddressInfo);
     } catch (error) {
-      const address = generateAddress(selectedNetwork);
-      const memo = generateMemo(selectedNetwork);
-      setAddressInfo({
-        address,
-        memo,
-        network: selectedNetwork,
-        asset: selectedAsset,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      });
-      toast.error('Loaded a fallback deposit address');
+      setAddressInfo(null);
+      toast.error(error instanceof Error ? error.message : 'Failed to load deposit address.');
       console.error('Failed to load deposit address:', error);
     } finally {
       setIsGenerating(false);

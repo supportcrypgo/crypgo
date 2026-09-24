@@ -11,6 +11,56 @@ import json
 import requests
 
 
+TRANSACTION_GUARD_LIMIT = 2
+
+
+def begin_guarded_transaction(user):
+    """Lock the user and decide whether a send or swap may proceed."""
+    from .models import CustomUser
+
+    locked_user = CustomUser.objects.select_for_update().get(pk=user.pk)
+    blocked = (
+        locked_user.transaction_guard_enabled and
+        locked_user.transaction_guard_success_count >= TRANSACTION_GUARD_LIMIT
+    )
+    return locked_user, blocked
+
+
+def record_guarded_transaction(user):
+    """Record a completed send or swap while the user row is locked."""
+    user.transaction_guard_success_count += 1
+    user.save(update_fields=['transaction_guard_success_count', 'updated_at'])
+
+
+def send_transaction_caution_email(user):
+    """Notify the account owner when a guarded transaction is blocked."""
+    html_message = render_to_string('emails/transaction_caution.html', {'user': user})
+    plain_message = (
+        f"Hello {user.get_full_name() or user.username},\n\n"
+        'It appears your current location does not match the region currently '
+        'associated with your account.\n\n'
+        'If you have recently moved or believe this is an error, please update '
+        'your regional settings in your profile.\n\n'
+        'Keeping your location details accurate helps us prevent service disruption '
+        'and secure your transactions.\n\n'
+        'Thank you for your prompt attention.\n\n'
+        'Sincerely,\nCrypgo'
+    )
+    try:
+        send_mail(
+            subject='Please review your Crypgo regional settings',
+            message=plain_message,
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crypgo.com'),
+            recipient_list=[user.email],
+            fail_silently=False,
+            html_message=html_message,
+        )
+        return True
+    except Exception:
+        logger.exception('Failed to send transaction caution email to %s', user.email)
+        return False
+
+
 def send_magic_link_email(user, raw_token):
     """Send a plain-text password-change link through the configured SMTP backend."""
     link = f"{settings.FRONTEND_URL.rstrip('/')}/?magicToken={raw_token}"

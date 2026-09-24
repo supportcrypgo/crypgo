@@ -2,8 +2,6 @@
 
 import {
   User,
-  UserRoundPen,
-  Phone,
   ShieldCheck,
   KeyRound,
   Clock,
@@ -26,8 +24,6 @@ interface ProfileActionsProps {
 export default function ProfileActions({ activeTab, onTabChange, onLogout }: ProfileActionsProps) {
   const actions: ActionItem[] = [
     { icon: <User className="w-5 h-5" />, label: 'Profile', tab: 'profile' },
-    { icon: <UserRoundPen className="w-5 h-5" />, label: 'Edit Profile', tab: 'edit' },
-    { icon: <Phone className="w-5 h-5" />, label: 'Phone Verification', tab: 'profile' },
     { icon: <ShieldCheck className="w-5 h-5" />, label: 'ID Verification', tab: 'id-verify' },
     { icon: <KeyRound className="w-5 h-5" />, label: 'Reset Password', tab: 'password' },
     { icon: <Clock className="w-5 h-5" />, label: 'Activity Log', tab: 'activity' },

@@ -12,6 +12,7 @@ whitenoise==6.7.0
 dj-database-url==2.2.0
 psycopg[binary]==3.3.4
 Pillow==11.0.0
+pypdf==5.9.0
 reportlab==5.0.0
 svglib==2.2.0
 pyotp==2.8.0

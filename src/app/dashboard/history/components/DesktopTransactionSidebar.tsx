@@ -9,8 +9,6 @@ import {
   HelpCircle,
   ArrowUpRight,
   ArrowDownLeft,
-  ArrowUpFromLine,
-  ArrowDownToLine,
   RefreshCw,
   CheckCircle,
   PieChart,
@@ -21,8 +19,8 @@ function getTypeIcon(type: string) {
   switch (type) {
     case 'buy': return <ArrowDownLeft className="w-3.5 h-3.5 text-green-400" />;
     case 'sell': return <ArrowUpRight className="w-3.5 h-3.5 text-red-400" />;
-    case 'deposit': return <ArrowDownToLine className="w-3.5 h-3.5 text-blue-400" />;
-    case 'withdrawal': return <ArrowUpFromLine className="w-3.5 h-3.5 text-orange-400" />;
+    case 'receive': return <ArrowDownLeft className="w-3.5 h-3.5 text-green-400" />;
+    case 'send': return <ArrowUpRight className="w-3.5 h-3.5 text-red-400" />;
     case 'swap': return <RefreshCw className="w-3.5 h-3.5 text-primary" />;
     default: return null;
   }
@@ -31,8 +29,8 @@ function getTypeIcon(type: string) {
 const volumeColors: Record<string, string> = {
   buy: 'bg-green-400',
   sell: 'bg-red-400',
-  deposit: 'bg-blue-400',
-  withdrawal: 'bg-orange-400',
+  receive: 'bg-green-400',
+  send: 'bg-red-400',
   swap: 'bg-primary',
 };
 
@@ -73,10 +71,10 @@ export default function DesktopTransactionSidebar() {
         {/* Wallet actions */}
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-deepSlate">
           <button className="flex-1 px-3 py-2 rounded-xl bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors">
-            Deposit
+            Receive
           </button>
           <button className="flex-1 px-3 py-2 rounded-xl bg-deepSlate/50 text-charcoalGray text-xs font-semibold hover:text-white hover:bg-deepSlate transition-colors">
-            Withdraw
+            Send
           </button>
           <button className="flex-1 px-3 py-2 rounded-xl bg-deepSlate/50 text-charcoalGray text-xs font-semibold hover:text-white hover:bg-deepSlate transition-colors">
             Transfer
@@ -161,10 +159,8 @@ export default function DesktopTransactionSidebar() {
               <div key={tx.id} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${
-                    tx.type === 'buy' ? 'bg-green-400' :
-                    tx.type === 'sell' ? 'bg-red-400' :
-                    tx.type === 'deposit' ? 'bg-blue-400' :
-                    tx.type === 'swap' ? 'bg-primary' : 'bg-orange-400'
+                    tx.type === 'receive' ? 'bg-green-400' :
+                    tx.type === 'swap' ? 'bg-primary' : 'bg-red-400'
                   }`} />
                   <span className="text-xs text-charcoalGray">
                     {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)} {tx.asset}
@@ -174,7 +170,7 @@ export default function DesktopTransactionSidebar() {
                   <span className={`text-xs font-medium ${
                     tx.amountPositive ? 'text-green-400' : 'text-red-400'
                   }`}>
-                    {tx.amountPositive ? '+' : '-'}{tx.amount.toLocaleString()}
+                    {tx.amountPositive ? '+' : '-'}{Math.abs(tx.amount).toLocaleString()}
                   </span>
                 </div>
               </div>

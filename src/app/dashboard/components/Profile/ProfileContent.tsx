@@ -70,13 +70,6 @@ export function ProfileContent({ user }: { user: UnifiedUser }) {
             <span className="flex-1">{user.country}</span>
           </div>
 
-          {/* Contact/Phone */}
-          <div className="flex flex-col gap-1 px-0 py-4 transition-colors sm:h-16 sm:flex-row sm:items-center sm:gap-0 sm:py-0 md:rounded-lg md:px-4 md:hover:bg-muted/20">
-            <span className="w-auto text-sm font-medium text-muted-foreground sm:w-40">Contact</span>
-            <span className="hidden w-8 text-muted-foreground/30 sm:block">:</span>
-            <span className="flex-1">{user.phone}</span>
-          </div>
-
         </div>
       </div>
     </div>

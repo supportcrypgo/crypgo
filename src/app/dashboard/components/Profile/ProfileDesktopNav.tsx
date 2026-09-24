@@ -2,7 +2,6 @@
 
 import {
   User,
-  UserRoundPen,
   ShieldCheck,
   KeyRound,
   Clock,
@@ -24,7 +23,6 @@ interface DesktopNavProps {
 export default function ProfileDesktopNav({ activeTab, onTabChange }: DesktopNavProps) {
   const navItems: NavItem[] = [
     { id: 'profile', icon: <User className="w-5 h-5" />, label: 'Profile' },
-    { id: 'edit', icon: <UserRoundPen className="w-5 h-5" />, label: 'Edit Profile' },
     { id: 'id-verify', icon: <ShieldCheck className="w-5 h-5" />, label: 'ID Verification' },
     { id: 'security', icon: <HardDrive className="w-5 h-5" />, label: 'Security' },
     { id: 'password', icon: <KeyRound className="w-5 h-5" />, label: 'Change Password' },

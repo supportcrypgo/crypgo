@@ -49,15 +49,20 @@ export function usePerformanceMetrics(
     const past30dBalance = findClosestSnapshot(30 * 24 * 60 * 60 * 1000);
 
     const calcPct = (past: number | null): number | null => {
-      if (past === null || past === 0) return past === null ? null : 0;
+      if (past === null) return null;
+      if (past === 0) return currentTotalBalance === 0 ? 0 : null;
       return ((currentTotalBalance - past) / past) * 100;
     };
 
     const btcPrice = prices?.bitcoin;
+    const fallback24h = Number.isFinite(btcPrice?.usd_24h_change ?? NaN) ? btcPrice?.usd_24h_change ?? 0 : 0;
+    const fallback7d = Number.isFinite(btcPrice?.usd_7d_change ?? NaN) ? btcPrice?.usd_7d_change ?? 0 : 0;
+    const fallback30d = Number.isFinite(btcPrice?.usd_30d_change ?? NaN) ? btcPrice?.usd_30d_change ?? 0 : 0;
+
     return {
-      performance24h: calcPct(past24hBalance) ?? btcPrice?.usd_24h_change ?? null,
-      performance7d: calcPct(past7dBalance) ?? btcPrice?.usd_7d_change ?? null,
-      performance30d: calcPct(past30dBalance) ?? btcPrice?.usd_30d_change ?? null,
+      performance24h: calcPct(past24hBalance) ?? fallback24h,
+      performance7d: calcPct(past7dBalance) ?? fallback7d,
+      performance30d: calcPct(past30dBalance) ?? fallback30d,
     };
   }, [snapshots, currentTotalBalance, prices]);
 }

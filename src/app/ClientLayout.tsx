@@ -16,13 +16,13 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const isAdminShell = pathname?.startsWith('/admin');
 
   return (
-    <CryptoPriceProvider>
-      {isAdminShell ? (
-        <>
-          {children}
-        </>
-      ) : (
-        <AuthProvider>
+    <AuthProvider>
+      <CryptoPriceProvider>
+        {isAdminShell ? (
+          <>
+            {children}
+          </>
+        ) : (
           <UnifiedProvider>
             <Aoscompo>
               {!isDashboardShell && !isCampaignAccessRoute && <Header />}
@@ -31,8 +31,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             </Aoscompo>
             <ScrollToTop />
           </UnifiedProvider>
-        </AuthProvider>
-      )}
-    </CryptoPriceProvider>
+        )}
+      </CryptoPriceProvider>
+    </AuthProvider>
   );
 }

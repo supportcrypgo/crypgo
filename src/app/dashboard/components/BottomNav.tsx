@@ -6,10 +6,13 @@ import { LayoutDashboard, Clock, User } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab?: string;
+  hidden?: boolean;
 }
 
-export default function BottomNav({ activeTab = 'dashboard' }: BottomNavProps) {
+export default function BottomNav({ activeTab = 'dashboard', hidden = false }: BottomNavProps) {
   const pathname = usePathname();
+
+  if (hidden) return null;
 
   const navItems = [
     { id: 'dashboard', label: 'Home', href: '/dashboard', icon: LayoutDashboard },

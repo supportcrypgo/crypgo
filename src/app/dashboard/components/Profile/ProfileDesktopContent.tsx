@@ -1,9 +1,8 @@
 'use client';
 
-import { User, ShieldCheck, HardDrive, KeyRound, Clock, Settings, UserRoundPen } from 'lucide-react';
+import { User, ShieldCheck, HardDrive, KeyRound, Clock, Settings } from 'lucide-react';
 import type { UnifiedUser } from '@/types/unified';
 import { ProfileContent } from './ProfileContent';
-import { EditProfileContent } from './EditProfileContent';
 import { IDVerificationContent } from './IDVerificationContent';
 import { SecurityContent } from './SecurityContent';
 import { ChangePasswordContent } from './ChangePasswordContent';
@@ -28,8 +27,6 @@ export default function ProfileDesktopContent({ activeTab, user }: ContentProps)
   switch (activeTab) {
     case 'profile':
       return <ProfileContent user={user} />;
-    case 'edit':
-      return <EditProfileContent user={user} />;
     case 'id-verify':
       return <IDVerificationContent user={user} />;
     case 'security':

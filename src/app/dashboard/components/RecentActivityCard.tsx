@@ -3,14 +3,15 @@
 import React from 'react';
 import { useUnified } from '@/context/UnifiedContext';
 import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
+  ArrowDownLeft,
+  ArrowUpRight,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 
 interface ActivityItem {
   id: string;
-  type: 'deposit' | 'withdrawal';
+  type: 'send' | 'receive' | 'swap';
   asset: string;
   amount: string;
   timestamp: string;
@@ -25,48 +26,59 @@ function formatTimestamp(timestamp: string) {
 }
 
 function mapType(type: string): ActivityItem['type'] {
-  if (type === 'withdrawal' || type === 'send' || type === 'transfer' || type === 'sell') return 'withdrawal';
-  return 'deposit';
+  if (type === 'withdrawal' || type === 'transfer' || type === 'transfer_out' || type === 'send' || type === 'sell') return 'send';
+  if (type === 'swap') return 'swap';
+  return 'receive';
 }
 
 function getIcon(type: ActivityItem['type']) {
   switch (type) {
-    case 'deposit':
-      return ArrowDownToLine;
-    case 'withdrawal':
-      return ArrowUpFromLine;
+    case 'receive':
+      return ArrowDownLeft;
+    case 'send':
+      return ArrowUpRight;
+    case 'swap':
+      return RefreshCw;
   }
 }
 
 function getIconColor(type: ActivityItem['type']) {
   switch (type) {
-    case 'deposit':
+    case 'receive':
       return 'bg-green-500/20 text-green-400';
-    case 'withdrawal':
+    case 'send':
       return 'bg-red-500/20 text-red-400';
+    case 'swap':
+      return 'bg-primary/20 text-primary';
   }
 }
 
 function getTypeLabel(type: ActivityItem['type']) {
   switch (type) {
-    case 'deposit':
-      return 'Deposit';
-    case 'withdrawal':
-      return 'Withdrawal';
+    case 'receive':
+      return 'Receive';
+    case 'send':
+      return 'Send';
+    case 'swap':
+      return 'Swap';
   }
 }
 
 export default function RecentActivityCard() {
   const { transactions } = useUnified();
 
-  const activityData: ActivityItem[] = transactions.slice(0, 4).map((tx) => ({
-    id: tx.id,
-    type: mapType(tx.type),
-    asset: tx.asset,
-    amount: `${['deposit', 'receive', 'buy'].includes(tx.type) ? '+' : '-'}${Math.abs(tx.amount).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${tx.asset}`,
-    timestamp: formatTimestamp(tx.createdAt),
-    status: tx.status,
-  }));
+  const activityData: ActivityItem[] = transactions.slice(0, 4).map((tx) => {
+    const type = mapType(tx.type);
+    const isPositive = type === 'receive';
+    return {
+      id: tx.id,
+      type,
+      asset: tx.asset,
+      amount: `${isPositive ? '+' : '-'}${Math.abs(tx.amount).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${tx.asset}`,
+      timestamp: formatTimestamp(tx.createdAt),
+      status: tx.status,
+    };
+  });
 
   return (
     <div className="bg-deepSlate/50 border border-white/5 rounded-xl p-6">

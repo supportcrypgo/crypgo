@@ -15,21 +15,35 @@ import type {
 const TransactionContext = createContext<TransactionContextType | undefined>(undefined);
 const PAGE_SIZE = 50;
 
+function resolveHistoryDirection(type: string): 'send' | 'receive' | 'swap' {
+  switch (type.toLowerCase()) {
+    case 'transfer_in':
+    case 'deposit':
+    case 'receive':
+    case 'buy':
+      return 'receive';
+    case 'transfer_out':
+    case 'withdrawal':
+    case 'send':
+    case 'sell':
+    case 'transfer':
+      return 'send';
+    case 'swap':
+      return 'swap';
+    default:
+      return 'receive';
+  }
+}
+
 // Helper: Convert UnifiedTransaction to Transaction
 function convertTransaction(tx: UnifiedTransaction, index: number): Transaction {
-  // Map unified transaction type to history transaction type
-  let type = tx.type;
-  if (type === 'transfer') {
-    type = 'send'; // Map transfer to send
-  }
-  
-  // Determine if positive (received/bought) based on transaction type
-  const amountPositive = ['buy', 'deposit', 'receive'].includes(type);
+  const type = resolveHistoryDirection(String(tx.type || 'receive'));
+  const amountPositive = type === 'receive';
   
   return {
     id: tx.id,
     dateTime: tx.createdAt,
-    type: type as any,
+    type,
     asset: tx.asset,
     amountPositive: amountPositive,
     amount: tx.amount,
@@ -37,7 +51,7 @@ function convertTransaction(tx: UnifiedTransaction, index: number): Transaction 
     totalValue: tx.totalValue,
     status: tx.status,
     txId: tx.id,
-    counterpartyType: tx.counterpartyType === 'external' ? 'send' : 'receive',
+    counterpartyType: type === 'send' ? 'send' : 'receive',
     walletAddress: tx.walletAddress,
     fee: tx.fee,
     feeAsset: tx.feeAsset,
@@ -59,7 +73,7 @@ function calculateSummaryMetrics(transactions: Transaction[]): SummaryMetrics {
 // Helper: Calculate volume by type
 function calculateVolumeByType(transactions: Transaction[]): VolumeByType[] {
   const typeMap: Record<string, number> = {};
-  const types: string[] = ['buy', 'sell', 'deposit', 'withdrawal', 'send', 'receive', 'swap'];
+  const types: string[] = ['send', 'receive', 'swap'];
   
   // Initialize all types
   types.forEach(t => { typeMap[t] = 0; });
@@ -138,7 +152,12 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
 
   // Convert UnifiedTransactions to Transaction format
   const transactions = useMemo(() => 
-    unifiedTransactions.map((tx, idx) => convertTransaction(tx, idx)),
+    unifiedTransactions
+      .filter((tx) => {
+        const rawType = String(tx.type || '').toLowerCase();
+        return ['send', 'receive', 'swap', 'deposit', 'withdrawal', 'transfer_in', 'transfer_out', 'transfer'].includes(rawType);
+      })
+      .map((tx, idx) => convertTransaction(tx, idx)),
     [unifiedTransactions]
   );
 

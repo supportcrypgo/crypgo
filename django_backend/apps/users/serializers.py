@@ -2,12 +2,14 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 from .models import (
-    WalletAsset, UserHistoricalSnapshot, UserSession, KYCDocument, 
+    WalletAsset, WalletAddress, UserHistoricalSnapshot, UserSession, KYCDocument, 
     UserActivityLog, Transaction, Notification, PushSubscription,
     DeviceFingerprint, TransactionTranslation, InternalTransfer
 )
 
 User = get_user_model()
+
+SUPPORTED_WALLET_ASSETS = ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL', 'LTC', 'XRP', 'ADA', 'DOT', 'DOGE', 'LINK']
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -130,6 +132,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     """Serializer for user registration."""
     password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True, min_length=8, required=False)
+    username = serializers.CharField(required=False, allow_blank=True)
     
     class Meta:
         model = User
@@ -160,6 +163,16 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop('confirm_password')
         password = validated_data.pop('password')
+        username = validated_data.pop('username', '').strip()
+        if not username:
+            base_username = validated_data['email'].split('@', 1)[0].lower()
+            base_username = ''.join(character for character in base_username if character.isalnum() or character in '._-')[:140] or 'user'
+            username = base_username
+            suffix = 1
+            while User.objects.filter(username__iexact=username).exists():
+                suffix += 1
+                username = f'{base_username[:140 - len(str(suffix))]}{suffix}'
+        validated_data['username'] = username
         user = User(**validated_data)
         user.set_password(password)
         user.save()
@@ -228,9 +241,15 @@ class KYCDocumentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'document_type', 'file_url', 'original_filename',
             'file_size', 'status', 'rejection_reason',
+            'screening_status', 'screening_score', 'screening_reason',
+            'extracted_data', 'screened_at',
             'uploaded_at', 'reviewed_at',
         ]
-        read_only_fields = ['id', 'status', 'rejection_reason', 'uploaded_at', 'reviewed_at']
+        read_only_fields = [
+            'id', 'status', 'rejection_reason', 'screening_status',
+            'screening_score', 'screening_reason', 'extracted_data',
+            'screened_at', 'uploaded_at', 'reviewed_at',
+        ]
 
 
 class AvatarUploadSerializer(serializers.Serializer):
@@ -269,11 +288,13 @@ class TransactionSerializer(serializers.ModelSerializer):
     """Serializer for wallet transactions."""
     transaction_type_display = serializers.SerializerMethodField()
     status_display = serializers.SerializerMethodField()
+    direction = serializers.SerializerMethodField()
     
     class Meta:
         model = Transaction
         fields = [
             'id', 'transaction_type', 'transaction_type_display',
+            'direction',
             'asset', 'amount', 'fee', 'status', 'status_display',
             'txid', 'to_address', 'from_address',
             'counterparty', 'destination_asset', 'destination_amount',
@@ -288,6 +309,13 @@ class TransactionSerializer(serializers.ModelSerializer):
     def get_status_display(self, obj):
         return obj.get_status_display()
 
+    def get_direction(self, obj):
+        if obj.transaction_type in ('transfer_in', 'deposit', 'receive', 'buy'):
+            return 'receive'
+        if obj.transaction_type in ('transfer_out', 'withdrawal', 'send', 'sell'):
+            return 'send'
+        return 'swap' if obj.transaction_type == 'swap' else 'receive'
+
 
 class DepositSerializer(serializers.Serializer):
     """Serializer for generating deposit address."""
@@ -295,7 +323,7 @@ class DepositSerializer(serializers.Serializer):
     
     def validate_asset(self, value):
         value = value.upper()
-        valid_assets = ['BTC', 'ETH', 'USDT', 'USDC', 'SOL', 'LTC']
+        valid_assets = SUPPORTED_WALLET_ASSETS
         if value not in valid_assets:
             raise serializers.ValidationError(f"Unsupported asset. Valid: {', '.join(valid_assets)}")
         return value
@@ -310,7 +338,7 @@ class WithdrawSerializer(serializers.Serializer):
     
     def validate_asset(self, value):
         value = value.upper()
-        valid_assets = ['BTC', 'ETH', 'USDT', 'USDC', 'SOL', 'LTC']
+        valid_assets = SUPPORTED_WALLET_ASSETS
         if value not in valid_assets:
             raise serializers.ValidationError(f"Unsupported asset. Valid: {', '.join(valid_assets)}")
         return value
@@ -357,7 +385,7 @@ class TransferSerializer(serializers.Serializer):
     
     def validate_asset(self, value):
         value = value.upper()
-        valid_assets = ['BTC', 'ETH', 'USDT', 'USDC', 'SOL', 'LTC']
+        valid_assets = SUPPORTED_WALLET_ASSETS
         if value not in valid_assets:
             raise serializers.ValidationError(f"Unsupported asset. Valid: {', '.join(valid_assets)}")
         return value
@@ -368,17 +396,21 @@ class TransferSerializer(serializers.Serializer):
         return value
     
     def validate_recipient(self, value):
-        # Try to find recipient by email first, then username
+        # Account transfers accept email, username, or a persisted wallet address.
         recipient = User.objects.filter(email__iexact=value).first()
         if not recipient:
             recipient = User.objects.filter(username__iexact=value).first()
         if not recipient:
+            address_record = WalletAddress.objects.filter(
+                address__iexact=value.strip(),
+                ticker=self.initial_data.get('asset', '').upper(),
+                network='mainnet',
+                is_active=True,
+            ).select_related('user').first()
+            recipient = address_record.user if address_record else None
+        if not recipient:
             raise serializers.ValidationError("Recipient not found.")
-        
-        request = self.context.get('request')
-        if recipient == request.user:  # type: ignore[union-attr]
-            raise serializers.ValidationError("Cannot transfer to yourself.")
-        
+
         return recipient
     
     def validate(self, attrs):
@@ -386,6 +418,8 @@ class TransferSerializer(serializers.Serializer):
         user = request.user  # type: ignore[union-attr]
         asset = attrs['asset']
         amount = attrs['amount']
+        if attrs['recipient'].pk == user.pk:
+            raise serializers.ValidationError("You cannot transfer to your own account.")
         
         try:
             wallet = WalletAsset.objects.get(user=user, ticker=asset)
@@ -408,7 +442,7 @@ class BuySerializer(serializers.Serializer):
     
     def validate_asset(self, value):
         value = value.upper()
-        valid_assets = ['BTC', 'ETH', 'USDT', 'USDC', 'SOL', 'LTC']
+        valid_assets = SUPPORTED_WALLET_ASSETS
         if value not in valid_assets:
             raise serializers.ValidationError(f"Unsupported asset. Valid: {', '.join(valid_assets)}")
         return value
@@ -431,14 +465,14 @@ class SwapSerializer(serializers.Serializer):
     
     def validate_from_asset(self, value):
         value = value.upper()
-        valid_assets = ['BTC', 'ETH', 'USDT', 'USDC', 'SOL', 'LTC']
+        valid_assets = SUPPORTED_WALLET_ASSETS
         if value not in valid_assets:
             raise serializers.ValidationError(f"Unsupported asset. Valid: {', '.join(valid_assets)}")
         return value
     
     def validate_to_asset(self, value):
         value = value.upper()
-        valid_assets = ['BTC', 'ETH', 'USDT', 'USDC', 'SOL', 'LTC']
+        valid_assets = SUPPORTED_WALLET_ASSETS
         if value not in valid_assets:
             raise serializers.ValidationError(f"Unsupported asset. Valid: {', '.join(valid_assets)}")
         return value

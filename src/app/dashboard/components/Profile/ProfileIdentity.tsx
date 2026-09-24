@@ -1,6 +1,6 @@
 'use client';
 
-import { Camera, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import type { UnifiedUser } from '@/types/unified';
 
 interface ProfileIdentityProps {
@@ -33,13 +33,6 @@ export default function ProfileIdentity({ user }: ProfileIdentityProps) {
           )}
         </div>
 
-        {/* Edit button - overlapping lower-right */}
-        <button
-          className="absolute bottom-0 right-0 w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center border-2 border-background hover:scale-105 transition-transform"
-          aria-label="Edit profile picture"
-        >
-          <Camera className="w-5 h-5" />
-        </button>
       </div>
 
       {/* Name - 24px gap from avatar */}

@@ -15,6 +15,8 @@ import AssetSelector from './AssetSelector';
 import SwapCalculation from './SwapCalculation';
 import SwapSummary from './SwapSummary';
 import { useUnified } from '@/context/UnifiedContext';
+import CautionModal from '@/components/CautionModal';
+import { isTransactionCautionError } from '@/data/api';
 import { aggregateWalletAmountsByTicker } from '@/lib/walletBalances';
 import { getAssetIconPath } from '@/lib/assetIcons';
 
@@ -27,7 +29,7 @@ interface SwapModalProps {
 }
 
 export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
-  const { walletAssets } = useUnified();
+  const { walletAssets, executeSwapTransaction } = useUnified();
 
   // Build asset list with live wallet balances (available/spendable quantity)
   const availableAssets = useMemo<SwapAsset[]>(() => {
@@ -59,6 +61,7 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
   const [isSwapping, setIsSwapping] = useState(false);
   const [swapResult, setSwapResult] = useState<QuickSwapResult | null>(null);
   const [error, setError] = useState('');
+  const [cautionOpen, setCautionOpen] = useState(false);
 
   // Keep pay/receive assets in sync with live balances
   useEffect(() => {
@@ -134,23 +137,32 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
     setError('');
 
     try {
-      // Simulate transaction
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const response = await executeSwapTransaction({
+        from_asset: payAsset.ticker,
+        to_asset: receiveAsset.ticker,
+        amount: Number(payAmount),
+      });
+      const transaction = response?.transaction;
+      const executedReceiveAmount = Number(transaction?.destination_amount ?? receiveAmount);
 
       const result: QuickSwapResult = {
-        txId: '0x' + Math.random().toString(16).substr(2, 64),
+        txId: String(transaction?.txid ?? transaction?.id ?? ''),
         payTicker: payAsset.ticker,
-        payAmount: parseFloat(payAmount),
+        payAmount: Number(transaction?.amount ?? payAmount),
         receiveTicker: receiveAsset.ticker,
-        receiveAmount: minimumReceived,
-        rate: `1 ${payAsset.ticker} = ${quote.rate.toFixed(6)} ${receiveAsset.ticker}`,
-        fee: quote.fee,
-        date: new Date().toISOString(),
+        receiveAmount: Number(executedReceiveAmount.toFixed(8)),
+        rate: `1 ${payAsset.ticker} = ${(Number(transaction?.amount) > 0 ? executedReceiveAmount / Number(transaction.amount) : quote.rate).toFixed(6)} ${receiveAsset.ticker}`,
+        fee: Number(transaction?.fee ?? quote.fee),
+        date: transaction?.created_at ?? new Date().toISOString(),
       };
 
       setSwapResult(result);
     } catch (err) {
-      setError('Swap failed. Please try again.');
+      if (isTransactionCautionError(err)) {
+        setCautionOpen(true);
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Swap failed. Please try again.');
     } finally {
       setIsSwapping(false);
     }
@@ -196,7 +208,9 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in-50 duration-200">
+    <>
+      <CautionModal isOpen={cautionOpen} onClose={() => setCautionOpen(false)} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in-50 duration-200">
       {/* Mobile-first: full screen on mobile, centered on desktop */}
       <div className="relative w-full max-w-[420px] max-h-[95vh] bg-[#1e293b] border border-primary/20 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 fade-in-50 duration-200">
         {/* Header with Tabs */}
@@ -406,6 +420,7 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

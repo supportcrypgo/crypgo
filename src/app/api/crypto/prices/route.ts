@@ -92,7 +92,7 @@ function buildCoinGeckoUrl(apiKey: string) {
 }
 
 function getCoinGeckoApiKeys(): string[] {
-  const rawKeys = process.env.COINGECKO_API_KEYS || process.env.COINGECKO_API_KEY || '';
+  const rawKeys = process.env.COINGECKO_API_KEYS || '';
   return rawKeys
     .split(',')
     .map((key) => key.trim())
@@ -158,6 +158,71 @@ async function fetchFromBinance(): Promise<Record<string, PriceEntry>> {
   return normalized;
 }
 
+async function fetchBitcoinHistoricalChanges(): Promise<{ usd_7d_change?: number; usd_30d_change?: number }> {
+  const endpoints = [
+    {
+      label: 'CoinGecko market chart',
+      url: 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=30&interval=daily',
+    },
+    {
+      label: 'Coinbase BTC candles',
+      url: 'https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=86400',
+    },
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint.url, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) continue;
+
+      const payload = await response.json();
+
+      if (endpoint.label === 'CoinGecko market chart' && Array.isArray(payload?.prices)) {
+        const prices = payload.prices as number[][];
+        if (prices.length > 0) {
+          const nowValue = Number(prices[prices.length - 1]?.[1]);
+          const value7dAgo = Number(prices[Math.max(0, prices.length - 8)]?.[1]);
+          const value30dAgo = Number(prices[Math.max(0, prices.length - 31)]?.[1]);
+          const changes: { usd_7d_change?: number; usd_30d_change?: number } = {};
+          if (Number.isFinite(nowValue) && Number.isFinite(value7dAgo) && value7dAgo > 0) {
+            changes.usd_7d_change = ((nowValue - value7dAgo) / value7dAgo) * 100;
+          }
+          if (Number.isFinite(nowValue) && Number.isFinite(value30dAgo) && value30dAgo > 0) {
+            changes.usd_30d_change = ((nowValue - value30dAgo) / value30dAgo) * 100;
+          }
+          if (changes.usd_7d_change !== undefined || changes.usd_30d_change !== undefined) {
+            return changes;
+          }
+        }
+      }
+
+      if (endpoint.label === 'Coinbase BTC candles' && Array.isArray(payload)) {
+        const candles = payload as number[][];
+        const latest = candles[candles.length - 1];
+        const nowValue = Number(latest?.[4]);
+        const value7dAgo = Number(candles[Math.max(0, candles.length - 8)]?.[4]);
+        const value30dAgo = Number(candles[Math.max(0, candles.length - 31)]?.[4]);
+        const changes: { usd_7d_change?: number; usd_30d_change?: number } = {};
+        if (Number.isFinite(nowValue) && Number.isFinite(value7dAgo) && value7dAgo > 0) {
+          changes.usd_7d_change = ((nowValue - value7dAgo) / value7dAgo) * 100;
+        }
+        if (Number.isFinite(nowValue) && Number.isFinite(value30dAgo) && value30dAgo > 0) {
+          changes.usd_30d_change = ((nowValue - value30dAgo) / value30dAgo) * 100;
+        }
+        if (changes.usd_7d_change !== undefined || changes.usd_30d_change !== undefined) {
+          return changes;
+        }
+      }
+    } catch {
+      // Try the next provider.
+    }
+  }
+
+  return {};
+}
+
 async function fetchFromCoinbase(): Promise<Record<string, PriceEntry>> {
   const results = await Promise.allSettled(
     Object.entries(COINBASE_SYMBOL_MAP).map(async ([coinId, symbol]) => {
@@ -187,22 +252,12 @@ async function fetchFromCoinbase(): Promise<Record<string, PriceEntry>> {
   const payload = Object.fromEntries(entries);
   if (!payload.bitcoin) throw new Error('Coinbase did not return a BTC price');
   const btc = payload.bitcoin;
-  try {
-    const candlesResponse = await fetch(
-      'https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=86400',
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (candlesResponse.ok) {
-      const candles = await candlesResponse.json() as number[][];
-      const current = Number(btc.usd);
-      const priceAt = (daysAgo: number) => Number(candles.find((c) => Number(c[0]) <= (Date.now() / 1000) - daysAgo * 86400)?.[4]);
-      const price7d = priceAt(7);
-      const price30d = priceAt(30);
-      if (price7d > 0) btc.usd_7d_change = ((current - price7d) / price7d) * 100;
-      if (price30d > 0) btc.usd_30d_change = ((current - price30d) / price30d) * 100;
-    }
-  } catch {
-    // Keep the live spot and 24-hour values if historical candles are unavailable.
+  const historicalChanges = await fetchBitcoinHistoricalChanges();
+  if (historicalChanges.usd_7d_change !== undefined) {
+    btc.usd_7d_change = historicalChanges.usd_7d_change;
+  }
+  if (historicalChanges.usd_30d_change !== undefined) {
+    btc.usd_30d_change = historicalChanges.usd_30d_change;
   }
   return { ...SAFE_FALLBACK_PRICES, ...payload };
 }
@@ -218,7 +273,24 @@ async function fetchFromCoinGeckoWithFallback(apiKeys: string[]): Promise<Record
     const apiKey = apiKeys[index];
 
     try {
-      return await fetchFromCoinGecko(apiKey);
+      const data = await fetchFromCoinGecko(apiKey);
+      try {
+        const coinbaseFallback = await fetchFromCoinbase();
+        const historicalChanges = await fetchBitcoinHistoricalChanges();
+        const next7d = coinbaseFallback.bitcoin?.usd_7d_change ?? historicalChanges.usd_7d_change;
+        const next30d = coinbaseFallback.bitcoin?.usd_30d_change ?? historicalChanges.usd_30d_change;
+
+        if (data.bitcoin && (data.bitcoin.usd_7d_change === undefined || data.bitcoin.usd_30d_change === undefined)) {
+          data.bitcoin = {
+            ...data.bitcoin,
+            usd_7d_change: data.bitcoin.usd_7d_change ?? next7d,
+            usd_30d_change: data.bitcoin.usd_30d_change ?? next30d,
+          };
+        }
+      } catch {
+        // Keep the CoinGecko payload if historical providers are unavailable.
+      }
+      return data;
     } catch (error) {
       lastError = error;
       console.warn(`CoinGecko key ${index + 1}/${apiKeys.length} failed, trying next key...`, error);

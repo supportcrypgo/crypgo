@@ -6,12 +6,13 @@ import { SWAP_ASSETS, type SwapAsset, type TradeMode, type SwapQuote, type Quick
 import { useUnified } from '@/context/UnifiedContext';
 import { aggregateWalletAmountsByTicker } from '@/lib/walletBalances';
 import { getAssetIconPath } from '@/lib/assetIcons';
+import { isTransactionCautionError } from '@/data/api';
 
 const LIQUIDITY_FEE_RATE = 0.003;
 const DEFAULT_SLIPPAGE = 0.5;
 
 export function useSwapWorkspace() {
-  const { walletAssets } = useUnified();
+  const { walletAssets, executeSwapTransaction } = useUnified();
 
   const availableAssets = useMemo<SwapAsset[]>(() => {
     if (walletAssets.length === 0) return SWAP_ASSETS;
@@ -40,9 +41,9 @@ export function useSwapWorkspace() {
   const [payAmount, setPayAmount] = useState('');
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   const [isSwapping, setIsSwapping] = useState(false);
-  const [isCautionOpen, setIsCautionOpen] = useState(false);
   const [swapResult, setSwapResult] = useState<QuickSwapResult | null>(null);
   const [error, setError] = useState('');
+  const [cautionOpen, setCautionOpen] = useState(false);
 
   useEffect(() => {
     if (availableAssets.length === 0) return;
@@ -50,15 +51,20 @@ export function useSwapWorkspace() {
   }, [availableAssets]);
 
   useEffect(() => {
-    if (availableAssets.length === 0) return;
+    if (!payAsset) return;
+
+    const fallbackReceiveAsset =
+      availableAssets.find((asset) => asset.ticker !== payAsset.ticker) ??
+      SWAP_ASSETS.find((asset) => asset.ticker !== payAsset.ticker) ??
+      payAsset;
+
     setReceiveAsset((current) => {
-      const currentMatch = availableAssets.find((asset) => asset.ticker === current?.ticker);
-      if (currentMatch && currentMatch.ticker !== payAsset?.ticker) {
-        return currentMatch;
+      if (current && current.ticker !== payAsset.ticker) {
+        return current;
       }
-      return availableAssets.find((asset) => asset.ticker !== payAsset?.ticker) ?? availableAssets[1] ?? availableAssets[0];
+      return fallbackReceiveAsset;
     });
-  }, [availableAssets, payAsset?.ticker]);
+  }, [availableAssets, payAsset]);
 
   // Quote Calculation Hook
   const { quote, isCalculating, receiveAmount, minimumReceived, isValid } = useSwapQuote(
@@ -69,12 +75,15 @@ export function useSwapWorkspace() {
     tradeMode
   );
 
-  // Prevent same asset selection
+  // Prevent same asset selection while keeping a valid quote asset in place
   useEffect(() => {
     if (payAsset && receiveAsset && payAsset.id === receiveAsset.id) {
-      setReceiveAsset(null);
+      const replacement = availableAssets.find((asset) => asset.ticker !== payAsset.ticker)
+        ?? SWAP_ASSETS.find((asset) => asset.ticker !== payAsset.ticker)
+        ?? payAsset;
+      setReceiveAsset(replacement);
     }
-  }, [payAsset, receiveAsset]);
+  }, [availableAssets, payAsset, receiveAsset]);
 
   // Handle swap direction flip
   const handleSwapDirection = useCallback(() => {
@@ -109,8 +118,42 @@ export function useSwapWorkspace() {
   // Handle swap execution
   const handleSwap = useCallback(async () => {
     if (!isValid || !payAsset || !receiveAsset || !quote) return;
-    setIsCautionOpen(true);
-  }, [isValid, payAsset, receiveAsset, quote]);
+
+    setIsSwapping(true);
+    setError('');
+
+    try {
+      const response = await executeSwapTransaction({
+        from_asset: payAsset.ticker,
+        to_asset: receiveAsset.ticker,
+        amount: Number(payAmount),
+      });
+      const transaction = response?.transaction;
+      const executedPayAmount = Number(transaction?.amount ?? payAmount);
+      const executedReceiveAmount = Number(transaction?.destination_amount ?? receiveAmount);
+
+      const result: QuickSwapResult = {
+        txId: String(transaction?.txid ?? transaction?.id ?? ''),
+        payTicker: payAsset.ticker,
+        payAmount: executedPayAmount,
+        receiveTicker: receiveAsset.ticker,
+        receiveAmount: Number(executedReceiveAmount.toFixed(8)),
+        rate: `1 ${payAsset.ticker} = ${(Number(transaction?.price_at_time) > 0 ? Number(transaction.destination_amount) / Number(transaction.amount) : quote.rate).toFixed(6)} ${receiveAsset.ticker}`,
+        fee: Number(transaction?.fee ?? quote.fee),
+        date: transaction?.created_at ?? new Date().toISOString(),
+      };
+
+      setSwapResult(result);
+    } catch (err) {
+      if (isTransactionCautionError(err)) {
+        setCautionOpen(true);
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Swap failed. Please try again.');
+    } finally {
+      setIsSwapping(false);
+    }
+  }, [executeSwapTransaction, isValid, payAsset, receiveAsset, quote, payAmount, receiveAmount]);
 
   // Handle success close
   const handleSuccessClose = useCallback(() => {
@@ -148,9 +191,9 @@ export function useSwapWorkspace() {
     slippage,
     setSlippage,
     isSwapping,
-    isCautionOpen,
     swapResult,
     error,
+    cautionOpen,
     isCalculating,
     quote,
     receiveAmount,
@@ -164,7 +207,7 @@ export function useSwapWorkspace() {
     handleSwap,
     handleSuccessClose,
     handleRetry,
-    setIsCautionOpen,
+    closeCaution: () => setCautionOpen(false),
     handleReset,
   };
 }
