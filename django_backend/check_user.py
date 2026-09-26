@@ -8,8 +8,6 @@ from apps.users.models import CustomUser, WalletAsset, Transaction
 user = CustomUser.objects.filter(email='allvalleyacoustics@gmail.com').first()
 if user:
     print(f'User: {user.email}')
-    print(f'Public ID: {user.public_id}')
-    print(f'Phone: {user.phone}')
     print(f'First Name: {user.first_name}')
     print(f'Last Name: {user.last_name}')
     print(f'Wallet Assets:')

@@ -37,6 +37,78 @@ class EmailNormalizationTests(TestCase):
         validated_user = validated_data['user']
         self.assertEqual(validated_user.email, 'sirmattfrewer@gmail.com')
 
+    def test_user_serializers_do_not_expose_account_phone(self):
+        from .serializers import RegisterSerializer, UserCreateSerializer, UserSerializer
+
+        user = CustomUser.objects.create_user(
+            username='profile-user',
+            email='profile@example.com',
+            password='Password123!',
+        )
+
+        self.assertNotIn('phone', UserSerializer(user).data)
+        self.assertNotIn('phone', cast(Any, UserCreateSerializer()).get_fields())
+        self.assertNotIn('phone', cast(Any, RegisterSerializer()).get_fields())
+
+
+class UserReportLayoutTests(TestCase):
+    def test_report_transaction_labels_normalize_transfers_only(self):
+        from generate_user_report import get_report_transaction_type
+
+        self.assertEqual(get_report_transaction_type('transfer_out', 'Transfer Out'), 'Sent')
+        self.assertEqual(get_report_transaction_type('transfer_in', 'Transfer In'), 'Received')
+        self.assertEqual(get_report_transaction_type('swap', 'Swap'), 'Swap')
+
+    def test_transaction_fiat_uses_recorded_then_historical_then_estimated_spot(self):
+        from types import SimpleNamespace
+        from generate_user_report import get_transaction_fiat_display
+
+        self.assertEqual(
+            get_transaction_fiat_display(
+                SimpleNamespace(fiat_amount=Decimal('0'), amount=Decimal('2'), price_at_time=None, asset='BTC'),
+                {'BTC': Decimal('100')},
+            ),
+            '$0.00',
+        )
+        self.assertEqual(
+            get_transaction_fiat_display(
+                SimpleNamespace(fiat_amount=None, amount=Decimal('2'), price_at_time=Decimal('50'), asset='BTC'),
+                {'BTC': Decimal('100')},
+            ),
+            '$100.00',
+        )
+        self.assertEqual(
+            get_transaction_fiat_display(
+                SimpleNamespace(fiat_amount=None, amount=Decimal('2'), price_at_time=None, asset='BTC'),
+                {'BTC': Decimal('100')},
+            ),
+            '~$200.00',
+        )
+
+    def test_report_omits_account_phone_and_item_heading_prefixes(self):
+        from generate_user_report import generate_user_report_bytes
+        import pymupdf
+
+        user = CustomUser.objects.create_user(
+            username='report-user',
+            email='report@example.com',
+            password='Password123!',
+            first_name='Report',
+            last_name='User',
+        )
+
+        document = pymupdf.open(stream=generate_user_report_bytes(user), filetype='pdf')
+        report_text = cast(str, document[0].get_text())
+
+        self.assertIn('REPORT USER', report_text)
+        self.assertIn('report@example.com', report_text)
+        self.assertIn('1.01', report_text)
+        self.assertIn('1.02', report_text)
+        self.assertIn('1.03', report_text)
+        self.assertNotIn('Phone:', report_text)
+        self.assertNotIn('Public ID:', report_text)
+        self.assertNotIn('Item 1.02', report_text)
+
 
 class WalletMutationPersistenceTests(TestCase):
     def setUp(self):
@@ -104,7 +176,7 @@ class WalletMutationPersistenceTests(TestCase):
         sender_wallet.available_quantity = Decimal('5.00000000')
         sender_wallet.save(update_fields=['quantity', 'available_quantity'])
 
-        address_seed = hashlib.sha256(f'crypgo:{self.recipient.id}:BTC:mainnet'.encode('utf-8')).hexdigest()
+        address_seed = hashlib.sha256(f'crypgo:{cast(Any, self.recipient).id}:BTC:mainnet'.encode('utf-8')).hexdigest()
         recipient_address = f'bc1{address_seed[:30]}'
         response: Any = self.client.post(
             '/api/wallet/transfer/',
@@ -121,7 +193,7 @@ class WalletMutationPersistenceTests(TestCase):
             Transaction.objects.filter(user=self.recipient, transaction_type='transfer_in', amount=Decimal('1.25000000')).exists()
         )
         self.assertTrue(
-            self.sender.internal_transfers_sent.filter(recipient=self.recipient, status='COMPLETED').exists()
+            cast(Any, self.sender).internal_transfers_sent.filter(recipient=self.recipient, status='COMPLETED').exists()
         )
 
     def test_wallet_addresses_are_persisted_for_users(self):
@@ -262,7 +334,7 @@ class TransactionGuardTests(TestCase):
         self.assertEqual(first.status_code, 200, first.content)
         self.assertEqual(second.status_code, 200, second.content)
         self.assertEqual(blocked.status_code, 409, blocked.content)
-        self.assertEqual(blocked.data['code'], 'TRANSACTION_CAUTION_REQUIRED')
+        self.assertEqual(cast(Any, blocked).data['code'], 'TRANSACTION_CAUTION_REQUIRED')
         self.assertEqual(blocked_again.status_code, 409, blocked_again.content)
         self.assertEqual(send_mail.call_count, 2)
         self.assertEqual(send_mail.call_args_list[0].kwargs['recipient_list'], [self.user.email])

@@ -17,7 +17,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name',
-            'date_of_birth', 'phone', 'country', 'city', 'address', 'avatar_url',
+            'date_of_birth', 'country', 'city', 'address', 'avatar_url',
             'role', 'date_joined', 'is_active',
             'kyc_status', 'kyc_rejection_reason', 'two_fa_enabled',
         ]
@@ -30,7 +30,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'email', 'username', 'password', 'first_name', 'last_name',
-            'phone', 'country', 'city', 'address', 'avatar_url', 'role',
+            'country', 'city', 'address', 'avatar_url', 'role',
         ]
 
     def create(self, validated_data):
@@ -138,7 +138,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'email', 'username', 'password', 'confirm_password', 
-            'first_name', 'last_name', 'phone', 'country', 'city', 'address'
+            'first_name', 'last_name', 'country', 'city', 'address'
         ]
     
     def validate_email(self, value):

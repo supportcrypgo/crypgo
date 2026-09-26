@@ -20,7 +20,6 @@ TARGET_USERS = {
         'first_name': 'Matt',
         'last_name': 'Frewer',
         'date_of_birth': datetime(1958, 1, 4).date(),
-        'phone': '+12352145862',
         'country': 'United States',
     },
     'austin433433@gmail.com': {
@@ -28,7 +27,6 @@ TARGET_USERS = {
         'first_name': 'Austin',
         'last_name': 'Miller',
         'date_of_birth': datetime(1961, 5, 15).date(),
-        'phone': '+12352145862',
         'country': 'United States',
     },
     'team.drharrington@gmail.com': {
@@ -36,7 +34,6 @@ TARGET_USERS = {
         'first_name': 'Matthew',
         'last_name': 'Harrington',
         'date_of_birth': datetime(1961, 5, 15).date(),
-        'phone': '+12352145862',
         'country': 'United States',
     },
 }

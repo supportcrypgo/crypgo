@@ -117,7 +117,7 @@ def build_user_report_response(user):
 
     report_bytes = generate_user_report_bytes(user)
     report_date = timezone.now().strftime('%Y-%m-%d')
-    user_identifier = slugify(user.public_id or str(user.pk)) or str(user.pk)
+    user_identifier = slugify(user.email) or str(user.pk)
     response = HttpResponse(report_bytes, content_type='application/pdf')
     response['Content-Disposition'] = (
         f'attachment; filename="Crypgo_Portfolio_Report_{user_identifier}_{report_date}.pdf"'
@@ -304,7 +304,7 @@ def export_campaign_recipients(request, campaign_ref):
     ).order_by('pk'):
         user = cast(CustomUser, user)
         recipients.append({
-            'external_user_id': user.public_id or str(user.pk),
+            'external_user_id': str(user.pk),
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
@@ -2527,7 +2527,6 @@ class SecurityHealthView(APIView):
             'registered_devices': devices,
             'email': user.email,
             'email_verified': user.is_email_verified if hasattr(user, 'is_email_verified') else True,
-            'phone_verified': bool(user.phone) if hasattr(user, 'phone') else False,
             'last_login': user.last_login,
             'recommendations': [
                 {

@@ -13,7 +13,7 @@ import os
 import sys
 import django
 from django.apps import apps
-from datetime import datetime
+from datetime import datetime, timezone as datetime_timezone
 from decimal import Decimal
 from json import loads
 from urllib.parse import urlencode
@@ -116,10 +116,13 @@ COINGECKO_IDS = {
     'DOGE': 'dogecoin',
     'LINK': 'chainlink',
 }
+MARKET_PRICE_AS_OF = None
 
 
 def get_live_usd_prices(tickers):
     """Fetch current USD prices for report assets from CoinGecko."""
+    global MARKET_PRICE_AS_OF
+
     requested_ids = sorted({COINGECKO_IDS[ticker] for ticker in tickers if ticker in COINGECKO_IDS})
     if not requested_ids:
         return {}
@@ -137,15 +140,63 @@ def get_live_usd_prices(tickers):
         with urlopen(request, timeout=10) as response:
             payload = loads(response.read().decode('utf-8'))
     except Exception as error:
-        print(f'CoinGecko price lookup unavailable: {error}')
-        return {}
+        print(f'CoinGecko price lookup unavailable: {error}; trying dashboard market data.')
+        market_url = os.environ.get(
+            'CRYPGO_MARKET_API_URL',
+            'http://localhost:5000/api/crypto/market',
+        )
+        try:
+            with urlopen(Request(market_url, headers={'Accept': 'application/json'}), timeout=10) as response:
+                market_data = loads(response.read().decode('utf-8'))
+        except Exception as fallback_error:
+            print(f'Dashboard market lookup unavailable: {fallback_error}')
+            return {}
+
+        if not isinstance(market_data, list):
+            return {}
+        timestamps = [coin.get('last_updated') for coin in market_data if isinstance(coin, dict) and coin.get('last_updated')]
+        if timestamps:
+            latest_timestamp = datetime.fromisoformat(max(timestamps).replace('Z', '+00:00'))
+            MARKET_PRICE_AS_OF = latest_timestamp.astimezone(datetime_timezone.utc).strftime('%B %d, %Y at %H:%M UTC')
+        return {
+            str(coin.get('symbol', '')).upper(): Decimal(str(coin['current_price']))
+            for coin in market_data
+            if isinstance(coin, dict)
+            and str(coin.get('symbol', '')).upper() in tickers
+            and coin.get('current_price') is not None
+            and Decimal(str(coin['current_price'])) > 0
+        }
 
     prices = {}
+    MARKET_PRICE_AS_OF = datetime.now(datetime_timezone.utc).strftime('%B %d, %Y at %H:%M UTC')
     for ticker, coingecko_id in COINGECKO_IDS.items():
         if coingecko_id in payload and 'usd' in payload[coingecko_id]:
             prices[ticker] = Decimal(str(payload[coingecko_id]['usd']))
 
     return prices
+
+
+def get_transaction_fiat_display(transaction, spot_prices):
+    """Format recorded or derived USD transaction value, marking spot estimates."""
+    if transaction.fiat_amount is not None:
+        return f"${Decimal(str(transaction.fiat_amount)):,.2f}"
+
+    amount = Decimal(str(transaction.amount))
+    if transaction.price_at_time is not None:
+        return f"${amount * Decimal(str(transaction.price_at_time)):,.2f}"
+
+    spot_price = spot_prices.get(transaction.asset.upper())
+    if spot_price is not None:
+        return f"~${amount * spot_price:,.2f}"
+
+    return "\u2014"
+
+
+def get_report_transaction_type(transaction_type, display_label):
+    return {
+        'transfer_out': 'Sent',
+        'transfer_in': 'Received',
+    }.get(transaction_type.lower(), display_label)
 
 
 # ============================================================
@@ -159,7 +210,9 @@ def generate_user_report_bytes(user):
     
     # Filter assets with balance > 0
     assets_with_balance = [a for a in assets if Decimal(str(a.quantity)) > Decimal('0')]
-    prices = get_live_usd_prices({asset.ticker.upper() for asset in assets_with_balance})
+    price_tickers = {asset.ticker.upper() for asset in assets_with_balance}
+    price_tickers.update(transaction.asset.upper() for transaction in transactions)
+    prices = get_live_usd_prices(price_tickers)
     
     # Calculate total portfolio value early (needed for header)
     total_usd = Decimal('0')
@@ -197,34 +250,34 @@ def generate_user_report_bytes(user):
     style_title = ParagraphStyle(
         'CustomTitle',
         parent=styles['Title'],
-        fontName='Helvetica-Bold',
-        fontSize=28,
-        leading=34,
+        fontName='Times-Bold',
+        fontSize=20,
+        leading=24,
         textColor=BLACK,
-        alignment=TA_LEFT,
-        spaceAfter=4,
+        alignment=TA_CENTER,
+        spaceAfter=6,
     )
     
     style_subtitle = ParagraphStyle(
         'CustomSubtitle',
         parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=13,
-        leading=18,
+        fontName='Times-Roman',
+        fontSize=10,
+        leading=14,
         textColor=GRAY_DARK,
-        alignment=TA_LEFT,
-        spaceAfter=16,
+        alignment=TA_CENTER,
+        spaceAfter=12,
     )
     
     style_section = ParagraphStyle(
         'SectionHeader',
         parent=styles['Heading2'],
-        fontName='Helvetica-Bold',
-        fontSize=16,
-        leading=22,
+        fontName='Times-Bold',
+        fontSize=12,
+        leading=15,
         textColor=BLACK,
-        spaceBefore=18,
-        spaceAfter=10,
+        spaceBefore=16,
+        spaceAfter=7,
         borderWidth=0,
         borderPadding=0,
     )
@@ -232,9 +285,9 @@ def generate_user_report_bytes(user):
     style_label = ParagraphStyle(
         'Label',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName='Times-Roman',
         fontSize=10,
-        leading=14,
+        leading=13,
         textColor=GRAY_DARK,
         spaceAfter=2,
     )
@@ -242,9 +295,9 @@ def generate_user_report_bytes(user):
     style_value = ParagraphStyle(
         'Value',
         parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=11,
-        leading=16,
+        fontName='Times-Roman',
+        fontSize=10,
+        leading=13,
         textColor=BLACK,
         spaceAfter=8,
     )
@@ -252,21 +305,21 @@ def generate_user_report_bytes(user):
     style_table_header = ParagraphStyle(
         'TableHeader',
         parent=styles['Normal'],
-        fontName='Helvetica-Bold',
+        fontName='Times-Bold',
         fontSize=9,
         leading=12,
-        textColor=WHITE,
-        alignment=TA_CENTER,
+        textColor=BLACK,
+        alignment=TA_LEFT,
     )
     
     style_table_cell = ParagraphStyle(
         'TableCell',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName='Times-Roman',
         fontSize=8.5,
         leading=11,
         textColor=BLACK,
-        alignment=TA_CENTER,
+        alignment=TA_LEFT,
     )
     
     style_table_cell_left = ParagraphStyle(
@@ -284,7 +337,7 @@ def generate_user_report_bytes(user):
     style_report_label = ParagraphStyle(
         'ReportLabel',
         parent=ParagraphStyle('Normal', parent=styles['Normal']),
-        fontName='Helvetica-Bold',
+        fontName='Times-Bold',
         fontSize=10,
         leading=13,
         textColor=GRAY_DARK,
@@ -295,7 +348,7 @@ def generate_user_report_bytes(user):
     style_footer = ParagraphStyle(
         'Footer',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName='Times-Roman',
         fontSize=8,
         leading=10,
         textColor=GRAY_MEDIUM,
@@ -306,7 +359,7 @@ def generate_user_report_bytes(user):
     style_footer_notice = ParagraphStyle(
         'FooterNotice',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName='Times-Roman',
         fontSize=6.5,
         leading=9,
         textColor=GRAY_MEDIUM,
@@ -344,36 +397,28 @@ def generate_user_report_bytes(user):
     # ============================================================
     story = []
     
-    # ---- HEADER WITH LOGO ----
+    # ---- FORMAL REPORT HEADER ----
     # Use SVG logo for better quality
     logo_svg_path = os.path.join(os.path.dirname(__file__), '..', 'public', 'images', 'logo', 'logo.svg')
     logo_svg_path = os.path.normpath(logo_svg_path)
     
-    # Charcoal green background for logo container
-    CHARCOAL_GREEN = Color(0.12, 0.25, 0.18)  # Dark charcoal green
-    
-    def create_svg_logo_badge(svg_path, container_width, container_height, logo_size, bg_color):
-        """Create a Flowable that renders an SVG logo in a colored container."""
+    def create_svg_logo_badge(svg_path, container_width, container_height, logo_size):
+        """Create a centered, borderless logo flowable."""
         class SVGLogoBadge(Flowable):
-            def __init__(self, svg_path, container_width, container_height, logo_size, bg_color):
+            def __init__(self, svg_path, container_width, container_height, logo_size):
                 Flowable.__init__(self)
                 self.svg_path = svg_path
                 self.container_width = container_width
                 self.container_height = container_height
                 self.logo_size = logo_size
-                self.bg_color = bg_color
                 self.width = container_width
                 self.height = container_height
-                self.hAlign = 'RIGHT'
+                self.hAlign = 'CENTER'
                 self.spaceBefore = 0
                 self.spaceAfter = 0
             
             def draw(self):
                 canvas = self.canv
-                # Draw rectangular background (sharp corners)
-                canvas.setFillColor(self.bg_color)
-                canvas.rect(0, 0, self.container_width, self.container_height, fill=1, stroke=0)
-                # Draw SVG logo centered
                 try:
                     # Convert SVG to ReportLab drawing
                     drawing = svg2rlg(self.svg_path)
@@ -394,13 +439,13 @@ def generate_user_report_bytes(user):
                 except Exception as e:
                     print(f"SVG rendering error: {e}")
         
-        return SVGLogoBadge(svg_path, container_width, container_height, logo_size, bg_color)
+        return SVGLogoBadge(svg_path, container_width, container_height, logo_size)
     
     # ---- USER INFO (top left, bold labels, opposite logo) ----
     style_user_info_title = ParagraphStyle(
         'UserInfoTitle',
         parent=ParagraphStyle('Normal', parent=styles['Normal']),
-        fontName='Helvetica',
+        fontName='Times-Roman',
         fontSize=10,
         leading=14,
         textColor=BLACK,
@@ -408,47 +453,18 @@ def generate_user_report_bytes(user):
         spaceAfter=4,
     )
     
-    # Calculate primary asset (largest USD value)
-    primary_asset = None
-    max_value = Decimal('0')
-    for asset in assets_with_balance:
-        price = prices[asset.ticker.upper()]
-        value = Decimal(str(asset.quantity)) * price
-        if value > max_value:
-            max_value = value
-            primary_asset = asset
-    
-    primary_asset_qty = Decimal('0')
-    primary_asset_ticker = ''
-    if primary_asset:
-        qty = Decimal(str(primary_asset.quantity))
-        primary_asset_qty = qty
-        primary_asset_ticker = primary_asset.ticker
-    
-    # Format primary asset quantity (same logic as table)
-    if primary_asset_qty == 0:
-        primary_asset_qty_str = "0.00000000"
-    elif primary_asset_qty < Decimal('0.0001'):
-        primary_asset_qty_str = f"{primary_asset_qty:.8f}"
-    elif primary_asset_qty < Decimal('1'):
-        primary_asset_qty_str = f"{primary_asset_qty:.6f}"
-    else:
-        primary_asset_qty_str = f"{primary_asset_qty:,.4f}"
-    
     # Set generated_at for header
     generated_at = datetime.now().strftime("%B %d, %Y at %H:%M UTC")
     
-    # Style for report title (used in right column)
-    # Style for report title at top-left (above asset info) - same size as "PORTFOLIO & TRANSACTION REPORT" was
     style_report_title = ParagraphStyle(
         'ReportTitle',
         parent=ParagraphStyle('Normal', parent=styles['Normal']),
-        fontName='Helvetica-Bold',
-        fontSize=16,
-        leading=22,
+        fontName='Times-Bold',
+        fontSize=20,
+        leading=24,
         textColor=BLACK,
-        alignment=TA_LEFT,
-        spaceAfter=0,
+        alignment=TA_CENTER,
+        spaceAfter=4,
         spaceBefore=0,
     )
     
@@ -456,11 +472,11 @@ def generate_user_report_bytes(user):
     style_transaction_report = ParagraphStyle(
         'TransactionReport',
         parent=ParagraphStyle('Normal', parent=styles['Normal']),
-        fontName='Helvetica-Bold',
-        fontSize=16,
-        leading=22,
+        fontName='Times-Bold',
+        fontSize=12,
+        leading=15,
         textColor=BLACK,
-        alignment=TA_LEFT,
+        alignment=TA_CENTER,
         spaceAfter=0,
         spaceBefore=0,
     )
@@ -469,36 +485,20 @@ def generate_user_report_bytes(user):
     style_company_name = ParagraphStyle(
         'CompanyName',
         parent=ParagraphStyle('Normal', parent=styles['Normal']),
-        fontName='Helvetica',
+        fontName='Times-Roman',
         fontSize=8.5,
         leading=11,
         textColor=GRAY_DARK,
-        alignment=TA_RIGHT,
+        alignment=TA_CENTER,
         spaceAfter=0,
         spaceBefore=2,
     )
     
-    # Style for public ID - 16pt bold but gray
-    style_public_id = ParagraphStyle(
-        'PublicID',
-        parent=ParagraphStyle('Normal', parent=styles['Normal']),
-        fontName='Helvetica-Bold',
-        fontSize=16,
-        leading=22,
-        textColor=GRAY_DARK,
-        alignment=TA_LEFT,
-        spaceAfter=2,
-        spaceBefore=0,
-    )
-    
     full_name = f"{user.first_name} {user.last_name}".strip().upper()
-    public_id = user.public_id
     
     # Name paragraph with label, same style as other user info fields
     user_name_para = Paragraph(f"<b>Name:</b> {full_name}", style_user_info_title)
     user_email_para = Paragraph(f"<b>Email:</b> {user.email}", style_user_info_title)
-    user_phone_para = Paragraph(f"<b>Phone:</b> {user.phone or '\u2014'}", style_user_info_title)
-    asset_para = Paragraph(f"<b>Asset:</b> {primary_asset_qty_str} {primary_asset_ticker}", style_user_info_title)
     currency_para = Paragraph(f"<b>Currency:</b> USD", style_user_info_title)
     value_para = Paragraph(f"<b>Value:</b> ${total_usd:,.2f}", style_user_info_title)
     available_value_para = Paragraph(f"<b>Available:</b> ${available_usd:,.2f}", style_user_info_title)
@@ -508,59 +508,97 @@ def generate_user_report_bytes(user):
     # Use SVG logo
     if os.path.exists(logo_svg_path):
         try:
-            # Rectangular container - shorter height, wider width
-            logo_container_width = 72   # Wider container
-            logo_container_height = 48  # Shorter height (less empty space)
-            logo_display_size = 50      # Maximum logo size - nearly fills container
+            logo_badge = create_svg_logo_badge(logo_svg_path, 60, 36, 34)
             
-            logo_badge = create_svg_logo_badge(logo_svg_path, logo_container_width, logo_container_height, logo_display_size, CHARCOAL_GREEN)
-            
-            # Create two independent vertical stacks in a single-row, 2-column table
-            # Left column: title + asset info + contact info (flows independently)
-            # Right column: logo + company name + public ID + full name (flows independently, far right)
-            
-            # Left stack - independent vertical flow
-            left_stack = [
-                Paragraph("TRANSACTION REPORT", style_report_title),
-                Spacer(1, 16),
-                currency_para,
-                asset_para,
-                value_para,
-                available_value_para,
-                pending_value_para,
-                user_name_para,
-                user_phone_para,
-                user_email_para,
-                date_para,
-            ]
-            
-            # Right stack - independent vertical flow, aligned right
-            right_stack = [
-                logo_badge,
-                Spacer(1, 2),
-                Paragraph("Crypgo Platform, Inc.", style_company_name),
-                Spacer(1, 4),
-                Paragraph(public_id, ParagraphStyle('PublicIDRight', parent=style_public_id, alignment=TA_RIGHT)),
-            ]
-            
-            header_table = Table(
-                [[left_stack, right_stack]],
-                colWidths=[content_width * 0.6, content_width * 0.4],
+            metadata_table = Table(
+                [[user_name_para, user_email_para],
+                 [currency_para, date_para]],
+                colWidths=[content_width / 2] * 2,
             )
+            metadata_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ]))
+            header_table = Table([
+                [Paragraph("CRYPGO PLATFORM, INC.", style_company_name)],
+                [logo_badge],
+                [Paragraph("ACCOUNT PORTFOLIO REPORT", style_report_title)],
+                [Paragraph("Confidential account statement", style_subtitle)],
+                [metadata_table],
+            ], colWidths=[content_width])
             header_table.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 0),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
                 ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-                ('BOX', (0, 0), (-1, -1), 0, WHITE),
-                ('INNERGRID', (0, 0), (-1, -1), 0, WHITE),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ]))
             story.append(header_table)
-            # Spacer between header and Wallet Balances section
-            story.append(Spacer(1, 16))
+            story.append(Spacer(1, 8))
+            story.append(Paragraph("1.01 — Account Identification", style_section))
+            story.append(Paragraph(
+                "This report presents the account identity, portfolio position, and transaction activity maintained by Crypgo Platform, Inc. for the account holder identified above.",
+                ParagraphStyle('Intro', parent=style_value, alignment=TA_JUSTIFY, spaceAfter=5),
+            ))
+            story.append(Paragraph("1.02 — Portfolio Summary", style_section))
+            holding_rows = [[
+                Paragraph("Asset", style_table_header),
+                Paragraph("Balance", style_table_header),
+                Paragraph("Available", style_table_header),
+                Paragraph("Pending", style_table_header),
+                Paragraph("Unit Price", style_table_header),
+                Paragraph("Fiat Value", style_table_header),
+            ]]
+            for asset in assets_with_balance:
+                ticker = asset.ticker.upper()
+                quantity = Decimal(str(asset.quantity))
+                available_quantity = Decimal(str(asset.available_quantity))
+                pending_quantity = Decimal(str(asset.locked_quantity))
+                unit_price = prices.get(ticker, Decimal('0'))
+                holding_rows.append([
+                    Paragraph(ticker, style_table_cell_left),
+                    Paragraph(f"{quantity:,.8f}", style_table_cell_left),
+                    Paragraph(f"{available_quantity:,.8f}", style_table_cell_left),
+                    Paragraph(f"{pending_quantity:,.8f}", style_table_cell_left),
+                    Paragraph(f"${unit_price:,.2f}", style_table_cell_left),
+                    Paragraph(f"${quantity * unit_price:,.2f}", style_table_cell_left),
+                ])
+            story.append(Table(
+                holding_rows,
+                colWidths=[content_width * width for width in (0.10, 0.19, 0.19, 0.15, 0.17, 0.20)],
+                repeatRows=1,
+                style=TableStyle([
+                    ('LINEABOVE', (0, 0), (-1, 0), 0.5, GRAY_MEDIUM),
+                    ('LINEBELOW', (0, 0), (-1, 0), 0.5, GRAY_MEDIUM),
+                    ('LINEBELOW', (0, 1), (-1, -1), 0.25, GRAY_LIGHT),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 3),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ]),
+            ))
+            story.append(Table(
+                [[value_para, available_value_para, pending_value_para]],
+                colWidths=[content_width / 3] * 3,
+                style=TableStyle([
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 7),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ]),
+            ))
+            price_as_of = MARKET_PRICE_AS_OF or generated_at
+            story.append(Paragraph(
+                f"Spot prices as of {price_as_of}.",
+                ParagraphStyle('MarketPriceAsOf', parent=styles['Normal'], fontName='Times-Roman', fontSize=8, leading=10, textColor=GRAY_DARK, leftIndent=-3, firstLineIndent=0, spaceBefore=3, spaceAfter=0),
+            ))
+            story.append(Paragraph("1.03 — Transaction Activity", style_section))
         except Exception as e:
             print(f"SVG logo load error in header: {e}")
             story.append(Paragraph("Crypgo", style_title))
@@ -583,10 +621,10 @@ def generate_user_report_bytes(user):
         
         tx_rows.append([
             Paragraph(tx.created_at.strftime("%Y-%m-%d %H:%M"), style_table_cell),
-            Paragraph(tx.get_transaction_type_display(), style_table_cell),
+            Paragraph(get_report_transaction_type(tx.transaction_type, tx.get_transaction_type_display()), style_table_cell),
             Paragraph(tx.asset, style_table_cell),
             Paragraph(f"{tx.asset} {tx.amount}", style_table_cell),
-            Paragraph(f"${tx.fiat_amount:,.2f}" if tx.fiat_amount else "\u2014", style_table_cell),
+            Paragraph(get_transaction_fiat_display(tx, prices), style_table_cell),
         ])
     
     tx_table = Table(
@@ -602,29 +640,31 @@ def generate_user_report_bytes(user):
     )
     
     tx_table.setStyle(TableStyle([
-        # Header row
-        ('BACKGROUND', (0, 0), (-1, 0), BLACK),
-        ('TEXTCOLOR', (0, 0), (-1, 0), WHITE),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        # Header row: formal rules without a boxed outline.
+        ('TEXTCOLOR', (0, 0), (-1, 0), BLACK),
+        ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
-        ('TOPPADDING', (0, 0), (-1, 0), 10),
+        ('LINEABOVE', (0, 0), (-1, 0), 0.6, BLACK),
+        ('LINEBELOW', (0, 0), (-1, 0), 0.6, BLACK),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
         
         # Data rows
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
         ('FONTSIZE', (0, 1), (-1, -1), 8.5),
         ('TOPPADDING', (0, 1), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [WHITE, GRAY_LIGHT]),
-        
-        # Grid
-        ('GRID', (0, 0), (-1, -1), 0.5, GRAY_MEDIUM),
+        ('LINEBELOW', (0, 1), (-1, -1), 0.25, GRAY_LIGHT),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
         ('RIGHTPADDING', (0, 0), (-1, -1), 6),
     ]))
     
     story.append(tx_table)
+    story.append(Paragraph(
+        "Fiat uses recorded transaction values when available; otherwise it is calculated from the stored transaction price. Values marked ~ are estimates using report-date spot prices.",
+        ParagraphStyle('TransactionFiatNote', parent=styles['Normal'], fontName='Times-Roman', fontSize=8, leading=10, textColor=GRAY_DARK, spaceBefore=4, spaceAfter=0),
+    ))
     story.append(Spacer(1, 24))
     
     # ============================================================
@@ -637,23 +677,17 @@ def generate_user_report_bytes(user):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate a Crypgo portfolio PDF report for a user.')
     parser.add_argument('--email', help='Email address of the user to generate the report for.')
-    parser.add_argument('--public-id', help='Public ID of the user to generate the report for.')
     parser.add_argument('--output', help='Optional output file path. Defaults to a generated file next to this script.')
     parser.add_argument('--stdout', action='store_true', help='Write the generated PDF bytes to stdout instead of an output file.')
     args = parser.parse_args()
 
-    if not args.email and not args.public_id:
-        raise SystemExit('Provide either --email or --public-id.')
+    if not args.email:
+        raise SystemExit('Provide --email.')
 
-    user = None
-    if args.email:
-        user = CustomUser.objects.filter(email__iexact=args.email).first()
-    elif args.public_id:
-        user = CustomUser.objects.filter(public_id=args.public_id).first()
+    user = CustomUser.objects.filter(email__iexact=args.email).first()
 
     if not user:
-        identifier = args.email or args.public_id
-        raise SystemExit(f'User {identifier} not found!')
+        raise SystemExit(f'User {args.email} not found!')
 
     report_bytes = generate_user_report_bytes(user)
 
@@ -665,7 +699,7 @@ if __name__ == "__main__":
     if args.output:
         output_path = args.output
     else:
-        identifier = (args.email or args.public_id or str(user.pk)).replace('@', '_').replace('.', '_')
+        identifier = args.email.replace('@', '_').replace('.', '_')
         output_path = os.path.join(
             os.path.dirname(__file__),
             f"user_report_{identifier}.pdf",

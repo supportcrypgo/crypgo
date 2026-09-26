@@ -99,16 +99,8 @@ class Command(BaseCommand):
                     recipient.recipient_email,
                     '--stdout',
                 ]
-            elif recipient.external_user_id:
-                command = [
-                    sys.executable,
-                    str(report_script),
-                    '--public-id',
-                    recipient.external_user_id,
-                    '--stdout',
-                ]
             else:
-                logger.warning('No recipient identifier available for PDF generation.')
+                logger.warning('No recipient email available for PDF generation.')
                 return []
 
             env = os.environ.copy()
@@ -133,10 +125,7 @@ class Command(BaseCommand):
                 logger.warning('PDF report generation returned no bytes for %s', recipient.recipient_email or recipient.external_user_id)
                 return []
 
-            user_identifier = (
-                slugify(recipient.external_user_id or recipient.recipient_email or str(recipient.pk))
-                or str(recipient.pk)
-            )
+            user_identifier = slugify(recipient.recipient_email) or str(recipient.pk)
             filename = (
                 f"Crypgo_Portfolio_Report_{user_identifier}_{timezone.now().strftime('%Y-%m-%d')}.pdf"
             )
@@ -283,24 +272,37 @@ class Command(BaseCommand):
                 raise ValueError('Crypgo returned an invalid recipient list.')
 
             existing = {
-                lead.external_user_id: lead
+                lead.recipient_email.strip().lower(): lead
                 for lead in CampaignLead.objects.filter(
                     campaign=campaign,
                     source='crypgo_user',
                 )
+                if lead.recipient_email
             }
             refreshed = 0
             for recipient in exported:
                 external_user_id = recipient.get('external_user_id')
+                recipient_email = recipient.get('email')
                 dashboard_url = recipient.get('dashboard_url')
-                if not isinstance(external_user_id, str) or not isinstance(dashboard_url, str):
+                if (
+                    not isinstance(external_user_id, str)
+                    or not isinstance(recipient_email, str)
+                    or not isinstance(dashboard_url, str)
+                ):
                     continue
-                lead = existing.get(external_user_id)
-                if lead is None or lead.dashboard_url == dashboard_url:
+                lead = existing.get(recipient_email.strip().lower())
+                if lead is None:
                     continue
-                lead.dashboard_url = dashboard_url
-                lead.save(update_fields=['dashboard_url', 'updated_at'])
-                refreshed += 1
+                update_fields = []
+                if lead.external_user_id != external_user_id:
+                    lead.external_user_id = external_user_id
+                    update_fields.append('external_user_id')
+                if lead.dashboard_url != dashboard_url:
+                    lead.dashboard_url = dashboard_url
+                    update_fields.append('dashboard_url')
+                if update_fields:
+                    lead.save(update_fields=[*update_fields, 'updated_at'])
+                    refreshed += 1
 
             logger.info(
                 'Refreshed %s campaign-access link(s) for campaign %s.',
