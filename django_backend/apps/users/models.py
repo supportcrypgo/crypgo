@@ -43,21 +43,10 @@ class CustomUser(AbstractUser):
     date_joined = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Public-facing alphanumeric user ID (displayed to users, used in reports, API)
-    public_id = models.CharField(
-        max_length=20,
-        unique=True,
-        db_index=True,
-        blank=True,
-        editable=False,
-        help_text="Public-facing alphanumeric user ID"
-    )
-
     # Profile fields that can be edited by admin
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
     date_of_birth = models.DateField(blank=True, null=True)
-    phone = models.CharField(max_length=20, blank=True, default='')
     country = models.CharField(max_length=100, blank=True, default='')
     city = models.CharField(max_length=100, blank=True, default='')
     address = models.TextField(blank=True, default='')
@@ -127,22 +116,9 @@ class CustomUser(AbstractUser):
         self.save(update_fields=['email_preferences'])
         return self.email_preferences
 
-    @staticmethod
-    def generate_public_id():
-        """Generate a unique 14-character alphanumeric public ID."""
-        import string
-        alphabet = string.ascii_letters + string.digits  # 62 characters
-        for _ in range(10):  # Retry up to 10 times (collision probability is astronomically low)
-            candidate = ''.join(secrets.choice(alphabet) for _ in range(14))
-            if not CustomUser.objects.filter(public_id=candidate).exists():
-                return candidate
-        raise ValueError("Failed to generate unique public_id after 10 attempts")
-
     def save(self, *args, **kwargs):
         if self.email:
             self.email = self.email.strip().lower()
-        if not self.public_id:
-            self.public_id = self.generate_public_id()
         super().save(*args, **kwargs)
 
 

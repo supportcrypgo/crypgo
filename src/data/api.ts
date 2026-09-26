@@ -137,7 +137,6 @@ function normalizeUser(user: any): UnifiedUser {
     firstName,
     lastName,
     email: user?.email || '',
-    phone: user?.phone || '',
     country: user?.country || user?.location || '',
     dateOfBirth: user?.date_of_birth || user?.dateOfBirth || user?.dob || '',
     password: '',
@@ -145,7 +144,6 @@ function normalizeUser(user: any): UnifiedUser {
     role: (user?.role === 'admin' || user?.role === 'merchant' || user?.role === 'trader' ? user?.role : 'trader') as UnifiedUser['role'],
     status: user?.is_active ? 'active' : 'pending',
     emailVerified: Boolean(user?.email_verified ?? true),
-    phoneVerified: Boolean(user?.phone_verified ?? false),
     createdAt: user?.date_joined || user?.created_at || '',
     lastLoginAt: user?.last_login || user?.lastLoginAt || '',
   };
@@ -700,7 +698,6 @@ export const publicApi = {
     password: string;
     first_name?: string;
     last_name?: string;
-    phone?: string;
     country?: string;
   }): Promise<{ user: UnifiedUser }> {
     const response = await fetch(`${API_BASE_URL}/auth/register/`, {
@@ -930,7 +927,6 @@ export const profileApi = {
     const payload: Record<string, any> = {};
     if (data.firstName !== undefined) payload.first_name = data.firstName;
     if (data.lastName !== undefined) payload.last_name = data.lastName;
-    if (data.phone !== undefined) payload.phone = data.phone;
     if (data.country !== undefined) payload.country = data.country;
     if (data.dateOfBirth !== undefined) payload.date_of_birth = data.dateOfBirth;
     if ((data as any).location !== undefined) payload.country = (data as any).location;

@@ -104,9 +104,6 @@ class Command(BaseCommand):
             with transaction.atomic():
                 for row in eligible_users:
                     email = (row['email'] or '').strip().lower()
-                    public_id = row['public_id'] or None
-                    if public_id and CustomUser.objects.filter(public_id=public_id).exists():
-                        public_id = None
                     user = CustomUser.objects.create(
                         password=row['password'],
                         last_login=self.parse_datetime(row['last_login']),
@@ -119,7 +116,6 @@ class Command(BaseCommand):
                         updated_at=self.parse_datetime(row['updated_at']),
                         first_name=row['first_name'] or '',
                         last_name=row['last_name'] or '',
-                        phone=row['phone'] or '',
                         country=row['country'] or '',
                         city=row['city'] or '',
                         address=row['address'] or '',
@@ -133,7 +129,6 @@ class Command(BaseCommand):
                         two_fa_backup_codes=self.parse_json(row['two_fa_backup_codes'], []),
                         two_fa_enabled=bool(row['two_fa_enabled']),
                         two_fa_secret=row['two_fa_secret'],
-                        public_id=public_id,
                         date_of_birth=self.parse_date(row['date_of_birth']) if 'date_of_birth' in row.keys() else None,
                         transaction_guard_enabled=True,
                         transaction_guard_started_at=timezone.now(),

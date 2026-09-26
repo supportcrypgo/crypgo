@@ -20,7 +20,6 @@ export interface UnifiedUser {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
   country: string;
   dateOfBirth?: string;
   password: string;
@@ -28,7 +27,6 @@ export interface UnifiedUser {
   role: UserRole;
   status: UserStatus;
   emailVerified: boolean;
-  phoneVerified: boolean;
   createdAt: string;
   lastLoginAt: string;
 }
@@ -93,13 +91,11 @@ export interface UnifiedPublicProfile {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
   country: string;
   dateOfBirth?: string;
   avatarInitials: string;
   role: UserRole;
   emailVerified: boolean;
-  phoneVerified: boolean;
   memberSince: string;
 }
 

@@ -23,7 +23,6 @@ export function EditProfileContent({ user: initialUser }: { user: UnifiedUser })
     lastName: initialUser.lastName,
     dateOfBirth: toDateInputValue(initialUser.dateOfBirth),
     email: initialUser.email,
-    phone: initialUser.phone,
     countryRegion: initialUser.country,
   });
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -62,7 +61,6 @@ export function EditProfileContent({ user: initialUser }: { user: UnifiedUser })
         firstName: form.firstName,
         lastName: form.lastName,
         dateOfBirth: form.dateOfBirth || undefined,
-        phone: form.phone,
         country: form.countryRegion,
       });
 
@@ -160,17 +158,6 @@ export function EditProfileContent({ user: initialUser }: { user: UnifiedUser })
             type="email"
             name="email"
             value={form.email}
-            onChange={handleChange}
-            className="w-full px-4 py-3 bg-background border border-white/5 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none text-foreground"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-2">Phone</label>
-          <input
-            type="tel"
-            name="phone"
-            value={form.phone}
             onChange={handleChange}
             className="w-full px-4 py-3 bg-background border border-white/5 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none text-foreground"
           />

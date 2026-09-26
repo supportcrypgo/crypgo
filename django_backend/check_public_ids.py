@@ -10,4 +10,4 @@ from apps.users.models import CustomUser
 users = CustomUser.objects.all()
 print(f'Total users: {users.count()}')
 for u in users:
-    print(f'  {u.email} -> public_id: {u.public_id}')
+    print(f'  {u.email}')

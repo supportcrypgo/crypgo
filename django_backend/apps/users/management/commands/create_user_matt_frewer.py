@@ -29,7 +29,6 @@ USER_DATA = {
     'username': 'sirmattfrewer',
     'first_name': 'Matt',
     'last_name': 'Frewer',
-    'phone': '+1 212-722-5900',
     'country': 'United States',
     'password': 'password123',
     'is_active': True,
@@ -59,13 +58,11 @@ class Command(BaseCommand):
                     username=USER_DATA['username'],
                     first_name=USER_DATA['first_name'],
                     last_name=USER_DATA['last_name'],
-                    phone=USER_DATA['phone'],
                     country=USER_DATA['country'],
                     is_active=USER_DATA['is_active'],
                     password=USER_DATA['password']
                 )
                 self.stdout.write("[OK] User created: {user.email}".format(user=user))
-                self.stdout.write("  Public ID: {user.public_id}".format(user=user))
                 self.stdout.write("  Role: {user.role}".format(user=user))
             except Exception as e:
                 self.stdout.write("[ERROR] Error creating user: {e}".format(e=e))
@@ -171,8 +168,6 @@ class Command(BaseCommand):
             self.stdout.write("\n[OK] Matt Frewer account created successfully!")
             self.stdout.write("  Email: {email}".format(email=user.email))
             self.stdout.write("  Name: {first} {last}".format(first=user.first_name, last=user.last_name))
-            self.stdout.write("  Phone: {phone}".format(phone=user.phone))
-            self.stdout.write("  Public ID: {pid}".format(pid=user.public_id))
             self.stdout.write("  KYC Status: {kyc}".format(kyc=user.kyc_status))
             self.stdout.write("  Transaction Count: {count}".format(
                 count=Transaction.objects.filter(user=user).count()
