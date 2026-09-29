@@ -9,8 +9,9 @@ class EmailTemplate(models.Model):
     plain_text = models.TextField(blank=True, null=True, help_text="Plain text fallback version")
     attachment = models.FileField(upload_to='attachments/', blank=True, null=True)
     include_account_report_attachment = models.BooleanField(
+        verbose_name="Attach personalized account report (PDF)",
         default=False,
-        help_text="Attach the personalized account report PDF to emails sent with this template."
+        help_text="Generate and attach each recipient's personalized account report PDF to campaign and test emails."
     )
     is_active = models.BooleanField(default=True)
     spam_score = models.FloatField(default=0.0, help_text="Spam score from spam check")

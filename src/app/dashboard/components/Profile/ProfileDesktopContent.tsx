@@ -1,6 +1,5 @@
 'use client';
 
-import { User, ShieldCheck, HardDrive, KeyRound, Clock, Settings } from 'lucide-react';
 import type { UnifiedUser } from '@/types/unified';
 import { ProfileContent } from './ProfileContent';
 import { IDVerificationContent } from './IDVerificationContent';
@@ -8,6 +7,7 @@ import { SecurityContent } from './SecurityContent';
 import { ChangePasswordContent } from './ChangePasswordContent';
 import { ActivityLogContent } from './ActivityLogContent';
 import { PreferencesContent } from './PreferencesContent';
+import { DeleteAccountContent } from './DeleteAccountContent';
 
 interface ContentProps {
   activeTab: string;
@@ -37,6 +37,8 @@ export default function ProfileDesktopContent({ activeTab, user }: ContentProps)
       return <ActivityLogContent user={user} />;
     case 'preferences':
       return <PreferencesContent user={user} />;
+    case 'delete-account':
+      return <DeleteAccountContent />;
     default:
       return (
         <div className="flex items-center justify-center h-64 text-muted-foreground">

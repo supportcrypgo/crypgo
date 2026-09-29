@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Monitor, Smartphone, Tablet, MapPin, Globe, Loader2, XCircle, CheckCircle, AlertCircle, LogOut, Trash2, Clock } from 'lucide-react';
 import type { UnifiedUser } from '@/types/unified';
-import { adminActivityApi, sessionApi, type UserActivityLog } from '@/data/api';
+import { activityApi, sessionApi, type UserActivityLog } from '@/data/api';
 
 interface ActivityLog {
   id: string;
-  type: 'login' | 'logout' | 'password_change' | 'email_change' | 'phone_change' | '2fa_enabled' | '2fa_disabled' | 'api_key_created' | 'api_key_revoked' | 'kyc_submitted' | 'kyc_approved' | 'kyc_rejected';
+  type: string;
   timestamp: string;
   ip: string;
   location: string;
@@ -42,11 +42,12 @@ const getTypeIcon = (type: ActivityLog['type']) => {
     case 'kyc_submitted': return <Loader2 className="w-4 h-4 animate-spin" />;
     case 'kyc_approved': return <CheckCircle className="w-4 h-4" />;
     case 'kyc_rejected': return <XCircle className="w-4 h-4" />;
+    default: return <Globe className="w-4 h-4" />;
   }
 };
 
 const getTypeLabel = (type: ActivityLog['type']) => {
-  const labels: Record<ActivityLog['type'], string> = {
+  const labels: Record<string, string> = {
     login: 'Login',
     logout: 'Logout',
     password_change: 'Password Changed',
@@ -60,7 +61,7 @@ const getTypeLabel = (type: ActivityLog['type']) => {
     kyc_approved: 'KYC Approved',
     kyc_rejected: 'KYC Rejected',
   };
-  return labels[type];
+  return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 };
 
 const getStatusIcon = (status: ActivityLog['status']) => {
@@ -105,23 +106,32 @@ export function ActivityLogContent({ user }: { user: UnifiedUser }) {
 
     const load = async () => {
       try {
-        const [activityResponse, sessionResponse] = await Promise.all([
-          Number.isFinite(Number(user.id)) ? adminActivityApi.getUserActivities(Number(user.id)) : Promise.resolve([] as UserActivityLog[]),
+        const [activityResult, sessionResult] = await Promise.allSettled([
+          activityApi.getActivities(),
           sessionApi.getSessions(),
         ]);
 
         if (!mounted) return;
 
+        const activityResponse = activityResult.status === 'fulfilled'
+          ? activityResult.value
+          : [] as UserActivityLog[];
+        const sessionResponse = sessionResult.status === 'fulfilled'
+          ? sessionResult.value
+          : [];
+
         setActivityLogs(activityResponse.map((entry) => ({
           id: String(entry.id),
-          type: (entry.action as ActivityLog['type']) || 'login',
+          type: entry.action || 'login',
           timestamp: entry.created_at,
-          ip: entry.ip_address,
-          location: entry.location,
-          device: entry.user_agent,
-          browser: entry.user_agent,
-          status: entry.action.toLowerCase().includes('failed') ? 'failed' : 'success',
-          details: entry.description,
+          ip: entry.ip_address || 'Unavailable',
+          location: entry.location || 'Unavailable',
+          device: entry.device || 'Unknown device',
+          browser: typeof entry.metadata?.browser === 'string' ? entry.metadata.browser : 'Unknown browser',
+          status: entry.status === 'failed' ? 'failed' : 'success',
+          details: typeof entry.metadata?.auth_method === 'string'
+            ? `Signed in using ${entry.metadata.auth_method.replace(/_/g, ' ')}`
+            : undefined,
         })));
 
         setSessions(sessionResponse.map((session) => ({
@@ -221,7 +231,7 @@ export function ActivityLogContent({ user }: { user: UnifiedUser }) {
                         {new Date(log.timestamp).toLocaleString()}
                       </span>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{log.details}</p>
+                    {log.details && <p className="mt-1 text-sm text-muted-foreground">{log.details}</p>}
                     <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {log.location}</span>
                       <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> {log.ip}</span>

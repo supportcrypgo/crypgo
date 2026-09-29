@@ -5,7 +5,7 @@ import { useUnified } from '@/context/UnifiedContext';
 import { SwapExecutionPanel } from './SwapExecutionPanel';
 import { SwapIntelligencePanel } from './SwapIntelligencePanel';
 import { useSwapWorkspace } from './useSwapWorkspace';
-import CautionModal from '@/components/CautionModal';
+import CautionModal from '@/components/Auth/CautionModal';
 
 interface SwapWorkspaceProps {
   onSuccessPageChange?: (visible: boolean) => void;

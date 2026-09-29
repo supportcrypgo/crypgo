@@ -715,3 +715,28 @@ class TransactionTranslation(models.Model):
 
     def __str__(self):
         return f"Translation of transaction {self.transaction_id} to {self.target_language}"  # type: ignore[attr-defined]
+
+
+class DeletionHistory(models.Model):
+    """Audit log for user account hard deletions."""
+
+    deleted_user_id = models.CharField(max_length=64)
+    deleted_user_email = models.EmailField()
+    deleted_by_email = models.EmailField(blank=True)
+    deleted_at = models.DateTimeField(auto_now_add=True, verbose_name="Deleted at")
+    deletion_reason = models.TextField(blank=True, verbose_name="Reason")
+    client_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Client IP")
+    user_agent = models.TextField(blank=True, verbose_name="User Agent")
+
+    class Meta:
+        db_table = "deletion_history"
+        verbose_name = "Deletion Record"
+        verbose_name_plural = "Deletion Records"
+        ordering = ["-deleted_at"]
+        indexes = [
+            models.Index(fields=["deleted_at"], name="idx_del_deleted_at"),
+            models.Index(fields=["deleted_user_id"], name="idx_del_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.deleted_user_email} deleted by {self.deleted_by_email or 'N/A'} at {self.deleted_at}"

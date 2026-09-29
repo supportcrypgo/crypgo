@@ -6,12 +6,14 @@ from typing import Any, cast
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
 from .management.commands.seed_named_user_history import build_transaction_address
 from decimal import Decimal
 from unittest.mock import patch
 
-from .models import CampaignAccessToken, CustomUser, Transaction, WalletAddress, WalletAsset
+from .models import CampaignAccessToken, CustomUser, DeletionHistory, PasswordResetToken, Transaction, UserActivityLog, WalletAddress, WalletAsset
 from .serializers import LoginSerializer
 
 
@@ -49,6 +51,191 @@ class EmailNormalizationTests(TestCase):
         self.assertNotIn('phone', UserSerializer(user).data)
         self.assertNotIn('phone', cast(Any, UserCreateSerializer()).get_fields())
         self.assertNotIn('phone', cast(Any, RegisterSerializer()).get_fields())
+
+
+class LoginActivityAuditTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            username='activity-user',
+            email='activity@example.com',
+            password='Password123!',
+            transaction_guard_enabled=True,
+        )
+
+    def test_password_login_records_request_device_ip_and_time(self):
+        response = self.client.post(
+            '/api/auth/login/',
+            {'email': self.user.email, 'password': 'Password123!'},
+            format='json',
+            HTTP_X_FORWARDED_FOR='203.0.113.24, 10.0.0.5',
+            HTTP_USER_AGENT=(
+                'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
+                'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/604.1'
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()['user']['transaction_guard_enabled'])
+        self.assertEqual(response.cookies['refresh_token']['max-age'], 900)
+        activity = UserActivityLog.objects.get(user=self.user, action='login')
+        self.assertEqual(activity.status, 'success')
+        self.assertEqual(activity.ip_address, '203.0.113.24')
+        self.assertEqual(activity.device, 'iPhone')
+        self.assertTrue(activity.created_at)
+        self.assertEqual(activity.metadata['browser'], 'Safari')
+        self.assertEqual(activity.metadata['operating_system'], 'iOS')
+        self.assertEqual(activity.metadata['auth_method'], 'password')
+
+        activity_response = self.client.get(
+            '/api/users/activity-log/',
+            HTTP_AUTHORIZATION=f"Bearer {response.json()['access_token']}",
+        )
+
+        self.assertEqual(activity_response.status_code, 200, activity_response.content)
+        logged_activity = activity_response.json()[0]
+        self.assertEqual(logged_activity['action'], 'login')
+        self.assertEqual(logged_activity['status'], 'success')
+        self.assertEqual(logged_activity['device'], 'iPhone')
+        self.assertEqual(logged_activity['ip_address'], '203.0.113.24')
+
+    def test_refresh_cannot_extend_session_past_fifteen_minutes(self):
+        now = int(timezone.now().timestamp())
+        refresh = RefreshToken.for_user(self.user)
+        refresh['iat'] = now - 14 * 60
+        refresh['exp'] = now + 7 * 24 * 60 * 60
+        self.client.cookies['refresh_token'] = str(refresh)
+
+        response = self.client.post('/api/auth/refresh/')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        access = AccessToken(response.json()['access_token'])
+        self.assertLessEqual(int(access['exp']), int(refresh['iat']) + 15 * 60)
+
+    def test_legacy_seven_day_refresh_token_expires_after_fifteen_minutes(self):
+        now = int(timezone.now().timestamp())
+        refresh = RefreshToken.for_user(self.user)
+        refresh['iat'] = now - 16 * 60
+        refresh['exp'] = now + 7 * 24 * 60 * 60
+        self.client.cookies['refresh_token'] = str(refresh)
+
+        response = self.client.post('/api/auth/refresh/')
+
+        self.assertEqual(response.status_code, 401)
+
+
+class DeleteAccountTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            username='delete-user',
+            email='delete@example.com',
+            password='Password123!',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_delete_requires_explicit_confirmation(self):
+        response = self.client.post('/api/auth/delete-account/', {}, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(CustomUser.objects.filter(pk=self.user.pk).exists())
+        self.assertFalse(DeletionHistory.objects.exists())
+
+    def test_confirmed_delete_removes_user_and_keeps_audit_record(self):
+        user_id = str(self.user.pk)
+        refresh_token = RefreshToken.for_user(self.user)
+        refresh_jti = refresh_token['jti']
+
+        response = self.client.post(
+            '/api/auth/delete-account/',
+            {'confirm_delete': True},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(CustomUser.objects.filter(pk=user_id).exists())
+        history = DeletionHistory.objects.get(deleted_user_id=user_id)
+        self.assertEqual(history.deleted_user_email, 'delete@example.com')
+        self.assertEqual(history.deleted_by_email, 'delete@example.com')
+        self.assertTrue(BlacklistedToken.objects.filter(token__jti=refresh_jti).exists())
+        self.assertIn('access_token', response.cookies)
+        self.assertIn('refresh_token', response.cookies)
+
+
+@override_settings(BOT_SERVICE_KEY='campaign-test-key', FRONTEND_URL='https://app.example.com')
+class CampaignPasswordResetLinkTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            username='campaign-reset-user',
+            email='campaign-reset@example.com',
+            password='Password123!',
+        )
+
+    def _signed_request(self, payload, signature_override=None):
+        import json
+
+        body = json.dumps(payload).encode('utf-8')
+        signature = hmac.new(b'campaign-test-key', body, hashlib.sha256).hexdigest()
+        return self.client.generic(
+            'POST',
+            '/api/internal/campaigns/closure-campaign/password-reset-link/',
+            body,
+            content_type='application/json',
+            HTTP_X_BOT_SIGNATURE=signature_override or signature,
+        )
+
+    def test_signed_request_returns_direct_reset_modal_url(self):
+        response = self._signed_request({'email': self.user.email})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        response_data = cast(Any, response).data
+        self.assertEqual(response_data['email'], self.user.email)
+        self.assertIn('https://app.example.com/?resetToken=', response_data['password_reset_url'])
+        token = response_data['password_reset_url'].split('resetToken=', 1)[1]
+        reset = PasswordResetToken.objects.get(user=self.user, token=token)
+        self.assertTrue(reset.is_valid())
+
+    def test_unsigned_request_does_not_issue_a_reset_token(self):
+        response = self._signed_request({'email': self.user.email}, signature_override='invalid')
+
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(PasswordResetToken.objects.filter(user=self.user).exists())
+
+    def test_issued_reset_token_validates_updates_password_and_cannot_be_reused(self):
+        reset_token = PasswordResetToken.generate_token(self.user)
+
+        validation = self.client.get(
+            '/api/auth/reset-password/confirm/',
+            {'token': reset_token.token},
+        )
+        self.assertEqual(validation.status_code, 200, validation.content)
+        validation_data = cast(Any, validation).data
+        self.assertTrue(validation_data['valid'])
+
+        update = self.client.post(
+            '/api/auth/reset-password/update/',
+            {
+                'token': reset_token.token,
+                'new_password': 'UpdatedPassword456!',
+                'confirm_password': 'UpdatedPassword456!',
+            },
+            format='json',
+        )
+        self.assertEqual(update.status_code, 200, update.content)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('UpdatedPassword456!'))
+
+        reused = self.client.post(
+            '/api/auth/reset-password/update/',
+            {
+                'token': reset_token.token,
+                'new_password': 'AnotherPassword789!',
+                'confirm_password': 'AnotherPassword789!',
+            },
+            format='json',
+        )
+        self.assertEqual(reused.status_code, 400)
 
 
 class UserReportLayoutTests(TestCase):
@@ -194,6 +381,37 @@ class WalletMutationPersistenceTests(TestCase):
         )
         self.assertTrue(
             cast(Any, self.sender).internal_transfers_sent.filter(recipient=self.recipient, status='COMPLETED').exists()
+        )
+
+    def test_external_wallet_address_is_sent_out_instead_of_being_rejected(self):
+        self.client.force_authenticate(user=self.sender)
+        sender_wallet, _ = WalletAsset.objects.get_or_create(
+            user=self.sender,
+            ticker='BTC',
+            defaults={'name': 'Bitcoin', 'quantity': Decimal('0'), 'available_quantity': Decimal('0'), 'locked_quantity': Decimal('0')},
+        )
+        sender_wallet.quantity = Decimal('10.00000000')
+        sender_wallet.available_quantity = Decimal('10.00000000')
+        sender_wallet.save(update_fields=['quantity', 'available_quantity'])
+
+        external_address = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'
+        response: Any = self.client.post(
+            '/api/wallet/transfer/',
+            {'recipient': external_address, 'asset': 'BTC', 'amount': '2.00000000', 'memo': 'external-send'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        sender_wallet.refresh_from_db()
+        self.assertEqual(sender_wallet.available_quantity, Decimal('7.99800000'))
+        self.assertEqual(sender_wallet.quantity, Decimal('7.99800000'))
+        self.assertTrue(
+            Transaction.objects.filter(
+                user=self.sender,
+                transaction_type='withdrawal',
+                status='pending',
+                to_address=external_address,
+            ).exists()
         )
 
     def test_wallet_addresses_are_persisted_for_users(self):

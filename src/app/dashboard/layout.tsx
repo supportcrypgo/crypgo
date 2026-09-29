@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Metadata } from 'next';
 import DashboardAuthGuard from '@/components/Auth/DashboardAuthGuard';
+import DashboardReturnCautionGate from '@/components/Auth/DashboardReturnCautionGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,5 +15,12 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <DashboardAuthGuard>{children}</DashboardAuthGuard>;
+  return (
+    <DashboardAuthGuard>
+      <>
+        <DashboardReturnCautionGate />
+        {children}
+      </>
+    </DashboardAuthGuard>
+  );
 }

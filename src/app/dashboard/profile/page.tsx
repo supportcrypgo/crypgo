@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import ProfileHeader from '@/app/dashboard/components/Profile/ProfileHeader';
 import ProfileIdentity from '@/app/dashboard/components/Profile/ProfileIdentity';
@@ -20,18 +21,57 @@ type ProfileSection =
   | 'security'
   | 'password'
   | 'activity'
-  | 'preferences';
+  | 'preferences'
+  | 'delete-account';
 
 export default function ProfilePage() {
   const isDesktop = useMediaQuery('(min-width: 768px)');
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [mobileSection, setMobileSection] = useState<ProfileSection | null>(null);
   const mobileContentRef = useRef<HTMLDivElement>(null);
   const { user, logout } = useAuth();
 
+  const setSection = (tab: ProfileSection | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (tab && tab !== 'profile') {
+      params.set('tab', tab);
+    } else {
+      params.delete('tab');
+    }
+
+    const queryString = params.toString();
+    router.replace(queryString ? `/dashboard/profile?${queryString}` : '/dashboard/profile', {
+      scroll: false,
+    });
+
+    setMobileSection(tab);
+  };
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab') as ProfileSection | null;
+    const validTabs: ProfileSection[] = [
+      'profile',
+      'id-verify',
+      'security',
+      'password',
+      'activity',
+      'preferences',
+      'delete-account',
+    ];
+
+    if (requestedTab && validTabs.includes(requestedTab)) {
+      setMobileSection(requestedTab);
+    } else {
+      setMobileSection(null);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     mobileContentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -68,7 +108,7 @@ export default function ProfilePage() {
         <div className="max-w-md mx-auto px-6 pt-safe-top">
           <ProfileHeader
             showBackButton={mobileSection !== null}
-            onBackClick={() => setMobileSection(null)}
+            onBackClick={() => setSection(null)}
           />
         </div>
       </div>
@@ -81,7 +121,7 @@ export default function ProfilePage() {
               <div className="mt-12">
                 <ProfileActions
                   activeTab=""
-                  onTabChange={(tab) => setMobileSection(tab as ProfileSection)}
+                  onTabChange={(tab) => setSection(tab as ProfileSection)}
                   onLogout={logout}
                 />
               </div>

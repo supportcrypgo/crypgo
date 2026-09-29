@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { SendAssetInfo, NetworkOption } from './types';
+import { useCryptoPricesGlobal } from '@/context/CryptoPriceContext';
+import { TICKER_TO_COINGECKO_KEY } from '@/lib/priceMapping';
+import type { Prices } from '@/app/dashboard/components/types';
 
 interface AmountFieldProps {
   asset: SendAssetInfo;
@@ -18,33 +21,28 @@ export default function AmountField({
   networkFee,
   onAmountChange,
 }: AmountFieldProps) {
-  const [usdValue, setUsdValue] = useState<string>('');
+  const { prices, isLoading } = useCryptoPricesGlobal();
 
   // Convert balance to number
   const balance = parseFloat(asset.balance?.replace(/,/g, '') || '0');
-  
-  // Calculate USD value (mock conversion rates)
-  const getUsdValue = (assetTicker: string, assetAmount: number): number => {
-    const rates: Record<string, number> = {
-      'BTC': 67500,
-      'ETH': 3450,
-      'SOL': 148,
-      'BNB': 580,
-      'USDT': 1,
-      'XRP': 0.62,
-      'ADA': 0.48,
-      'DOT': 7.25,
-      'DOGE': 0.10,
-      'LINK': 14.50,
-    };
-    return (rates[assetTicker] || 1) * assetAmount;
-  };
 
-  // Update USD value when amount changes
-  useEffect(() => {
-    const amt = parseFloat(amount) || 0;
-    setUsdValue(getUsdValue(asset.ticker, amt).toFixed(2));
-  }, [amount, asset.ticker]);
+  const usdValue = useMemo<number | null>(() => {
+    const assetAmount = Number.parseFloat(amount) || 0;
+    const coingeckoKey = TICKER_TO_COINGECKO_KEY[asset.ticker];
+
+    if (!coingeckoKey || !prices) {
+      return null;
+    }
+
+    const priceEntry = prices[coingeckoKey as keyof Prices];
+    const livePrice = Number(priceEntry?.usd ?? 0);
+
+    if (!Number.isFinite(livePrice) || livePrice <= 0) {
+      return null;
+    }
+
+    return livePrice * assetAmount;
+  }, [amount, asset.ticker, prices]);
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -91,7 +89,11 @@ export default function AmountField({
         {amount && (
           <div className="mt-2 flex items-center justify-between text-sm">
             <span className="text-charcoalGray">
-              ≈ ${parseFloat(usdValue).toLocaleString()} USD
+              {isLoading
+                ? 'Loading live price…'
+                : usdValue === null
+                  ? 'Live price unavailable'
+                  : `≈ $${usdValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD`}
             </span>
             <button
               type="button"

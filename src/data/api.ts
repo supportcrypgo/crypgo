@@ -144,6 +144,7 @@ function normalizeUser(user: any): UnifiedUser {
     role: (user?.role === 'admin' || user?.role === 'merchant' || user?.role === 'trader' ? user?.role : 'trader') as UnifiedUser['role'],
     status: user?.is_active ? 'active' : 'pending',
     emailVerified: Boolean(user?.email_verified ?? true),
+    transactionGuardEnabled: Boolean(user?.transaction_guard_enabled ?? user?.transactionGuardEnabled),
     createdAt: user?.date_joined || user?.created_at || '',
     lastLoginAt: user?.last_login || user?.lastLoginAt || '',
   };
@@ -343,10 +344,12 @@ export interface KYCDocumentUpload {
 export interface UserActivityLog {
   id: number;
   action: string;
-  description: string;
-  ip_address: string;
-  user_agent: string;
-  location: string;
+  action_display: string;
+  status: 'success' | 'failed';
+  status_display: string;
+  ip_address: string | null;
+  device: string | null;
+  location: string | null;
   metadata: Record<string, any>;
   created_at: string;
 }
@@ -879,7 +882,7 @@ export const authApi = {
    */
   async confirmResetToken(token: string): Promise<void> {
     const response = await fetch(
-      `${API_BASE_URL}/auth/reset-password/confirm/?token=${token}`
+      `${API_BASE_URL}/auth/reset-password/confirm/?token=${encodeURIComponent(token)}`
     );
 
     if (!response.ok) {
@@ -893,11 +896,15 @@ export const authApi = {
   /**
    * Update password with reset token
    */
-  async resetPassword(token: string, newPassword: string): Promise<void> {
+  async resetPassword(token: string, newPassword: string, confirmPassword: string): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/auth/reset-password/update/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, new_password: newPassword }),
+      body: JSON.stringify({
+        token,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      }),
     });
 
     if (!response.ok) {
@@ -966,6 +973,16 @@ export const profileApi = {
     return authenticatedRequest<{ success: boolean; message: string }>('/auth/change-password/', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Permanently delete the authenticated user's account.
+   */
+  async requestAccountDeletion(): Promise<{ success: boolean; message: string }> {
+    return authenticatedRequest<{ success: boolean; message: string }>('/auth/delete-account/', {
+      method: 'POST',
+      body: JSON.stringify({ confirm_delete: true }),
     });
   },
 

@@ -93,6 +93,30 @@ function AnimatedCurrency({ value, isDesktop }: { value: number; isDesktop: bool
 }
 
 export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop = false, editable = false, userId, performanceMetrics, availableBalance, maskBalance = false, walletError = null }: BalanceCardProps) {
+  const balanceCacheKey = userId ? `crypgo.dashboard.last-balance.${userId}` : null;
+  const [cachedBalance, setCachedBalance] = useState<{ key: string; value: number } | null>(null);
+
+  useEffect(() => {
+    if (!balanceCacheKey) {
+      setCachedBalance(null);
+      return;
+    }
+
+    const storedValue = Number(window.sessionStorage.getItem(balanceCacheKey));
+    setCachedBalance(
+      Number.isFinite(storedValue) && storedValue >= 0
+        ? { key: balanceCacheKey, value: storedValue }
+        : null
+    );
+  }, [balanceCacheKey]);
+
+  useEffect(() => {
+    if (!balanceCacheKey || isLoading || walletError || !Number.isFinite(totalBalance) || totalBalance < 0) return;
+
+    window.sessionStorage.setItem(balanceCacheKey, String(totalBalance));
+    setCachedBalance({ key: balanceCacheKey, value: totalBalance });
+  }, [balanceCacheKey, isLoading, totalBalance, walletError]);
+
   const getLivePrice = (ticker: string) => {
     const keyMap: Record<string, keyof Prices> = {
       BTC: 'bitcoin',
@@ -117,17 +141,27 @@ export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop
         days30: performanceMetrics.performance30d ?? null,
       }
     : null;
-  const balanceStr = walletError ? '--' : isLoading || maskBalance ? '$0.00' : formatCurrency(totalBalance);
+  const lastKnownBalance = cachedBalance?.key === balanceCacheKey ? cachedBalance.value : null;
+  const showCachedBalance = !maskBalance && (isLoading || Boolean(walletError)) && lastKnownBalance !== null;
+  const balanceStr = maskBalance
+    ? '$0.00'
+    : showCachedBalance
+      ? formatCurrency(lastKnownBalance)
+      : walletError
+        ? '--'
+        : isLoading
+          ? '—'
+          : formatCurrency(totalBalance);
   const [balanceWhole, balanceCents] = balanceStr.split('.');
-  const balanceDigits = walletError ? (
-    <span>--</span>
-  ) : isLoading || maskBalance ? (
+  const balanceDigits = showCachedBalance || maskBalance ? (
     <>
       <span>{balanceWhole}</span>
       <span className={isDesktop ? 'text-[0.5em] align-baseline ml-[0.05em] tabular-nums' : 'text-[1em] align-baseline ml-0 tabular-nums'}>
         .{balanceCents}
       </span>
     </>
+  ) : walletError || isLoading ? (
+    <span>{balanceStr}</span>
   ) : (
     <AnimatedCurrency value={totalBalance} isDesktop={isDesktop} />
   );
@@ -235,6 +269,11 @@ export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop
       >
         {balanceDigits}
       </h2>
+      {(showCachedBalance || (isLoading && lastKnownBalance === null)) && (
+        <p className="mt-1 text-xs text-charcoalGray" aria-live="polite">
+          {showCachedBalance ? 'Last known balance' : 'Loading balance'}
+        </p>
+      )}
       {/* Available balance */}
       {availableBalance !== undefined && !isLoading && !maskBalance && (
         <div className="mt-4 flex flex-wrap items-center gap-4 text-xs">

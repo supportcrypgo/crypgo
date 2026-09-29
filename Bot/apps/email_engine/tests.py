@@ -220,6 +220,75 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertIn('Hi James Borunda', mail.outbox[0].body)
         self.assertIn('https://app.crypgo.com/auth/campaign-access?token=one', mail.outbox[0].body)
 
+    def test_live_campaign_attaches_personalized_account_report(self):
+        template = EmailTemplate.objects.create(
+            name='Crypgo Campaign With Attachments',
+            subject='Account update',
+            html_content='<p>Hi {{ first_name }}</p>',
+            is_active=True,
+            include_account_report_attachment=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Crypgo Campaign With Attachments',
+            subject='Account update',
+            template=template,
+        )
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='crypgo-attachments',
+            recipient_email='attachments@example.com',
+            recipient_first_name='Casey',
+            dashboard_url='https://app.crypgo.com/auth/campaign-access?token=attachments',
+        )
+
+        with patch.object(Command, '_build_recipient_pdf_attachment', return_value=[
+            ('account-report.pdf', b'%PDF-report', 'application/pdf'),
+        ]):
+            Command().send_crypgo_recipients(campaign, template, EmailSender(), Throttler())
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].attachments, [
+            ('account-report.pdf', b'%PDF-report', 'application/pdf'),
+        ])
+        recipient.refresh_from_db()
+        self.assertEqual(recipient.status, 'sent')
+
+    def test_test_send_attaches_personalized_account_report(self):
+        template = EmailTemplate.objects.create(
+            name='Crypgo Test Campaign With Attachments',
+            subject='Account update',
+            html_content='<p>Hi {{ first_name }}</p>',
+            is_active=True,
+            include_account_report_attachment=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Crypgo Test Campaign With Attachments',
+            subject='Account update',
+            template=template,
+        )
+        CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='crypgo-test-attachments',
+            recipient_email='test-attachments@example.com',
+            recipient_first_name='Casey',
+            dashboard_url='https://app.crypgo.com/auth/campaign-access?token=test-attachments',
+        )
+
+        with (
+            patch.object(Command, 'refresh_crypgo_links', return_value=True),
+            patch.object(Command, '_build_recipient_pdf_attachment', return_value=[
+                ('account-report.pdf', b'%PDF-report', 'application/pdf'),
+            ]),
+        ):
+            Command().send_test_email(campaign, 'test-attachments@example.com')
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].attachments, [
+            ('account-report.pdf', b'%PDF-report', 'application/pdf'),
+        ])
+
     def test_recipient_does_not_attach_pdf_when_template_flag_is_off(self):
         template = EmailTemplate.objects.create(
             name='Crypgo User Campaign Template Without PDF',

@@ -15,7 +15,7 @@ import AssetSelector from './AssetSelector';
 import SwapCalculation from './SwapCalculation';
 import SwapSummary from './SwapSummary';
 import { useUnified } from '@/context/UnifiedContext';
-import CautionModal from '@/components/CautionModal';
+import CautionModal from '@/components/Auth/CautionModal';
 import { isTransactionCautionError } from '@/data/api';
 import { aggregateWalletAmountsByTicker } from '@/lib/walletBalances';
 import { getAssetIconPath } from '@/lib/assetIcons';
