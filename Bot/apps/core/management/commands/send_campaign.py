@@ -7,6 +7,7 @@ import time
 import hashlib
 import hmac
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import requests
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -134,6 +135,12 @@ class Command(BaseCommand):
             logger.exception('Unexpected error while generating PDF attachment for recipient %s', recipient.recipient_email or recipient.external_user_id)
             return []
 
+    def _build_account_report_attachments(self, template, recipient):
+        """Build the optional personalized account report attachment for a recipient."""
+        if not template.include_account_report_attachment:
+            return []
+        return self._build_recipient_pdf_attachment(recipient)
+
     def send_test_email(self, campaign, test_email):
         """Send a single test email using the full email engine pipeline"""
         from apps.email_engine.sender import EmailSender
@@ -175,12 +182,20 @@ class Command(BaseCommand):
                 'email': test_email,
                 'dashboard_url': dashboard_url,
             }
+            placeholders = set(TemplateRenderer.get_placeholders(campaign.template.html_content or ''))
+            if 'delete_account_url' in placeholders:
+                context['delete_account_url'] = self._delete_account_url(dashboard_url)
+            if 'password_reset_url' in placeholders:
+                reset_email = settings.CRYPGO_CAMPAIGN_OWNER_EMAIL or test_email
+                context['password_reset_url'] = self.create_password_reset_link(campaign, reset_email)
+            attachments = self._build_account_report_attachments(campaign.template, campaign_lead)
             result = sender.send_with_tracking(
                 recipient_email=test_email,
                 subject=TemplateRenderer.render_subject(campaign.template.subject, context),
                 html_body=str(TemplateRenderer.render(campaign.template.html_content, context)),
                 plain_text=TemplateRenderer._simple_render(campaign.template.plain_text or '', context),
                 campaign=campaign,
+                attachments=attachments,
             )
 
             if result and getattr(result, 'status', None) in ('sent', 'delivered'):
@@ -434,12 +449,24 @@ class Command(BaseCommand):
                             )
                             campaign_lead.save(update_fields=['dashboard_url', 'updated_at'])
 
+                        tracking_urls = {'dashboard_url': campaign_lead.dashboard_url or ''}
+                        placeholders = set(TemplateRenderer.get_placeholders(template.html_content or ''))
+                        if 'delete_account_url' in placeholders:
+                            tracking_urls['delete_account_url'] = self._delete_account_url(
+                                campaign_lead.dashboard_url or ''
+                            )
+                        if 'password_reset_url' in placeholders:
+                            reset_email = settings.CRYPGO_CAMPAIGN_OWNER_EMAIL or lead.email
+                            tracking_urls['password_reset_url'] = self.create_password_reset_link(
+                                campaign, reset_email
+                            )
+
                         # Render template
                         rendered = TemplateRenderer.render_for_lead(
                             lead=lead,
                             template=template,
                             campaign=campaign,
-                            tracking_urls={'dashboard_url': campaign_lead.dashboard_url or ''},
+                            tracking_urls=tracking_urls,
                         )
 
                         # Send email
@@ -527,6 +554,40 @@ class Command(BaseCommand):
             raise ValueError('Crypgo returned no dashboard URL.')
         return dashboard_url
 
+    def create_password_reset_link(self, campaign, email):
+        """Issue a one-use reset URL through Crypgo's Bot-authenticated endpoint."""
+        if not settings.CRYPGO_SERVICE_KEY:
+            raise ValueError('CRYPGO_SERVICE_KEY is missing.')
+
+        import json
+        body = json.dumps({'email': email}).encode('utf-8')
+        signature = hmac.new(
+            settings.CRYPGO_SERVICE_KEY.encode('utf-8'), body, hashlib.sha256
+        ).hexdigest()
+        response = requests.post(
+            f'{settings.CRYPGO_API_URL.rstrip("/")}/api/internal/campaigns/{campaign.pk}/password-reset-link/',
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Bot-Signature': signature,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        password_reset_url = response.json().get('password_reset_url')
+        if not isinstance(password_reset_url, str) or not password_reset_url:
+            raise ValueError('Crypgo returned no password reset URL.')
+        return password_reset_url
+
+    @staticmethod
+    def _delete_account_url(dashboard_url):
+        if not dashboard_url:
+            return ''
+        parts = urlsplit(dashboard_url)
+        query = dict(parse_qsl(parts.query, keep_blank_values=True))
+        query['next'] = 'delete-account'
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
     def send_crypgo_recipients(self, campaign, template, sender, throttler):
         """Send campaign-scoped Crypgo recipients with their dashboard links."""
         from apps.campaigns.models import CampaignLead
@@ -564,12 +625,16 @@ class Command(BaseCommand):
                 'email': recipient.recipient_email,
                 'dashboard_url': recipient.dashboard_url,
             }
+            placeholders = set(TemplateRenderer.get_placeholders(template.html_content or ''))
+            if 'delete_account_url' in placeholders:
+                context['delete_account_url'] = self._delete_account_url(recipient.dashboard_url)
+            if 'password_reset_url' in placeholders:
+                reset_email = settings.CRYPGO_CAMPAIGN_OWNER_EMAIL or recipient.recipient_email
+                context['password_reset_url'] = self.create_password_reset_link(campaign, reset_email)
             rendered_html = TemplateRenderer.render(template.html_content, context)
             rendered_plain = TemplateRenderer._simple_render(template.plain_text or '', context)
             rendered_subject = TemplateRenderer.render_subject(template.subject, context)
-            attachments = []
-            if template.include_account_report_attachment:
-                attachments = self._build_recipient_pdf_attachment(recipient)
+            attachments = self._build_account_report_attachments(template, recipient)
 
             result = sender.send_with_tracking(
                 recipient_email=recipient.recipient_email,

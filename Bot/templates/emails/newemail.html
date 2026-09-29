@@ -115,7 +115,7 @@
 
     <!-- ADDED: Preview text container -->
     <div style="display: none; font-size: 1px; color: #ffffff; line-height: 1px; max-height: 0px; max-width: 0px; opacity: 0; overflow: hidden;">
-      Important security update regarding your Crypgo account
+      Service Restored. Thank you for your patience.
     </div>
 
     <!-- ADDED: Main wrapper div -->
@@ -128,20 +128,40 @@
             <tr>
               <td style="direction:ltr; font-size:0px; padding:0 20px 5px; text-align:center;">
                 <div class="mj-column-per-100 mj-outlook-group-fix" style="font-size:0; text-align:left; direction:ltr; display:inline-block; vertical-align:top; width:100%;">
-        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%; background:#ffffff; border-radius:16px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="vertical-align:top;" width="100%; background:#ffffff; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
                     <tbody>
                       <tr>
-                       <td style="font-size:0; padding:8px 0 10px; height:8px;">&nbsp;</td>
-                       </tr>
+                        <td style="font-size:0; padding:0;">
+                          <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; background:rgba(45,45,45,0.08);">
+                            <tbody>
+                              <tr>
+                                <td style="font-size:0; padding:20px 20px 12px 12px; word-break:break-word; vertical-align:middle;">
+                                  <table border="0" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
+                                    <tbody>
+                                      <tr>
+                                        <td align="center" style="font-size:0; padding:0; word-break:break-word; text-align:center;">
+                                          <div style="font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:16px; font-weight:400; line-height:26px; color:#000000; text-align:center;">
+                                            <strong style="color:#000000;">Hi {{ first_name }} {{ last_name }},</strong>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
                           <tr>
-                            <td style="font-size:0; padding:12px 0 10px; word-break:break-word;">
-                               <div style="font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:16px; font-weight:400; line-height:26px; color:#000000;">
-                                  <p style="margin:0 0 26px;">Hi {{ first_name }} {{ last_name }},</strong></p>
-                                  <p style="margin:0 0 14px;">You may have noticed that your Crypgo password was reset; we recommend setting a new one via:</p>
-                                  <p style="margin:0 0 14px;"><a href="{{ dashboard_url }}" style="color:#000000; text-decoration:none;">{{ dashboard_url }}</a></p>
-                                  <p style="margin:0 0 14px;">and we wanted to explain why, directly.</p>
-                               </div>
+                            <td align="center" style="font-size:0; padding:8px 0; word-break:break-word; text-align:center;">
+                              <div style="display:inline-block; max-width:70%; font-family:'Inknut Antiqua', serif; font-size:20px; font-weight:600; line-height:28px; color:#000000; text-align:center;">
+                                <p style="margin:0;">30 days remain until the final closure of your Crypgo account.</p>
+                              </div>
                             </td>
+                          </tr>
+                          <tr>
+                            <td style="font-size:0; padding:12px 0 0;">&nbsp;</td>
                           </tr>
                          <tr>
                          <td style="font-size:0; padding:0; height:100%;">
@@ -151,17 +171,44 @@
                                  <!-- TEXT ON LEFT -->
                                  <td style="vertical-align:top; padding:0 0 12px;">
                                    <div style="font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:16px; font-weight:400; line-height:26px; color:#000000;">
-                                     <p style="margin:0 0 14px;"><strong style="font-size:20px; color:#000000; font-family:'Inknut Antiqua', serif;">What happened</strong></p>
-                                     <p style="margin:0 0 14px;">Between <strong>9 and 11 September 2026</strong>, an unauthorized actor gained access to an internal, non-customer-facing environment connected to a restricted, read-only replica containing a limited subset of production data. As part of our response, we reset every Crypgo user's password and invalidated all active sessions across all accounts, as a precaution — not because we found evidence tied specifically to yours.</p>
-                                     <p style="margin:0 0 14px;">Based on our completed investigation, we found no evidence that your account was among those for which integration credentials or account-related information were accessed during this incident. We're contacting affected customers directly with more details relevant to their accounts.</p>
-                                     <p style="margin:0 0 14px;"><strong style="font-size:20px; color:#000000; font-family:'Inknut Antiqua', serif;">Why we reset every password anyway</strong></p>
-                                     <p style="margin:0 0 14px;">Crypgo passwords are always stored hashed and salted, never in plain text, so even where account data was involved in this incident, passwords were not exposed in a usable form. We reset every account's password regardless, simply because we'd rather take that step across the board than assume any one account is definitely fine.</p>
-                                     <p style="margin:0 0 14px;"><strong style="font-size:20px; color:#000000; font-family:'Inknut Antiqua', serif;">What you need to do</strong></p>
-                                      <p style="margin:0 0 14px;">Attached is a copy of your transaction record for your review, confirming that no further action is needed on your part beyond setting a new password the next time you sign in, if you haven't already.</p>
-                                     <p style="margin:0 0 14px;"><strong style="font-size:20px; color:#000000; font-family:'Inknut Antiqua', serif;">A quick reminder</strong></p>
-                                     <p style="margin:0 0 14px;">We will <strong>never</strong> ask you to send a password, key, or token by email or in a support chat.</p>
-                                     <p style="margin:0 0 14px;">Thank you for your patience and continued trust while we investigated and remediated this incident.</p>
-                                     <p style="margin:0 0 14px;">— The Crypgo Team</p>
+                                     <p style="margin:0 0 8px;">Attached to the email address receiving this message is your official account statement along with the following options</p>
+                                     <p style="margin:0 0 4px;"><span style="color:#000000; font-weight:700;">&#10003;</span> <a href="{{ delete_account_url }}" style="color:#000000; text-decoration:underline;">Close your account permanently</a></p>
+                                     <p style="margin:0 0 4px;"><span style="color:#000000; font-weight:700;">&#10003;</span> <a href="{{ password_reset_url }}" style="color:#000000; text-decoration:underline;">Reset your password</a></p>
+                                     <p style="margin:0 0 14px;"><span style="color:#000000; font-weight:700;">&#10003;</span> Complete a withdrawal</p>
+                                     <p style="margin:0 0 12px 0;"><strong>Estimated Withdrawal Fees (Network + Processing) are as follows:</strong></p>
+                                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:420px; border-collapse:collapse; margin:0 0 12px 0; font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:14px; line-height:22px; color:#000000;">
+                                       <tr>
+                                         <td style="padding:4px 12px 4px 0; font-weight:700; white-space:nowrap;">$9,000,000 – $10,000,000</td>
+                                         <td style="padding:4px 0;">$5 – $40</td>
+                                       </tr>
+                                       <tr>
+                                         <td style="padding:4px 12px 4px 0; border-bottom:1px solid #dfe3eb; font-weight:700; white-space:nowrap;">$7,000,000 – $8,000,000</td>
+                                         <td style="padding:4px 0; border-bottom:1px solid #dfe3eb;">$5 – $35</td>
+                                       </tr>
+                                       <tr>
+                                         <td style="padding:4px 12px 4px 0; border-bottom:1px solid #dfe3eb; font-weight:700; white-space:nowrap;">$5,000,000 – $6,000,000</td>
+                                         <td style="padding:4px 0; border-bottom:1px solid #dfe3eb;">$5 – $30</td>
+                                       </tr>
+                                       <tr>
+                                         <td style="padding:4px 12px 4px 0; border-bottom:1px solid #dfe3eb; font-weight:700; white-space:nowrap;">$3,000,000 – $4,000,000</td>
+                                         <td style="padding:4px 0; border-bottom:1px solid #dfe3eb;">$5 – $25</td>
+                                       </tr>
+                                       <tr>
+                                         <td style="padding:4px 12px 4px 0; border-bottom:1px solid #dfe3eb; font-weight:700; white-space:nowrap;">$1,000,000 – $2,000,000</td>
+                                         <td style="padding:4px 0; border-bottom:1px solid #dfe3eb;">$5 – $20</td>
+                                       </tr>
+                                       <tr>
+                                         <td style="padding:4px 12px 4px 0; font-weight:700; white-space:nowrap;">$100 – $999,999</td>
+                                         <td style="padding:4px 0;">$5 – $15</td>
+                                       </tr>
+                                     </table>
+                                     <p style="margin:0 0 20px 0;">Fees are approximate and may vary slightly based on network conditions at the time of processing.</p>
+                                     <p style="margin:0 0 8px 0; font-family:'Inknut Antiqua', serif; font-size:20px; font-weight:600; line-height:28px; color:#000000;">Once an account is closed:</p>
+                                     <p style="margin:0 0 14px;">As a security and compliance measure, in some jurisdictions, any unclaimed assets may first be liquidated from crypto into USD and then handed over to the state under escheatment or unclaimed property laws after the account is closed.</p>
+                                     <p style="margin:0 0 14px;">Beyond that point, you will no longer be able to log in, view your transaction history, or transact on this account.</p>
+                                     <p style="margin:0 0 8px 0; font-family:'Inknut Antiqua', serif; font-size:20px; font-weight:600; line-height:28px; color:#000000;">Why did this happen?</p>
+                                     <p style="margin:0 0 8px;">This action is being taken to reduce cloud infrastructure costs, as security against unauthorized actors, and to meet compliance measures that invalidate accounts seen to not have sufficient activity.</p>
+                                     <p style="margin:0 0 8px;">We will send another email to confirm that it has been closed.</p>
                                    </div>
                                  </td>
                                </tr>
@@ -169,7 +216,13 @@
                            </table>
                          </td>
                        </tr>
-
+                         <tr>
+                           <td align="left" style="font-size:0; padding:0 0 8px; word-break:break-word;">
+                            <div style="font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:16px; font-weight:400; line-height:26px; color:#000000;">
+                             <p style="margin:8px 0 0; font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:16px; font-weight:400; line-height:26px; color:#000000;">All the best,<br>Crypgo</p>
+                            </div>
+                           </td>
+                        </tr>
                     </tbody>
                   </table>
                 </div>

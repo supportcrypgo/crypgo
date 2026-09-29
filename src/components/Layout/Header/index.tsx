@@ -21,6 +21,7 @@ const Header: React.FC = () => {
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const [isSignUpOpen, setIsSignUpOpen] = useState(false);
   const [magicLinkToken, setMagicLinkToken] = useState<string | null>(null);
+  const [passwordResetToken, setPasswordResetToken] = useState<string | null>(null);
 
   const navbarRef = useRef<HTMLDivElement>(null);
   const signInRef = useRef<HTMLDivElement>(null);
@@ -64,9 +65,18 @@ const Header: React.FC = () => {
 
   useEffect(() => {
     if (pathUrl !== '/') return;
+    const resetToken = searchParams.get('resetToken');
+    if (resetToken) {
+      setPasswordResetToken(resetToken);
+      setMagicLinkToken(null);
+      setIsSignInOpen(true);
+      window.history.replaceState({}, '', '/');
+      return;
+    }
     const token = searchParams.get('magicToken');
     if (token) {
       setMagicLinkToken(token);
+      setPasswordResetToken(null);
       setIsSignInOpen(true);
       window.history.replaceState({}, '', '/');
       return;
@@ -148,6 +158,7 @@ const Header: React.FC = () => {
                     onClick={() => {
                       setIsSignInOpen(false);
                       setMagicLinkToken(null);
+                      setPasswordResetToken(null);
                     }}
                     className="absolute right-4 top-4 bg-transparent p-0 text-white sm:right-6 sm:top-6"
                     aria-label="Close Sign In Modal"
@@ -162,8 +173,10 @@ const Header: React.FC = () => {
                   </button>
                   <Signin
                     magicLinkToken={magicLinkToken}
+                    passwordResetToken={passwordResetToken}
                     onPasswordChanged={() => {
                       setMagicLinkToken(null);
+                      setPasswordResetToken(null);
                       setIsSignInOpen(true);
                     }}
                     onSuccess={() => {

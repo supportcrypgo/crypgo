@@ -1,22 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 // --- Caution Modal ---
 export interface CautionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onGotIt: () => void | Promise<void>;
 }
 
 export const CautionModal = ({
   isOpen,
   onClose,
-  onGotIt,
 }: CautionModalProps) => {
-  const [isDownloading, setIsDownloading] = useState(false);
-
   useEffect(() => {
     if (!isOpen) return;
 
@@ -45,17 +41,6 @@ export const CautionModal = ({
     };
   }, [isOpen]);
 
-  const handleGotIt = async () => {
-    setIsDownloading(true);
-    try {
-      await onGotIt();
-    } catch (error) {
-      console.error('Unable to return to the dashboard:', error);
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -73,8 +58,7 @@ export const CautionModal = ({
           </h2>
           <button
             onClick={onClose}
-            disabled={isDownloading}
-            className="justify-self-end flex h-9 w-9 items-center justify-center rounded-full bg-gray-500/40 text-white transition-colors hover:bg-gray-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+            className="justify-self-end flex h-9 w-9 items-center justify-center rounded-full bg-gray-500/40 text-white transition-colors hover:bg-gray-500/60"
             aria-label="Close caution modal"
           >
             <Image
@@ -97,15 +81,16 @@ export const CautionModal = ({
           />
         </div>
 
-        <button
-          onClick={() => {
-            void handleGotIt();
-          }}
-          className="bg-primary w-full py-3 rounded-lg text-base font-medium border border-primary hover:text-primary hover:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Got it
-        </button>
+        <p className="mb-4 text-center text-base font-medium text-white">
+          Need help? We&apos;re here.
+        </p>
 
+        <a
+          href={`mailto:support.crypgo@gmail.com?subject=${encodeURIComponent('Help with my Crypgo account')}&body=${encodeURIComponent("Hi there,\n\nHere's what happened: [describe the issue in one or two lines].")}`}
+          className="block bg-primary w-full py-3 rounded-lg text-base font-medium border border-primary hover:text-primary hover:bg-transparent"
+        >
+          Contact Us
+        </a>
       </div>
     </div>
   );

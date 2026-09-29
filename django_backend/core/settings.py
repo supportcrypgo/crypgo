@@ -141,6 +141,7 @@ if isinstance(CORS_ALLOWED_ORIGINS, str):
 
 CORS_ALLOW_CREDENTIALS = True
 BOT_SERVICE_KEY = os.getenv('BOT_SERVICE_KEY', os.getenv('CRYPGO_SERVICE_KEY', ''))
+IPINFO_TOKEN = os.getenv('IPINFO_TOKEN', '').strip()
 
 # CSRF Configuration - trust frontend origin
 CSRF_TRUSTED_ORIGINS = os.getenv(
@@ -207,9 +208,9 @@ SPECTACULAR_SETTINGS = {
 # JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=15),
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': False,
     'AUTH_COOKIE': 'access_token',
     'AUTH_COOKIE_REFRESH': 'refresh_token',
     'AUTH_COOKIE_SECURE': not DEBUG,  # Set True in production with HTTPS

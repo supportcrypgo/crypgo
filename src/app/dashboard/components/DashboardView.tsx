@@ -31,7 +31,8 @@ interface DashboardViewProps {
 
 export default function DashboardView({ userId }: DashboardViewProps) {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const { walletAssets: unifiedWalletAssets, walletSummary: unifiedWalletSummary, walletError: unifiedWalletError, isLoading: unifiedLoading } = useUnified();
+  const { walletAssets: unifiedWalletAssets, walletSummary: unifiedWalletSummary, walletError: unifiedWalletError, isLoading: unifiedLoading, userId: authenticatedUserId } = useUnified();
+  const balanceCacheUserId = userId || authenticatedUserId || undefined;
   const [menuOpen, setMenuOpen] = useState(false);
   const [adminRawWalletAssets, setAdminRawWalletAssets] = useState<UnifiedWalletAsset[]>([]);
   const [walletLoading, setWalletLoading] = useState(false);
@@ -152,7 +153,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
             prices={prices}
             isLoading={isLoading}
             editable={false}
-            userId={userId}
+            userId={balanceCacheUserId}
             performanceMetrics={performanceMetrics}
             availableBalance={currentWalletSummary.availableBalance}
             walletError={walletErrorMessage}
@@ -198,7 +199,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
                 isLoading={isLoading}
                 isDesktop
                 editable={false}
-                userId={userId}
+                userId={balanceCacheUserId}
                 performanceMetrics={performanceMetrics}
                 availableBalance={currentWalletSummary.availableBalance}
                 walletError={walletErrorMessage}

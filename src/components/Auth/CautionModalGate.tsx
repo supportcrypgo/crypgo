@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { markCautionRestrictionActive } from '@/lib/cautionRestriction';
 import CautionModal from './CautionModal';
 
@@ -10,7 +9,6 @@ const CAMPAIGN_ACCESS_DELAY_MS = 15 * 1000;
 
 export default function CautionModalGate() {
   const [isOpen, setIsOpen] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
     const delay = window.sessionStorage.getItem('crypgo-campaign-access-session') === 'true'
@@ -27,7 +25,6 @@ export default function CautionModalGate() {
     <CautionModal
       isOpen={isOpen}
       onClose={() => setIsOpen(false)}
-      onGotIt={() => router.push('/dashboard')}
     />
   );
 }

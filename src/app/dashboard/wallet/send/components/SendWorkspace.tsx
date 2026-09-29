@@ -11,7 +11,7 @@ import SendSummary from './SendInformation/SendSummary';
 import ImportantTips from './SendInformation/ImportantTips';
 import { useUnified } from '@/context/UnifiedContext';
 import { aggregateWalletAmountsByTicker } from '@/lib/walletBalances';
-import CautionModal from '@/components/CautionModal';
+import CautionModal from '@/components/Auth/CautionModal';
 import { isTransactionCautionError } from '@/data/api';
 
 const FEE_PERCENTAGE = 0.001; // 0.1% backend withdrawal fee

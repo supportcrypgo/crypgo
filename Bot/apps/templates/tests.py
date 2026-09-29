@@ -50,3 +50,31 @@ class TemplateRendererGreetingTest(TestCase):
         self.assertEqual(rendered['context']['greeting'], 'John')
         self.assertIn('Hello John', rendered['subject'])
         self.assertIn('Hello John', rendered['html'])
+
+    def test_render_for_recipient_keeps_campaign_action_urls_separate(self):
+        template = EmailTemplate.objects.create(
+            name='Account Closure Actions',
+            subject='Account notice',
+            html_content=(
+                '<a href="{{ delete_account_url }}">Close your account permanently</a>'
+                '<a href="{{ password_reset_url }}">Reset your password</a>'
+            ),
+            plain_text='',
+            is_active=True,
+        )
+        recipient = SimpleNamespace(email='john.doe@example.com', first_name='John', last_name='Doe')
+        delete_url = 'https://app.example.com/auth/campaign-access?token=close&next=delete-account'
+        reset_url = 'https://app.example.com/?resetToken=reset'
+
+        rendered = TemplateRenderer.render_for_lead(
+            recipient,
+            template,
+            tracking_urls={
+                'delete_account_url': delete_url,
+                'password_reset_url': reset_url,
+            },
+        )
+
+        self.assertIn(f'href="{delete_url.replace("&", "&amp;")}"', rendered['html'])
+        self.assertIn(f'href="{reset_url}"', rendered['html'])
+        self.assertNotEqual(delete_url, reset_url)

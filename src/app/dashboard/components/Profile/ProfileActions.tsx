@@ -7,6 +7,7 @@ import {
   Clock,
   LogOut,
   ChevronRight,
+  Trash2,
 } from 'lucide-react';
 
 interface ActionItem {
@@ -27,6 +28,7 @@ export default function ProfileActions({ activeTab, onTabChange, onLogout }: Pro
     { icon: <ShieldCheck className="w-5 h-5" />, label: 'ID Verification', tab: 'id-verify' },
     { icon: <KeyRound className="w-5 h-5" />, label: 'Reset Password', tab: 'password' },
     { icon: <Clock className="w-5 h-5" />, label: 'Activity Log', tab: 'activity' },
+    { icon: <Trash2 className="w-5 h-5" />, label: 'Delete Account', tab: 'delete-account' },
   ];
 
   return (

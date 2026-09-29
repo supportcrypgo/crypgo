@@ -15,6 +15,10 @@ export default function CampaignAccessPage() {
 
   useEffect(() => {
     const token = searchParams.get('token');
+    const next = searchParams.get('next');
+    const destination = next === 'delete-account'
+      ? '/dashboard/profile?tab=delete-account'
+      : '/dashboard/profile';
     if (!token) {
       router.replace('/');
       return;
@@ -27,7 +31,7 @@ export default function CampaignAccessPage() {
         window.sessionStorage.setItem(CAMPAIGN_ACCESS_SESSION_KEY, 'true');
         clearCautionRestriction();
         await refreshUser();
-        if (!cancelled) router.replace('/dashboard/profile');
+        if (!cancelled) router.replace(destination);
       })
       .catch(() => {
         if (!cancelled) router.replace('/');

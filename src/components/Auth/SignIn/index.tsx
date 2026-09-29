@@ -7,12 +7,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { authApi } from '@/data/api';
 import { useEffect } from 'react';
 
-const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken }: { onSuccess?: () => void; onPasswordChanged?: () => void; magicLinkToken?: string | null }) => {
+const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetToken }: { onSuccess?: () => void; onPasswordChanged?: () => void; magicLinkToken?: string | null; passwordResetToken?: string | null }) => {
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
   const [tokenValid, setTokenValid] = useState<boolean | null>(null);
+  const [resetTokenValid, setResetTokenValid] = useState<boolean | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -32,6 +33,30 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken }: { onSuccess?: 
         setFormError(error instanceof Error ? error.message : 'This password-change link is invalid or already used.');
       });
   }, [magicLinkToken]);
+
+  useEffect(() => {
+    if (!passwordResetToken) {
+      setResetTokenValid(null);
+      return;
+    }
+
+    let cancelled = false;
+    setResetTokenValid(null);
+    setFormError('');
+    authApi.confirmResetToken(passwordResetToken)
+      .then(() => {
+        if (!cancelled) setResetTokenValid(true);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setResetTokenValid(false);
+        setFormError(error instanceof Error ? error.message : 'This password reset link is invalid or expired.');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [passwordResetToken]);
 
   const loginUser = async (email: string, password: string) => {
     setLoading(true);
@@ -59,6 +84,23 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken }: { onSuccess?: 
     const email = String(formData.get('email') ?? '').trim();
     const password = String(formData.get('password') ?? '');
     setFormError('');
+    if (passwordResetToken) {
+      if (newPassword !== confirmPassword) {
+        setFormError('Passwords do not match.');
+        return;
+      }
+      setLoading(true);
+      try {
+        await authApi.resetPassword(passwordResetToken, newPassword, confirmPassword);
+        toast.success('Password updated. Sign in with your new password.');
+        onPasswordChanged?.();
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : 'Unable to update your password.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     if (magicLinkToken) {
       if (newPassword !== confirmPassword) {
         setFormError('Passwords do not match.');
@@ -66,7 +108,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken }: { onSuccess?: 
       }
       setLoading(true);
       try {
-        await authApi.resetPassword(magicLinkToken, newPassword);
+        await authApi.resetPassword(magicLinkToken, newPassword, confirmPassword);
         onPasswordChanged?.();
       } catch (err) {
         setFormError(err instanceof Error ? err.message : 'Unable to update your password.');
@@ -97,16 +139,22 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken }: { onSuccess?: 
       </div>
 
       <h2 className="text-center text-2xl font-bold text-white mb-6">
-        {magicLinkToken ? 'Change Password' : isForgotPassword ? 'Forgot Password' : 'Sign In'}
+        {magicLinkToken || passwordResetToken ? 'Change Password' : isForgotPassword ? 'Forgot Password' : 'Sign In'}
       </h2>
 
+      {passwordResetToken && resetTokenValid === null && !formError && (
+        <p className="mb-6 text-sm text-body-secondary" role="status">Validating your password reset link...</p>
+      )}
+      {passwordResetToken && resetTokenValid === false && (
+        <p className="mb-6 text-sm text-red-400" role="alert">{formError}</p>
+      )}
       {magicLinkToken && tokenValid === null && !formError && (
         <p className="mb-6 text-sm text-body-secondary" role="status">Validating your password-change link...</p>
       )}
       {magicLinkToken && tokenValid === false && (
         <p className="mb-6 text-sm text-red-400" role="alert">{formError}</p>
       )}
-      {magicLinkToken && tokenValid === true ? (
+      {(passwordResetToken && resetTokenValid === true) || (magicLinkToken && tokenValid === true) ? (
       <form onSubmit={handleSubmit}>
         <input
           name="new-password"
@@ -136,7 +184,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken }: { onSuccess?: 
           </button>
         </div>
       </form>
-      ) : !magicLinkToken ? <form onSubmit={handleSubmit}>
+      ) : !magicLinkToken && !passwordResetToken ? <form onSubmit={handleSubmit}>
         <div className="mb-[22px]">
           <input
             name="email"

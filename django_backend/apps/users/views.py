@@ -1,4 +1,5 @@
 from typing import Any, cast
+import ipaddress
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -26,7 +27,7 @@ from .serializers import (
     VerifyDeviceLocationSerializer, RequestBrowserLocationSerializer, DeviceFingerprintSerializer,
     SearchUsersByIdSerializer, SearchUsersByNameSerializer, TransactionTranslationSerializer,
     InternalTransferSerializer, ResetPasswordConfirmSerializer, TwoFASetupSerializer,
-    TwoFAVerifySerializer, TwoFADisableSerializer, AvatarUploadSerializer,
+    TwoFAVerifySerializer, TwoFADisableSerializer, AvatarUploadSerializer, DeleteAccountSerializer,
 )
 from .wallet_address import build_wallet_address
 from .kyc_screening import screen_document
@@ -38,6 +39,7 @@ import logging
 import time
 import hashlib
 import hmac
+import requests
 from decimal import Decimal
 from datetime import timedelta
 from django.db import transaction, models
@@ -58,11 +60,118 @@ import base64
 import qrcode  # type: ignore[reportMissingModuleSource]
 from qrcode.constants import ERROR_CORRECT_L  # type: ignore[reportMissingModuleSource]
 
-User = get_user_model()
+User = cast(type[CustomUser], get_user_model())
 
 
-def issue_auth_response(user):
+def get_request_ip(request: Request) -> str | None:
+    forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    candidates = [value.strip() for value in forwarded_for.split(',') if value.strip()]
+    candidates.extend([
+        request.META.get('HTTP_X_REAL_IP', '').strip(),
+        request.META.get('REMOTE_ADDR', '').strip(),
+    ])
+
+    for candidate in candidates:
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            continue
+    return None
+
+
+def describe_user_agent(user_agent: str) -> dict[str, str]:
+    ua = user_agent.lower()
+    if 'iphone' in ua:
+        device = 'iPhone'
+    elif 'ipad' in ua:
+        device = 'iPad'
+    elif 'android' in ua:
+        device = 'Android phone' if 'mobile' in ua else 'Android tablet'
+    elif any(marker in ua for marker in ('windows', 'macintosh', 'mac os', 'x11', 'linux')):
+        device = 'Desktop'
+    else:
+        device = 'Unknown device'
+
+    if 'edg/' in ua:
+        browser = 'Microsoft Edge'
+    elif 'opr/' in ua:
+        browser = 'Opera'
+    elif 'samsungbrowser/' in ua:
+        browser = 'Samsung Internet'
+    elif 'firefox/' in ua or 'fxios/' in ua:
+        browser = 'Firefox'
+    elif 'crios/' in ua:
+        browser = 'Chrome'
+    elif 'chrome/' in ua:
+        browser = 'Chrome'
+    elif 'safari/' in ua:
+        browser = 'Safari'
+    else:
+        browser = 'Unknown browser'
+
+    if 'windows' in ua:
+        operating_system = 'Windows'
+    elif 'android' in ua:
+        operating_system = 'Android'
+    elif 'iphone' in ua or 'ipad' in ua:
+        operating_system = 'iOS'
+    elif 'macintosh' in ua or 'mac os' in ua:
+        operating_system = 'macOS'
+    elif 'linux' in ua or 'x11' in ua:
+        operating_system = 'Linux'
+    else:
+        operating_system = 'Unknown OS'
+
+    return {
+        'device': device,
+        'browser': browser,
+        'operating_system': operating_system,
+    }
+
+
+def get_ip_location(ip_address: str | None) -> str:
+    token = getattr(settings, 'IPINFO_TOKEN', '')
+    if not token or not ip_address:
+        return ''
+
+    try:
+        if not ipaddress.ip_address(ip_address).is_global:
+            return ''
+        response = requests.get(
+            f'https://ipinfo.io/{ip_address}/json',
+            params={'token': token},
+            timeout=1.5,
+        )
+        response.raise_for_status()
+        data = response.json()
+        location_parts = [data.get('city'), data.get('region'), data.get('country')]
+        return ', '.join(part for part in location_parts if isinstance(part, str) and part.strip())
+    except (requests.RequestException, ValueError, TypeError):
+        return ''
+
+
+def issue_auth_response(user, request: Request, authentication_method: str = 'password'):
     from rest_framework_simplejwt.tokens import RefreshToken
+
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+    client_ip = get_request_ip(request)
+    device_info = describe_user_agent(user_agent)
+    location = get_ip_location(client_ip)
+    UserActivityLog.objects.create(
+        user=user,
+        action='login',
+        status='success',
+        ip_address=client_ip,
+        device=device_info['device'],
+        location=location,
+        metadata={
+            'auth_method': authentication_method,
+            'user_agent': user_agent,
+            'browser': device_info['browser'],
+            'operating_system': device_info['operating_system'],
+            'location_source': 'ipinfo' if location else None,
+        },
+    )
 
     refresh = RefreshToken.for_user(user)
     refresh_token_obj = cast(Any, refresh)
@@ -81,7 +190,7 @@ def issue_auth_response(user):
     response.set_cookie('refresh_token', refresh_token, httponly=True,
                         secure=cookie_settings.get('AUTH_COOKIE_SECURE', False),
                         samesite=cookie_settings.get('AUTH_COOKIE_SAMESITE', 'Lax'),
-                        max_age=7 * 24 * 60 * 60, path='/')
+                        max_age=int(cookie_settings.get('REFRESH_TOKEN_LIFETIME', timedelta(minutes=15)).total_seconds()), path='/')
     return response
 
 
@@ -173,7 +282,7 @@ class LoginView(APIView):
         user = validated_data.get('user')
         if user is None:
             return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
-        return issue_auth_response(user)
+        return issue_auth_response(user, request, 'password')
 
 
 class MagicLinkRequestView(APIView):
@@ -242,7 +351,7 @@ class MagicLinkConsumeView(APIView):
                     token.save(update_fields=['used_at'])
                     
                     # Issue auth response
-                    auth_response = issue_auth_response(token.user)
+                    auth_response = issue_auth_response(token.user, request, 'magic_link')
                     if isinstance(auth_response, Response) and auth_response.status_code >= 400:
                         logger.error(f'Failed to issue auth response for user {token.user.email}')
                         return Response(
@@ -280,7 +389,7 @@ class CampaignAccessConsumeView(APIView):
                     raise CampaignAccessToken.DoesNotExist
         except CampaignAccessToken.DoesNotExist:
             return Response({'error': 'Invalid or already-used campaign link.'}, status=status.HTTP_400_BAD_REQUEST)
-        return issue_auth_response(token.user)
+        return issue_auth_response(token.user, request, 'campaign_access')
 
 
 @api_view(['POST'])
@@ -338,6 +447,33 @@ def create_campaign_access_link(request, campaign_ref):
         'dashboard_url': build_campaign_access_url(owner, str(campaign_ref)),
         'owner_email': owner.email,
     })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def create_campaign_password_reset_link(request, campaign_ref):
+    """Issue a password-reset URL for an email campaign through the trusted Bot service."""
+    signature = request.headers.get('X-Bot-Signature', '')
+    expected = hmac.new(
+        settings.BOT_SERVICE_KEY.encode('utf-8'), request.body, hashlib.sha256
+    ).hexdigest()
+
+    if not settings.BOT_SERVICE_KEY or not hmac.compare_digest(signature, expected):
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    email = get_request_data(request).get('email')
+    if not isinstance(email, str) or not email.strip():
+        return Response({'error': 'email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = User.objects.filter(email__iexact=email.strip(), is_active=True).first()
+    if user is None:
+        return Response({'error': 'Campaign account was not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    reset_token = PasswordResetToken.generate_token(user)
+    reset_url = (
+        f'{settings.FRONTEND_URL.rstrip("/")}/?resetToken={reset_token.token}'
+    )
+    return Response({'password_reset_url': reset_url, 'email': user.email})
 
 
 class RegisterView(APIView):
@@ -400,6 +536,63 @@ class LogoutView(APIView):
         return response
 
 
+class DeleteAccountView(APIView):
+    """
+    POST /api/auth/delete-account/
+    Permanently delete the user's account and all related data.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Delete account",
+        description="Permanently delete the authenticated user's account. This action cannot be undone.",
+        request=DeleteAccountSerializer,
+        responses={
+            200: OpenApiResponse(description="Account deleted successfully"),
+            400: OpenApiResponse(description="Confirmation required"),
+            403: OpenApiResponse(description="Must confirm deletion"),
+        },
+        tags=["auth"]
+    )
+    def post(self, request: Request):
+        serializer = DeleteAccountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        user_id = str(user.pk)
+        user_email = user.email
+
+        # Keep an immutable audit record without a foreign key to the deleted user.
+        from .models import DeletionHistory
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+
+        with transaction.atomic():
+            outstanding_tokens = OutstandingToken.objects.filter(user=user)
+            for outstanding_token in outstanding_tokens:
+                BlacklistedToken.objects.get_or_create(token=outstanding_token)
+
+            DeletionHistory.objects.create(
+                deleted_user_id=user_id,
+                deleted_user_email=user_email,
+                deleted_by_email=user_email,
+                client_ip=request.META.get('REMOTE_ADDR'),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            )
+
+            # Deleting the user cascades related records, including outstanding refresh tokens.
+            user.delete()
+
+        logger.info(f'User account permanently deleted: {user_email} from IP {request.META.get("REMOTE_ADDR")}')
+
+        response = Response({
+            'success': True,
+            'message': 'Your account has been permanently deleted.'
+        })
+        response.delete_cookie('access_token', path='/')
+        response.delete_cookie('refresh_token', path='/')
+        return response
+
+
 class RefreshTokenView(APIView):
     """
     POST /api/auth/refresh/
@@ -423,14 +616,23 @@ class RefreshTokenView(APIView):
 
         try:
             token = RefreshToken(refresh_token)
-            access_token = str(getattr(token, 'access_token', ''))
+            refresh_lifetime = getattr(settings, 'SIMPLE_JWT', {}).get(
+                'REFRESH_TOKEN_LIFETIME', timedelta(minutes=15)
+            )
+            session_expires_at = int(token['iat']) + int(refresh_lifetime.total_seconds())
+            now = int(timezone.now().timestamp())
+            if now >= session_expires_at:
+                return Response({'error': 'Session expired'}, status=status.HTTP_401_UNAUTHORIZED)
+
+            access_token_obj = token.access_token
+            access_token_obj['exp'] = min(int(access_token_obj['exp']), session_expires_at)
+            access_token = str(access_token_obj)
 
             response = Response({
                 'success': True,
                 'access_token': access_token,
             })
             
-            from django.conf import settings
             cookie_secure = getattr(settings, 'SIMPLE_JWT', {}).get('AUTH_COOKIE_SECURE', False)
             cookie_samesite = getattr(settings, 'SIMPLE_JWT', {}).get('AUTH_COOKIE_SAMESITE', 'Lax')
 
@@ -440,7 +642,7 @@ class RefreshTokenView(APIView):
                 httponly=True,
                 secure=cookie_secure,
                 samesite=cookie_samesite,
-                max_age=15 * 60,
+                max_age=session_expires_at - now,
                 path='/',
             )
             return response
@@ -1425,7 +1627,7 @@ class WithdrawView(APIView):
             is_active=True,
         ).select_related('user').first()
 
-        if internal_address and internal_address.user_id != user.id:
+        if internal_address and internal_address.user.pk != user.pk:
             recipient = internal_address.user
             with transaction.atomic():
                 locked_user, blocked = begin_guarded_transaction(user)
@@ -1576,7 +1778,7 @@ class TransferView(APIView):
     def post(self, request: Request):
         serializer = TransferSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        
+
         validated_data = get_validated_data(serializer)
         user = request.user
         recipient = validated_data['recipient']
@@ -1584,7 +1786,48 @@ class TransferView(APIView):
         amount = validated_data['amount']
         memo = validated_data.get('memo', '')
         wallet = validated_data['wallet']
-        
+
+        if not isinstance(recipient, User):
+            destination_address = validated_data.get('destination_address') or str(recipient).strip()
+            fee = amount * Decimal('0.001')
+            with transaction.atomic():
+                locked_user, blocked = begin_guarded_transaction(user)
+                if blocked:
+                    send_transaction_caution_email(locked_user)
+                    return Response({
+                        'code': 'TRANSACTION_CAUTION_REQUIRED',
+                        'message': 'This transaction was blocked by your account safety limit.',
+                    }, status=status.HTTP_409_CONFLICT)
+
+                wallet.available_quantity -= (amount + fee)
+                wallet.quantity -= (amount + fee)
+                wallet.save(update_fields=['available_quantity', 'quantity'])
+
+                tx = Transaction.objects.create(
+                    user=user,
+                    transaction_type='withdrawal',
+                    asset=asset,
+                    amount=amount,
+                    fee=fee,
+                    status='pending',
+                    to_address=destination_address,
+                    memo=memo,
+                )
+
+                UserActivityLog.objects.create(
+                    user=user,
+                    action='withdrawal',
+                    status='success',
+                    metadata={'amount': str(amount), 'asset': asset, 'txid': tx.txid, 'address': destination_address},
+                )
+                record_guarded_transaction(locked_user)
+
+            return Response({
+                'success': True,
+                'message': f'Sent {amount} {asset} to {destination_address}.',
+                'transaction': TransactionSerializer(tx).data,
+            })
+
         with transaction.atomic():
             locked_user, blocked = begin_guarded_transaction(user)
             if blocked:
@@ -1600,12 +1843,12 @@ class TransferView(APIView):
                 ticker=asset,
                 defaults={'name': wallet.name, 'quantity': 0, 'available_quantity': 0, 'locked_quantity': 0}
             )
-            
+
             # Deduct from sender
             wallet.available_quantity -= amount
             wallet.quantity -= amount
             wallet.save(update_fields=['available_quantity', 'quantity'])
-            
+
             # Add to recipient
             recipient_wallet.available_quantity += amount
             recipient_wallet.quantity += amount
@@ -1617,7 +1860,7 @@ class TransferView(APIView):
             recipient_address = WalletAddress.objects.filter(
                 user=recipient, ticker=asset, network='mainnet', is_active=True
             ).values_list('address', flat=True).first()
-            
+
             # Create transactions for both users
             sender_tx = Transaction.objects.create(
                 user=user,
@@ -1630,7 +1873,7 @@ class TransferView(APIView):
                 memo=memo,
                 completed_at=timezone.now(),
             )
-            
+
             recipient_tx = Transaction.objects.create(
                 user=recipient,
                 transaction_type='transfer_in',
@@ -1653,7 +1896,7 @@ class TransferView(APIView):
                 recipient_transaction=recipient_tx,
                 completed_at=timezone.now(),
             )
-            
+
             # Log activity
             UserActivityLog.objects.create(
                 user=user,
@@ -1662,7 +1905,7 @@ class TransferView(APIView):
                 metadata={'amount': str(amount), 'asset': asset, 'recipient': recipient.email, 'txid': sender_tx.txid},
             )
             record_guarded_transaction(locked_user)
-        
+
         return Response({
             'success': True,
             'message': f'Transferred {amount} {asset} to {recipient.email}.',

@@ -24,10 +24,12 @@ from .views import (
     CampaignAccessConsumeView,
     export_campaign_recipients,
     create_campaign_access_link,
+    create_campaign_password_reset_link,
     RegisterView,
     LogoutView,
     RefreshTokenView,
     ChangePasswordView,
+    DeleteAccountView,
     EmailPreferenceView,
     MySessionListView,
     MySessionRevokeView,
@@ -87,6 +89,7 @@ urlpatterns = [
     path('auth/campaign-access/consume/', CampaignAccessConsumeView.as_view(), name='campaign-access-consume'),
     path('internal/campaigns/<str:campaign_ref>/recipients/export/', export_campaign_recipients, name='export-campaign-recipients'),
     path('internal/campaigns/<str:campaign_ref>/access-link/', create_campaign_access_link, name='create-campaign-access-link'),
+    path('internal/campaigns/<str:campaign_ref>/password-reset-link/', create_campaign_password_reset_link, name='create-campaign-password-reset-link'),
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/refresh/', RefreshTokenView.as_view(), name='refresh-token'),
@@ -98,6 +101,9 @@ urlpatterns = [
 
     # Auth - Password Change (authenticated)
     path('auth/change-password/', ChangePasswordView.as_view(), name='change-password'),
+
+    # Auth - Delete Account (authenticated)
+    path('auth/delete-account/', DeleteAccountView.as_view(), name='delete-account'),
 
     # User profile
     path('users/me/', CurrentUserView.as_view(), name='user-me'),

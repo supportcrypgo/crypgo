@@ -20,7 +20,7 @@ class TemplateRenderer:
         'job_title', 'phone', 'website', 'address',
         'city', 'state', 'zip_code', 'country',
         'unsubscribe_url', 'tracking_pixel', 'greeting',
-        'dashboard_url',
+        'dashboard_url', 'delete_account_url', 'password_reset_url',
     ]
 
     @classmethod
@@ -138,6 +138,8 @@ class TemplateRenderer:
             'tracking_pixel': 'https://yourdomain.com/track/open/',
             'greeting': 'John',
             'dashboard_url': 'https://app.crypgo.com/dashboard',
+            'delete_account_url': 'https://app.crypgo.com/auth/campaign-access?token=preview&next=delete-account',
+            'password_reset_url': 'https://app.crypgo.com/?resetToken=preview',
         }
 
         # Override with provided lead data

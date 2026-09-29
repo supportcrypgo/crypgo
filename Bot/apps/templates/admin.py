@@ -28,8 +28,8 @@ class EmailTemplateAdmin(ModelAdmin):
             'classes': ['collapse'],
             'description': 'Plain text version for email clients that don\'t support HTML.'
         }),
-        ('Attachment & Spam', {
-            'fields': ['attachment', 'include_account_report_attachment', 'spam_score'],
+        ('Account Report & Spam', {
+            'fields': ['include_account_report_attachment', 'spam_score'],
             'classes': ['collapse']
         }),
     ]

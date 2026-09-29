@@ -1,3 +1,6 @@
+import re
+from typing import cast
+
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from decimal import Decimal
@@ -13,6 +16,8 @@ SUPPORTED_WALLET_ASSETS = ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL', 'LTC', 'X
 
 
 class UserSerializer(serializers.ModelSerializer):
+    transaction_guard_enabled = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = User
         fields = [
@@ -20,6 +25,7 @@ class UserSerializer(serializers.ModelSerializer):
             'date_of_birth', 'country', 'city', 'address', 'avatar_url',
             'role', 'date_joined', 'is_active',
             'kyc_status', 'kyc_rejection_reason', 'two_fa_enabled',
+            'transaction_guard_enabled',
         ]
 
 
@@ -377,7 +383,7 @@ class WithdrawSerializer(serializers.Serializer):
 
 
 class TransferSerializer(serializers.Serializer):
-    """Serializer for internal transfers between users."""
+    """Serializer for internal transfers and external wallet sends."""
     recipient = serializers.CharField(max_length=150)
     asset = serializers.CharField(max_length=10)
     amount = serializers.DecimalField(max_digits=20, decimal_places=8)
@@ -396,29 +402,39 @@ class TransferSerializer(serializers.Serializer):
         return value
     
     def validate_recipient(self, value):
+        normalized = value.strip()
+
         # Account transfers accept email, username, or a persisted wallet address.
-        recipient = User.objects.filter(email__iexact=value).first()
+        recipient = User.objects.filter(email__iexact=normalized).first()
         if not recipient:
-            recipient = User.objects.filter(username__iexact=value).first()
+            recipient = User.objects.filter(username__iexact=normalized).first()
         if not recipient:
+            initial_data = cast(dict[str, str], self.initial_data)
             address_record = WalletAddress.objects.filter(
-                address__iexact=value.strip(),
-                ticker=self.initial_data.get('asset', '').upper(),
+                address__iexact=normalized,
+                ticker=initial_data.get('asset', '').upper(),
                 network='mainnet',
                 is_active=True,
             ).select_related('user').first()
             recipient = address_record.user if address_record else None
-        if not recipient:
-            raise serializers.ValidationError("Recipient not found.")
 
-        return recipient
+        if recipient:
+            return recipient
+
+        # If the value is not a Crypgo user, allow a valid external wallet address to be sent out.
+        if 10 <= len(normalized) <= 255 and re.fullmatch(r'[A-Za-z0-9]+', normalized):
+            return normalized
+
+        raise serializers.ValidationError("Recipient not found.")
     
     def validate(self, attrs):
         request = self.context.get('request')
         user = request.user  # type: ignore[union-attr]
         asset = attrs['asset']
         amount = attrs['amount']
-        if attrs['recipient'].pk == user.pk:
+        recipient = attrs['recipient']
+
+        if isinstance(recipient, User) and recipient.pk == user.pk:
             raise serializers.ValidationError("You cannot transfer to your own account.")
         
         try:
@@ -432,6 +448,8 @@ class TransferSerializer(serializers.Serializer):
             )
         
         attrs['wallet'] = wallet
+        if not isinstance(recipient, User):
+            attrs['destination_address'] = str(recipient).strip()
         return attrs
 
 
@@ -644,3 +662,18 @@ class TwoFAVerifySerializer(serializers.Serializer):
 
 class TwoFADisableSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=10)
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    """Serializer for user account deletion request."""
+    confirm_delete = serializers.BooleanField(
+        required=True,
+        help_text="Must be checked to confirm deletion."
+    )
+
+    def validate_confirm_delete(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "You must confirm you want to permanently delete your account."
+            )
+        return value

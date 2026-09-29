@@ -27,6 +27,7 @@ export interface UnifiedUser {
   role: UserRole;
   status: UserStatus;
   emailVerified: boolean;
+  transactionGuardEnabled?: boolean;
   createdAt: string;
   lastLoginAt: string;
 }

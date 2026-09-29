@@ -7,6 +7,7 @@ import {
   Clock,
   Settings,
   HardDrive,
+  Trash2,
 } from 'lucide-react';
 
 interface NavItem {
@@ -28,6 +29,7 @@ export default function ProfileDesktopNav({ activeTab, onTabChange }: DesktopNav
     { id: 'password', icon: <KeyRound className="w-5 h-5" />, label: 'Change Password' },
     { id: 'activity', icon: <Clock className="w-5 h-5" />, label: 'Activity Log' },
     { id: 'preferences', icon: <Settings className="w-5 h-5" />, label: 'Preferences' },
+    { id: 'delete-account', icon: <Trash2 className="w-5 h-5" />, label: 'Delete Account' },
   ];
 
   return (
