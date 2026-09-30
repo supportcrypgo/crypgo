@@ -1,4 +1,6 @@
 from datetime import datetime, time as dt_time, timedelta
+import subprocess
+import base64
 from unittest.mock import patch
 
 from django.core import mail
@@ -10,6 +12,7 @@ from apps.campaigns.models import CampaignLead
 from apps.email_engine.models import Bounce, EmailLog
 from apps.email_engine.sender import EmailSender
 from apps.email_engine.throttler import Throttler
+from apps.leads.models import BlacklistedLead
 from apps.templates.models import EmailTemplate
 from apps.core.management.commands.send_campaign import Command
 
@@ -109,6 +112,24 @@ class EmailSenderDeliverabilityTest(TestCase):
             'bounced',
         )
 
+    def test_internal_type_error_is_logged_as_failure_not_bounce(self):
+        with patch(
+            'apps.email_engine.sender.EmailMultiAlternatives.attach',
+            side_effect=TypeError("can only concatenate str (not 'NoneType') to str"),
+        ):
+            email_log = self.sender.send_with_tracking(
+                recipient_email='internal-error@example.com',
+                subject='Internal failure',
+                html_body='<p>Test</p>',
+                campaign=self.campaign,
+                attachments=[('report.pdf', b'%PDF', 'application/pdf')],
+            )
+
+        self.assertIsNotNone(email_log)
+        self.assertEqual(email_log.status, 'failed')
+        self.assertFalse(Bounce.objects.filter(email='internal-error@example.com').exists())
+        self.assertFalse(BlacklistedLead.objects.filter(email='internal-error@example.com').exists())
+
     def test_throttler_waits_around_90_seconds_between_campaign_sends(self):
         EmailLog.objects.create(
             campaign=self.campaign,
@@ -197,8 +218,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             patch('apps.core.management.commands.send_campaign.subprocess.run') as run_report,
         ):
             run_report.return_value.returncode = 0
-            run_report.return_value.stdout = b'%PDF-report'
-            run_report.return_value.stderr = b''
+            run_report.return_value.stdout = base64.b64encode(b'%PDF-report').decode('ascii')
+            run_report.return_value.stderr = ''
 
             attachments = Command()._build_recipient_pdf_attachment(
                 CampaignLead(recipient_email='pythonpath@example.com', pk=1)
@@ -206,7 +227,48 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
         self.assertTrue(environment['PYTHONPATH'])
         self.assertNotIn('None', environment['PYTHONPATH'])
+        self.assertTrue(run_report.call_args.kwargs['capture_output'])
+        self.assertTrue(run_report.call_args.kwargs['text'])
+        self.assertIn('--stdout-base64', run_report.call_args.args[0])
         self.assertEqual(len(attachments), 1)
+        self.assertEqual(attachments[0][1], b'%PDF-report')
+
+    def test_report_subprocess_failure_logs_exit_code_and_stderr(self):
+        completed = subprocess.CompletedProcess(
+            args=['generate_user_report.py'],
+            returncode=2,
+            stdout='',
+            stderr='report generation failed',
+        )
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            return_value=completed,
+        ) as run_report, self.assertLogs('email_bot', level='ERROR') as logs:
+            attachments = Command()._build_recipient_pdf_attachment(
+                CampaignLead(recipient_email='failed-report@example.com', pk=3)
+            )
+
+        self.assertEqual(attachments, [])
+        self.assertEqual(run_report.call_args.kwargs['timeout'], 30)
+        self.assertTrue(any('exit=2' in message and 'report generation failed' in message for message in logs.output))
+
+    def test_report_subprocess_timeout_is_bounded_and_logged(self):
+        timeout_error = subprocess.TimeoutExpired(
+            cmd=['generate_user_report.py'],
+            timeout=30,
+            stderr=b'report database query timed out',
+        )
+        recipient = CampaignLead(recipient_email='slow-report@example.com', pk=2)
+
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            side_effect=timeout_error,
+        ) as run_report, self.assertLogs('email_bot', level='ERROR') as logs:
+            attachments = Command()._build_recipient_pdf_attachment(recipient)
+
+        self.assertEqual(attachments, [])
+        self.assertEqual(run_report.call_args.kwargs['timeout'], 30)
+        self.assertTrue(any('timed out' in message and 'database query timed out' in message for message in logs.output))
 
     def test_recipient_gets_personalized_dashboard_link(self):
         template = EmailTemplate.objects.create(
@@ -238,6 +300,35 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('Hi James Borunda', mail.outbox[0].body)
         self.assertIn('https://app.crypgo.com/auth/campaign-access?token=one', mail.outbox[0].body)
+
+    def test_escaped_type_error_is_traceback_logged_without_bounce(self):
+        template = EmailTemplate.objects.create(
+            name='Crypgo TypeError Campaign Template',
+            subject='Account update',
+            html_content='<p>Hello {{ first_name }}</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(name='Crypgo TypeError Campaign', template=template)
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            recipient_email='internal-error@example.com',
+            recipient_first_name='Casey',
+            dashboard_url='https://app.crypgo.com/auth/campaign-access?token=internal-error',
+        )
+
+        with patch.object(
+            EmailSender,
+            'send_with_tracking',
+            side_effect=TypeError('internal rendering failure'),
+        ), self.assertLogs('email_bot', level='ERROR') as logs:
+            Command().send_crypgo_recipients(campaign, template, EmailSender(), Throttler())
+
+        recipient.refresh_from_db()
+        self.assertEqual(recipient.status, 'failed')
+        self.assertIn('TypeError:', recipient.error_message)
+        self.assertTrue(any('Traceback (most recent call last)' in message for message in logs.output))
+        self.assertFalse(Bounce.objects.filter(email=recipient.recipient_email).exists())
 
     def test_live_campaign_attaches_personalized_account_report(self):
         template = EmailTemplate.objects.create(

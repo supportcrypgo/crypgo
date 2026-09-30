@@ -244,6 +244,7 @@ class EmailSender:
         if track_links:
             html_body = self._wrap_click_links(html_body, tracking_id)
 
+        delivery_attempted = False
         try:
             if not self.throttler.can_send():
                 return self._log_attempt(
@@ -259,6 +260,7 @@ class EmailSender:
                 plain_text = re.sub(r'<[^>]+>', '', html_body).strip()
             headers = self._build_headers(recipient_email, tracking_id)
             if USE_GMAIL_API:
+                delivery_attempted = True
                 gmail_sender.send(
                     from_email=from_email,
                     to_emails=[recipient_email],
@@ -280,6 +282,7 @@ class EmailSender:
                     msg.attach_alternative(html_body, "text/html")
                 for filename, content, mime_type in attachments or []:
                     msg.attach(filename, content, mime_type)
+                delivery_attempted = True
                 msg.send(fail_silently=False)
             self.throttler.record_send()
 
@@ -291,7 +294,7 @@ class EmailSender:
             )
 
         except Exception as e:
-            logger.error("Send failed to %s: %s", recipient_email, str(e))
+            logger.exception("Send failed to %s: %s", recipient_email, str(e))
             if campaign and is_gmail_quota_error(e):
                 type(campaign).objects.filter(pk=campaign.pk).update(
                     status='paused',
@@ -305,7 +308,11 @@ class EmailSender:
                 error_message=str(e),
             )
 
-            if email_log:
+            internal_application_error = isinstance(
+                e,
+                (TypeError, ValueError, AttributeError, KeyError, ImportError),
+            )
+            if email_log and delivery_attempted and not internal_application_error:
                 BounceHandler().process_failed_email(email_log.pk)
 
             return email_log

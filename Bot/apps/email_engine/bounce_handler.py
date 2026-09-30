@@ -101,7 +101,7 @@ class BounceHandler:
             if keyword in error_lower:
                 return 'soft'
 
-        return 'soft'  # Default to soft bounce if unsure
+        return None
 
     def process_failed_email(self, email_log_id):
         """Process a failed email and classify the failure"""
@@ -115,6 +115,13 @@ class BounceHandler:
             return None
 
         bounce_type = self.check_bounce_keywords(email_log.error_message)
+        if bounce_type is None:
+            logger.info(
+                'Not recording a bounce for unclassified send failure to %s: %s',
+                email_log.recipient_email,
+                email_log.error_message,
+            )
+            return None
 
         return self.process_bounce_notification(
             email=email_log.recipient_email,

@@ -181,6 +181,7 @@ CRYPGO_SERVICE_KEY = os.getenv('CRYPGO_SERVICE_KEY', '')
 CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'https://crypgo.pythonanywhere.com')
 CRYPGO_CAMPAIGN_OWNER_EMAIL = os.getenv('CRYPGO_CAMPAIGN_OWNER_EMAIL', '').strip().lower()
 CAMPAIGN_PYTHON_EXECUTABLE = os.getenv('CAMPAIGN_PYTHON_EXECUTABLE', '').strip()
+REPORT_PDF_TIMEOUT_SECONDS = int(os.getenv('REPORT_PDF_TIMEOUT_SECONDS', '30'))
 
 # Rate Limiting
 MAX_EMAILS_PER_DAY = int(os.getenv('MAX_EMAILS_PER_DAY', 90))
