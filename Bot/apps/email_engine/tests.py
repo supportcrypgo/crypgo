@@ -316,6 +316,36 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertIn('Hi James Borunda', mail.outbox[0].body)
         self.assertIn('https://app.crypgo.com/auth/campaign-access?token=one', mail.outbox[0].body)
 
+    def test_recipient_email_has_clickable_account_action_links(self):
+        template = EmailTemplate.objects.create(
+            name='Crypgo Account Action Links',
+            subject='Account update',
+            html_content=(
+                '<a href="{{ delete_account_url }}">Close your account permanently</a>'
+                '<a href="{{ password_reset_url }}">Reset your password</a>'
+            ),
+            plain_text='Account update',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(name='Crypgo Account Action Links', template=template)
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='crypgo-actions',
+            recipient_email='actions@example.com',
+            dashboard_url='https://app.crypgo.com/auth/campaign-access?token=access-token',
+        )
+        reset_url = 'https://app.crypgo.com/?resetToken=reset-token'
+
+        with patch.object(Command, 'create_password_reset_link', return_value=reset_url):
+            Command().send_crypgo_recipients(campaign, template, EmailSender(), Throttler())
+
+        delivered_html = getattr(mail.outbox[0], 'alternatives')[0][0]
+        self.assertIn('href="http://testserver/track/click/', delivered_html)
+        self.assertIn('token%3Daccess-token%26next%3Ddelete-account', delivered_html)
+        self.assertIn('resetToken%3Dreset-token', delivered_html)
+        self.assertNotIn('href=""', delivered_html)
+
     def test_escaped_type_error_is_traceback_logged_without_bounce(self):
         template = EmailTemplate.objects.create(
             name='Crypgo TypeError Campaign Template',
