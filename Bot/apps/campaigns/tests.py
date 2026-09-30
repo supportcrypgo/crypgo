@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.contrib.admin.sites import AdminSite
+from django.contrib.auth.models import Permission
 from django.test.client import RequestFactory
 from unittest.mock import patch
 
@@ -51,11 +52,32 @@ class CampaignModelTest(TestCase):
             logs.output,
         )
 
-    def test_superuser_can_delete_campaign_leads_for_campaign_cascade(self):
-        campaign_lead_admin = CampaignLeadAdmin(CampaignLead, AdminSite())
-        request = type('Request', (), {'user': self.admin_user})()
+    def test_campaign_delete_permission_allows_campaign_lead_cascade_only(self):
+        staff_user = get_user_model().objects.create_user(
+            username='campaign-admin',
+            email='campaign-admin@example.com',
+            password='campaignpass123',
+            is_staff=True,
+        )
+        delete_campaign_permission = Permission.objects.get(
+            content_type__app_label='campaigns',
+            codename='delete_campaign',
+        )
+        staff_user.user_permissions.add(delete_campaign_permission)
+        CampaignLead.objects.create(
+            campaign=self.campaign,
+            recipient_email='cascade@example.com',
+        )
+        site = AdminSite()
+        campaign_admin = CampaignAdmin(Campaign, site)
+        site.register(CampaignLead, CampaignLeadAdmin)
+        request = type('Request', (), {'user': staff_user})()
 
-        self.assertTrue(campaign_lead_admin.has_delete_permission(request))
+        _, _, perms_needed, _ = campaign_admin.get_deleted_objects([self.campaign], request)
+        campaign_lead_admin = site._registry[CampaignLead]
+
+        self.assertNotIn(CampaignLead._meta.verbose_name, perms_needed)
+        self.assertFalse(campaign_lead_admin.has_delete_permission(request))
 
     def test_staff_without_campaign_lead_delete_permission_cannot_delete_leads(self):
         staff_user = get_user_model().objects.create_user(
