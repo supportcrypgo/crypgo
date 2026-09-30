@@ -1,6 +1,7 @@
 import logging
 import uuid
 import re
+from html import unescape
 from email.utils import parseaddr
 from urllib.parse import quote, urlparse
 from django.core.mail import EmailMultiAlternatives
@@ -386,7 +387,7 @@ class EmailSender:
         site_url = settings.SITE_URL.rstrip('/')
 
         def replace_link(match):
-            original_url = match.group(2)
+            original_url = unescape(match.group(2))
             # Skip mailto: links and anchor-only links
             if original_url.startswith('mailto:') or original_url.startswith('#'):
                 return match.group(0)

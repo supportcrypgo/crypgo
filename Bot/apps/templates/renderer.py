@@ -12,7 +12,7 @@ class TemplateRenderer:
     """Render email templates with placeholders"""
 
     # Default placeholder patterns
-    PLACEHOLDER_PATTERN = r'\{\{(\w+)\}\}'
+    PLACEHOLDER_PATTERN = r'\{\{\s*(\w+)\s*\}\}'
 
     # Known placeholder fields
     KNOWN_PLACEHOLDERS = [
