@@ -9,6 +9,8 @@ Generate a PDF report for a specific user with:
 """
 
 import argparse
+import base64
+from contextlib import redirect_stdout
 import os
 import sys
 import django
@@ -679,6 +681,7 @@ if __name__ == "__main__":
     parser.add_argument('--email', help='Email address of the user to generate the report for.')
     parser.add_argument('--output', help='Optional output file path. Defaults to a generated file next to this script.')
     parser.add_argument('--stdout', action='store_true', help='Write the generated PDF bytes to stdout instead of an output file.')
+    parser.add_argument('--stdout-base64', action='store_true', help='Write base64-encoded PDF bytes to stdout for text-mode subprocess capture.')
     args = parser.parse_args()
 
     if not args.email:
@@ -689,11 +692,19 @@ if __name__ == "__main__":
     if not user:
         raise SystemExit(f'User {args.email} not found!')
 
-    report_bytes = generate_user_report_bytes(user)
+    if args.stdout or args.stdout_base64:
+        with redirect_stdout(sys.stderr):
+            report_bytes = generate_user_report_bytes(user)
+    else:
+        report_bytes = generate_user_report_bytes(user)
 
     if args.stdout:
         sys.stdout.buffer.write(report_bytes)
         sys.stdout.buffer.flush()
+        raise SystemExit(0)
+
+    if args.stdout_base64:
+        print(base64.b64encode(report_bytes).decode('ascii'))
         raise SystemExit(0)
 
     if args.output:

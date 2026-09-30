@@ -1,4 +1,5 @@
 import logging
+import base64
 import os
 import random
 import subprocess
@@ -98,7 +99,7 @@ class Command(BaseCommand):
                     str(report_script),
                     '--email',
                     recipient.recipient_email,
-                    '--stdout',
+                    '--stdout-base64',
                 ]
             else:
                 logger.warning('No recipient email available for PDF generation.')
@@ -112,29 +113,66 @@ class Command(BaseCommand):
                 python_paths.append(existing_pythonpath)
             env['PYTHONPATH'] = os.pathsep.join(python_paths)
 
+            report_timeout = getattr(settings, 'REPORT_PDF_TIMEOUT_SECONDS', 30)
+            started_at = time.monotonic()
             result = subprocess.run(
                 command,
                 cwd=report_script.parents[1],
                 capture_output=True,
+                text=True,
                 check=False,
                 env=env,
+                timeout=report_timeout,
             )
+            elapsed = time.monotonic() - started_at
 
             if result.returncode != 0:
-                error_text = result.stderr.decode('utf-8', errors='replace').strip()
-                logger.error('Failed to generate PDF report for %s: %s', recipient.recipient_email or recipient.external_user_id, error_text or 'unknown error')
+                error_text = result.stderr or ''
+                if isinstance(error_text, bytes):
+                    error_text = error_text.decode('utf-8', errors='replace')
+                logger.error(
+                    'PDF report generation failed for %s after %.2fs (exit=%s): %s',
+                    recipient.recipient_email or recipient.external_user_id,
+                    elapsed,
+                    result.returncode,
+                    error_text or 'unknown error',
+                )
                 return []
 
-            report_bytes = result.stdout or b''
+            report_bytes = base64.b64decode(result.stdout or '', validate=True)
             if not report_bytes:
-                logger.warning('PDF report generation returned no bytes for %s', recipient.recipient_email or recipient.external_user_id)
+                logger.warning(
+                    'PDF report generation returned no bytes for %s after %.2fs',
+                    recipient.recipient_email or recipient.external_user_id,
+                    elapsed,
+                )
                 return []
+
+            logger.info(
+                'Generated PDF report for %s in %.2fs (%s bytes)',
+                recipient.recipient_email or recipient.external_user_id,
+                elapsed,
+                len(report_bytes),
+            )
 
             user_identifier = slugify(recipient.recipient_email) or str(recipient.pk)
             filename = (
                 f"Crypgo_Portfolio_Report_{user_identifier}_{timezone.now().strftime('%Y-%m-%d')}.pdf"
             )
             return [(filename, report_bytes, 'application/pdf')]
+        except subprocess.TimeoutExpired as exc:
+            elapsed = time.monotonic() - started_at
+            stderr = exc.stderr or b''
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode('utf-8', errors='replace')
+            logger.error(
+                'PDF report generation timed out for %s after %.2fs (limit=%ss): %s',
+                recipient.recipient_email or recipient.external_user_id,
+                elapsed,
+                report_timeout,
+                str(stderr).strip() or 'no stderr output',
+            )
+            return []
         except Exception as exc:
             logger.exception('Unexpected error while generating PDF attachment for recipient %s', recipient.recipient_email or recipient.external_user_id)
             return []
@@ -640,15 +678,23 @@ class Command(BaseCommand):
             rendered_subject = TemplateRenderer.render_subject(template.subject, context)
             attachments = self._build_account_report_attachments(template, recipient)
 
-            result = sender.send_with_tracking(
-                recipient_email=recipient.recipient_email,
-                subject=rendered_subject,
-                html_body=str(rendered_html),
-                plain_text=rendered_plain,
-                campaign=campaign,
-                track_links=True,
-                attachments=attachments,
-            )
+            try:
+                result = sender.send_with_tracking(
+                    recipient_email=recipient.recipient_email,
+                    subject=rendered_subject,
+                    html_body=str(rendered_html),
+                    plain_text=rendered_plain,
+                    campaign=campaign,
+                    track_links=True,
+                    attachments=attachments,
+                )
+            except Exception as exc:
+                logger.exception('ERROR - Send failed to %s', recipient.recipient_email)
+                recipient.status = 'failed'
+                recipient.error_message = f'{type(exc).__name__}: {exc}'[:500]
+                recipient.save(update_fields=['status', 'error_message', 'updated_at'])
+                continue
+
             if result and getattr(result, 'status', None) in ('sent', 'delivered'):
                 recipient.status = 'sent'
                 recipient.sent_at = timezone.now()
