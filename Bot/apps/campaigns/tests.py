@@ -66,7 +66,13 @@ class CampaignModelTest(TestCase):
         admin = CampaignAdmin(Campaign, AdminSite())
         request = type('Request', (), {'user': self.admin_user})()
 
-        with patch('apps.campaigns.admin.subprocess.Popen') as popen, patch.object(admin, 'message_user') as message_user:
+        with (
+            patch('apps.campaigns.admin.get_campaign_python_executable', return_value='/home/bot/venv/bin/python'),
+            patch('apps.campaigns.admin.subprocess.Popen') as popen,
+            patch.object(admin, 'message_user') as message_user,
+        ):
+            popen.return_value.communicate.return_value = (b'', None)
+            popen.return_value.returncode = 0
             admin.send_campaign_now(request, Campaign.objects.filter(pk=self.campaign.pk))
 
         self.campaign.refresh_from_db()
@@ -74,7 +80,28 @@ class CampaignModelTest(TestCase):
         self.assertFalse(self.campaign.is_paused)
         self.assertIsNotNone(self.campaign.started_at)
         popen.assert_called_once()
+        self.assertEqual(popen.call_args.args[0][0], '/home/bot/venv/bin/python')
         self.assertTrue(message_user.called)
+
+    def test_send_campaign_worker_failure_does_not_leave_campaign_running(self):
+        admin = CampaignAdmin(Campaign, AdminSite())
+        with (
+            patch.object(admin, '_sync_crypgo_users', return_value=(True, 'Synced')),
+            patch('apps.campaigns.admin.get_campaign_python_executable', return_value='/home/bot/venv/bin/python'),
+            patch('apps.campaigns.admin.subprocess.Popen') as popen,
+        ):
+            popen.return_value.communicate.return_value = (
+                b'/usr/local/bin/uwsgi: unrecognized option --campaign-id=1',
+                None,
+            )
+            popen.return_value.returncode = 2
+
+            ok, message = admin._queue_campaign_send(self.campaign)
+
+        self.campaign.refresh_from_db()
+        self.assertFalse(ok)
+        self.assertIn('exited with code 2', message)
+        self.assertEqual(self.campaign.status, 'cancelled')
 
     def test_send_campaign_view_redirects(self):
         admin = CampaignAdmin(Campaign, AdminSite())
