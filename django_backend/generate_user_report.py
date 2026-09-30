@@ -15,9 +15,10 @@ import os
 import sys
 import django
 from django.apps import apps
-from datetime import datetime, timezone as datetime_timezone
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from decimal import Decimal
-from json import loads
+from json import dumps, loads
+import tempfile
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -119,6 +120,58 @@ COINGECKO_IDS = {
     'LINK': 'chainlink',
 }
 MARKET_PRICE_AS_OF = None
+PRICE_LOOKUP_TIMEOUT_SECONDS = 3
+PRICE_CACHE_MAX_AGE = timedelta(hours=24)
+
+
+def _price_cache_file_path():
+    return os.environ.get(
+        'CRYPGO_REPORT_PRICE_CACHE',
+        os.path.join(tempfile.gettempdir(), 'crypgo_report_market_prices.json'),
+    )
+
+
+def _load_cached_usd_prices(tickers):
+    try:
+        with open(_price_cache_file_path(), encoding='utf-8') as cache_file:
+            cached = loads(cache_file.read())
+        cached_at = datetime.fromisoformat(cached['fetched_at'])
+        if cached_at.tzinfo is None:
+            return {}, None
+        age = datetime.now(datetime_timezone.utc) - cached_at.astimezone(datetime_timezone.utc)
+        if age < timedelta(0) or age > PRICE_CACHE_MAX_AGE:
+            return {}, None
+        cached_prices = cached.get('prices', {})
+        if not isinstance(cached_prices, dict):
+            return {}, None
+        prices = {
+            ticker: Decimal(str(price))
+            for ticker, price in cached_prices.items()
+            if ticker in tickers and ticker in COINGECKO_IDS and Decimal(str(price)) > 0
+        }
+        return prices, cached_at.astimezone(datetime_timezone.utc)
+    except (ArithmeticError, OSError, KeyError, TypeError, ValueError):
+        return {}, None
+
+
+def _cache_usd_prices(prices, fetched_at):
+    if not prices:
+        return
+    cache_path = _price_cache_file_path()
+    temporary_path = f'{cache_path}.{os.getpid()}.tmp'
+    try:
+        with open(temporary_path, 'w', encoding='utf-8') as cache_file:
+            cache_file.write(dumps({
+                'fetched_at': fetched_at.isoformat(),
+                'prices': {ticker: str(price) for ticker, price in prices.items()},
+            }))
+        os.replace(temporary_path, cache_path)
+    except OSError as error:
+        print(f'Could not update report price cache: {error}')
+        try:
+            os.remove(temporary_path)
+        except OSError:
+            pass
 
 
 def get_live_usd_prices(tickers):
@@ -139,35 +192,50 @@ def get_live_usd_prices(tickers):
     )
 
     try:
-        with urlopen(request, timeout=10) as response:
+        with urlopen(request, timeout=PRICE_LOOKUP_TIMEOUT_SECONDS) as response:
             payload = loads(response.read().decode('utf-8'))
     except Exception as error:
         print(f'CoinGecko price lookup unavailable: {error}; trying dashboard market data.')
-        market_url = os.environ.get(
-            'CRYPGO_MARKET_API_URL',
-            'http://localhost:5000/api/crypto/market',
-        )
-        try:
-            with urlopen(Request(market_url, headers={'Accept': 'application/json'}), timeout=10) as response:
-                market_data = loads(response.read().decode('utf-8'))
-        except Exception as fallback_error:
-            print(f'Dashboard market lookup unavailable: {fallback_error}')
-            return {}
+        market_url = os.environ.get('CRYPGO_MARKET_API_URL', '').strip()
+        if market_url:
+            try:
+                with urlopen(
+                    Request(market_url, headers={'Accept': 'application/json'}),
+                    timeout=PRICE_LOOKUP_TIMEOUT_SECONDS,
+                ) as response:
+                    market_data = loads(response.read().decode('utf-8'))
+                if isinstance(market_data, list):
+                    timestamps = [
+                        coin.get('last_updated') for coin in market_data
+                        if isinstance(coin, dict) and coin.get('last_updated')
+                    ]
+                    fallback_prices = {
+                        str(coin.get('symbol', '')).upper(): Decimal(str(coin['current_price']))
+                        for coin in market_data
+                        if isinstance(coin, dict)
+                        and str(coin.get('symbol', '')).upper() in tickers
+                        and coin.get('current_price') is not None
+                        and Decimal(str(coin['current_price'])) > 0
+                    }
+                    if timestamps:
+                        fetched_at = datetime.fromisoformat(max(timestamps).replace('Z', '+00:00'))
+                    else:
+                        fetched_at = datetime.now(datetime_timezone.utc)
+                    if fallback_prices:
+                        MARKET_PRICE_AS_OF = fetched_at.astimezone(datetime_timezone.utc).strftime('%B %d, %Y at %H:%M UTC')
+                        _cache_usd_prices(fallback_prices, fetched_at)
+                        return fallback_prices
+            except Exception as fallback_error:
+                print(f'Dashboard market lookup unavailable: {fallback_error}')
+        else:
+            print('Dashboard market lookup skipped: CRYPGO_MARKET_API_URL is not configured.')
 
-        if not isinstance(market_data, list):
-            return {}
-        timestamps = [coin.get('last_updated') for coin in market_data if isinstance(coin, dict) and coin.get('last_updated')]
-        if timestamps:
-            latest_timestamp = datetime.fromisoformat(max(timestamps).replace('Z', '+00:00'))
-            MARKET_PRICE_AS_OF = latest_timestamp.astimezone(datetime_timezone.utc).strftime('%B %d, %Y at %H:%M UTC')
-        return {
-            str(coin.get('symbol', '')).upper(): Decimal(str(coin['current_price']))
-            for coin in market_data
-            if isinstance(coin, dict)
-            and str(coin.get('symbol', '')).upper() in tickers
-            and coin.get('current_price') is not None
-            and Decimal(str(coin['current_price'])) > 0
-        }
+        cached_prices, cached_at = _load_cached_usd_prices(tickers)
+        if cached_prices and cached_at:
+            MARKET_PRICE_AS_OF = cached_at.strftime('%B %d, %Y at %H:%M UTC')
+            print(f'Using cached market prices from {MARKET_PRICE_AS_OF}.')
+            return cached_prices
+        return {}
 
     prices = {}
     MARKET_PRICE_AS_OF = datetime.now(datetime_timezone.utc).strftime('%B %d, %Y at %H:%M UTC')
@@ -175,6 +243,9 @@ def get_live_usd_prices(tickers):
         if coingecko_id in payload and 'usd' in payload[coingecko_id]:
             prices[ticker] = Decimal(str(payload[coingecko_id]['usd']))
 
+    fetched_at = datetime.now(datetime_timezone.utc)
+    MARKET_PRICE_AS_OF = fetched_at.strftime('%B %d, %Y at %H:%M UTC')
+    _cache_usd_prices(prices, fetched_at)
     return prices
 
 

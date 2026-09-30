@@ -1,6 +1,10 @@
 import hashlib
 import hmac
 from datetime import timedelta
+from email.message import Message
+from io import BytesIO
+import os
+import tempfile
 from typing import Any, cast
 
 from django.test import TestCase, override_settings
@@ -239,6 +243,40 @@ class CampaignPasswordResetLinkTests(TestCase):
 
 
 class UserReportLayoutTests(TestCase):
+    def test_report_uses_cached_prices_after_rate_limit_with_short_timeout(self):
+        from decimal import Decimal
+        from urllib.error import HTTPError
+        from generate_user_report import get_live_usd_prices
+
+        with tempfile.TemporaryDirectory() as cache_dir:
+            cache_path = os.path.join(cache_dir, 'market-prices.json')
+            with patch.dict(os.environ, {
+                'CRYPGO_REPORT_PRICE_CACHE': cache_path,
+                'CRYPGO_MARKET_API_URL': '',
+            }):
+                with patch('generate_user_report.urlopen') as urlopen:
+                    response = urlopen.return_value.__enter__.return_value
+                    response.read.return_value = b'{"bitcoin":{"usd":62000}}'
+                    prices = get_live_usd_prices({'BTC'})
+
+                self.assertEqual(prices, {'BTC': Decimal('62000')})
+                self.assertEqual(urlopen.call_args.kwargs['timeout'], 3)
+                self.assertTrue(os.path.exists(cache_path))
+
+                with (
+                    patch(
+                        'generate_user_report.urlopen',
+                        side_effect=HTTPError(
+                            'https://api.coingecko.com', 429, 'rate limited', Message(), BytesIO(),
+                        ),
+                    ) as rate_limited_request,
+                    patch('builtins.print'),
+                ):
+                    cached_prices = get_live_usd_prices({'BTC'})
+
+                self.assertEqual(cached_prices, {'BTC': Decimal('62000')})
+                self.assertEqual(rate_limited_request.call_args.kwargs['timeout'], 3)
+
     def test_report_transaction_labels_normalize_transfers_only(self):
         from generate_user_report import get_report_transaction_type
 

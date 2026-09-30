@@ -4,8 +4,10 @@ import re
 from email.utils import parseaddr
 from urllib.parse import quote, urlparse
 from django.core.mail import EmailMultiAlternatives
+from django.core.exceptions import ValidationError
 from django.template import Template, Context
 from django.conf import settings
+from django.core.validators import validate_email
 from django.utils import timezone
 from django.db.models import F
 from .bounce_handler import BounceHandler
@@ -52,16 +54,29 @@ class EmailSender:
 
     def _resolve_from_email(self):
         """Return a consistently formatted from address."""
-        raw_from = settings.DEFAULT_FROM_EMAIL or settings.EMAIL_HOST_USER
-        display_name, email_address = parseaddr(raw_from)
+        candidates = (
+            getattr(settings, 'DEFAULT_FROM_EMAIL', ''),
+            getattr(settings, 'EMAIL_HOST_USER', ''),
+        )
+        for candidate in candidates:
+            if not isinstance(candidate, str) or not candidate.strip():
+                continue
+            display_name, email_address = parseaddr(candidate.strip())
+            if not email_address:
+                continue
+            try:
+                validate_email(email_address)
+            except ValidationError:
+                continue
+            display_name = display_name or getattr(settings, 'EMAIL_FROM_NAME', None) or 'Crypgo'
+            return f'{display_name} <{email_address}>'
 
-        if not email_address:
-            email_address = settings.EMAIL_HOST_USER
-
-        if not display_name:
-            display_name = settings.EMAIL_FROM_NAME
-
-        return f"{display_name} <{email_address}>"
+        logger.warning(
+            'No valid DEFAULT_FROM_EMAIL or EMAIL_HOST_USER is configured; '
+            'using noreply@crypgo.com. Configure a verified sender for delivery.'
+        )
+        display_name = getattr(settings, 'EMAIL_FROM_NAME', 'Crypgo') or 'Crypgo'
+        return f'{display_name} <noreply@crypgo.com>'
 
     def _build_headers(self, recipient_email, tracking_id):
         """Build a standard, safe set of email headers."""
