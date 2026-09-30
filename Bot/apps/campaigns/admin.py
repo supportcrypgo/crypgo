@@ -296,6 +296,15 @@ class CampaignAdmin(ModelAdmin):
             or reverse('admin:campaigns_campaign_change', args=[campaign.pk])
         )
 
+    def get_deleted_objects(self, objs, request):
+        deleted_objects, model_count, perms_needed, protected = super().get_deleted_objects(
+            objs,
+            request,
+        )
+        if request.user.has_perm('campaigns.delete_campaign'):
+            perms_needed.discard(CampaignLead._meta.verbose_name)
+        return deleted_objects, model_count, perms_needed, protected
+
     def delete_model(self, request, obj):
         logger.info(
             "Campaign deleted by %s: ID=%s, Name=%s, Status=%s",
