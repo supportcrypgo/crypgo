@@ -1,9 +1,9 @@
 import logging
 import subprocess
-import sys
 from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Q
+from apps.campaigns.process_utils import get_campaign_python_executable
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class CampaignScheduler:
         """Launch send_campaign in a detached subprocess (non-blocking)."""
         manage_py = self._get_manage_py_path()
         subprocess.Popen(
-            [sys.executable, manage_py, 'send_campaign', f'--campaign-id={campaign_id}'],
+            [get_campaign_python_executable(), manage_py, 'send_campaign', f'--campaign-id={campaign_id}'],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,

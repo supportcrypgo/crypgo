@@ -31,6 +31,25 @@ class EmailTemplateModelTest(TestCase):
 
 
 class TemplateRendererGreetingTest(TestCase):
+    def test_template_preview_keeps_hidden_preheader_text(self):
+        preheader = 'We are sorry to see you go'
+        template = EmailTemplate.objects.create(
+            name='Account Closure Preview Text',
+            subject='Account closure notice',
+            html_content=(
+                '<div style="display:none; font-size:1px;">'
+                f'{preheader}'
+                '</div><p>Account closure notice</p>'
+            ),
+            plain_text='Account closure notice',
+            is_active=True,
+        )
+
+        preview = TemplateRenderer.preview(template)
+
+        self.assertIn(preheader, preview['html'])
+        self.assertIn('Account closure notice', preview['html'])
+
     def test_render_for_recipient_includes_safe_greeting(self):
         template = EmailTemplate.objects.create(
             name='Greeting Template',

@@ -4,11 +4,11 @@ import hmac
 import json
 import os
 import subprocess
-import sys
 
 from django.contrib import admin
 from django.conf import settings
 from django.contrib import messages
+from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -17,6 +17,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 from .models import Campaign, CampaignLead
+from .process_utils import get_campaign_python_executable
 import requests
 
 logger = logging.getLogger(__name__)
@@ -138,24 +139,33 @@ class CampaignAdmin(ModelAdmin):
         manage_py = os.path.normpath(
             os.path.join(os.path.dirname(__file__), '..', '..', 'manage.py')
         )
-        proc = subprocess.Popen(
-            [sys.executable, manage_py, 'send_campaign', f'--campaign-id={campaign.pk}'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-        )
-        # Read and log the output so it shows up in Render/cloud logs
         try:
+            proc = subprocess.Popen(
+                [get_campaign_python_executable(), manage_py, 'send_campaign', f'--campaign-id={campaign.pk}'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+            )
             output = proc.communicate(timeout=30)
-            # communicate() returns (stdout_bytes, stderr_bytes) or empty if PIPE not used
-            if output and len(output) >= 1:
-                stdout_bytes = output[0]
-                if stdout_bytes:
-                    logger.info("Subprocess output for campaign %s:\n%s", campaign.pk, stdout_bytes.decode('utf-8', errors='replace'))
         except subprocess.TimeoutExpired:
             logger.warning("Subprocess for campaign %s still running (expected for long sends).", campaign.pk)
-            # Don't kill it; let it run in background
+            return True, f"Campaign '{campaign.name}' started sending in the background."
+        except (OSError, ImproperlyConfigured) as error:
+            logger.exception('Could not launch campaign worker for campaign %s', campaign.pk)
+            campaign.status = 'cancelled'
+            campaign.save(update_fields=['status', 'updated_at'])
+            return False, f'Campaign worker could not start: {error}'
+
+        stdout_bytes = output[0] if output else b''
+        if stdout_bytes:
+            logger.info("Subprocess output for campaign %s:\n%s", campaign.pk, stdout_bytes.decode('utf-8', errors='replace'))
+        if proc.returncode != 0:
+            campaign.status = 'cancelled'
+            campaign.save(update_fields=['status', 'updated_at'])
+            logger.error('Campaign worker for campaign %s exited with code %s', campaign.pk, proc.returncode)
+            return False, f'Campaign worker exited with code {proc.returncode}; see Bot logs for details.'
+
         return True, f"Campaign '{campaign.name}' started sending in the background."
 
     def _sync_crypgo_users(self, campaign):
