@@ -103,6 +103,26 @@ export interface UnifiedContextValue {
 
 const UnifiedContext = createContext<UnifiedContextValue | null>(null);
 
+function enrichWalletAssetsPreservingKnownPrices(
+  assets: UnifiedWalletAsset[],
+  prices: Prices | null,
+  previousAssets: UnifiedWalletAsset[],
+): UnifiedWalletAsset[] {
+  const previousPriceByTicker = new Map(
+    previousAssets.map((asset) => [asset.ticker, Number(asset.price ?? 0)]),
+  );
+  const assetsWithKnownPrices = assets.map((asset) => {
+    const apiPrice = Number(asset.price ?? 0);
+    const previousPrice = previousPriceByTicker.get(asset.ticker) ?? 0;
+    return {
+      ...asset,
+      price: apiPrice > 0 ? apiPrice : previousPrice,
+    };
+  });
+
+  return enrichWalletAssetsWithLivePrices(assetsWithKnownPrices, prices);
+}
+
 export function UnifiedProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoading: authLoading, isAuthenticated, userId } = useAuth();
   const { prices } = useCryptoPricesGlobal();
@@ -127,7 +147,11 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const apiAssets = await walletApi.getMyWallet();
-        const enrichedAssets = enrichWalletAssetsWithLivePrices(apiAssets, prices);
+        const enrichedAssets = enrichWalletAssetsPreservingKnownPrices(
+          apiAssets,
+          prices,
+          walletAssetsRef.current,
+        );
         setWalletAssets(enrichedAssets);
         setWalletSummary(deriveWalletSummary(enrichedAssets));
         setWalletError(null);
@@ -217,7 +241,11 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
           walletApi.getTransactions(),
         ]);
         const wallet = apiWallet as UnifiedWalletAsset[];
-        const enrichedWallet = enrichWalletAssetsWithLivePrices(wallet, prices);
+        const enrichedWallet = enrichWalletAssetsPreservingKnownPrices(
+          wallet,
+          prices,
+          walletAssetsRef.current,
+        );
         setWalletAssets(enrichedWallet);
         setWalletSummary(deriveWalletSummary(enrichedWallet));
         setTransactions(apiTransactions);
@@ -263,7 +291,11 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
 
           if (walletResult.status === 'fulfilled') {
             const seedWalletAssets = walletResult.value as UnifiedWalletAsset[];
-            const enrichedAssets = enrichWalletAssetsWithLivePrices(seedWalletAssets, prices);
+            const enrichedAssets = enrichWalletAssetsPreservingKnownPrices(
+              seedWalletAssets,
+              prices,
+              walletAssetsRef.current,
+            );
             setWalletAssets(enrichedAssets);
             setWalletSummary(deriveWalletSummary(enrichedAssets));
             setWalletError(null);
