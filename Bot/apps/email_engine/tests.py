@@ -73,6 +73,21 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(len(mail.outbox), start_len + 1)
         self.assertIn('Hello there', mail.outbox[-1].subject)
 
+    def test_sender_uses_valid_host_user_when_default_from_is_invalid(self):
+        with self.settings(
+            DEFAULT_FROM_EMAIL='not-an-email',
+            EMAIL_HOST_USER='verified@example.com',
+        ):
+            from_email = self.sender._resolve_from_email()
+
+        self.assertEqual(from_email, 'Crypgo <verified@example.com>')
+
+    def test_sender_uses_valid_fallback_when_configured_addresses_are_empty(self):
+        with self.settings(DEFAULT_FROM_EMAIL=None, EMAIL_HOST_USER=None):
+            from_email = self.sender._resolve_from_email()
+
+        self.assertEqual(from_email, 'Crypgo <noreply@crypgo.com>')
+
     def test_sender_attaches_pdf_payloads(self):
         start_len = len(mail.outbox)
 
