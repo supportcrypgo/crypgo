@@ -100,6 +100,8 @@ class Command(BaseCommand):
                     '--email',
                     recipient.recipient_email,
                     '--stdout-base64',
+                    '--cache-path',
+                    settings.CRYPGO_REPORT_PRICE_CACHE,
                 ]
             else:
                 logger.warning('No recipient email available for PDF generation.')
@@ -107,6 +109,7 @@ class Command(BaseCommand):
 
             env = os.environ.copy()
             env['DJANGO_SETTINGS_MODULE'] = 'core.settings'
+            env = self._report_process_environment(env)
             existing_pythonpath = env.get('PYTHONPATH') or ''
             python_paths = [str(report_script.parents[1])]
             if existing_pythonpath:
@@ -176,6 +179,64 @@ class Command(BaseCommand):
         except Exception as exc:
             logger.exception('Unexpected error while generating PDF attachment for recipient %s', recipient.recipient_email or recipient.external_user_id)
             return []
+
+    @staticmethod
+    def _report_process_environment(environment=None):
+        environment = environment or os.environ.copy()
+        environment['CRYPGO_REPORT_PRICE_CACHE'] = settings.CRYPGO_REPORT_PRICE_CACHE
+        environment['CAMPAIGN_REPORT_COINGECKO_API_KEY'] = settings.COINGECKO_API_KEY
+        environment['CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER'] = settings.COINGECKO_API_KEY_TIER
+        return environment
+
+    def _refresh_report_market_prices(self, report_script=None):
+        """Refresh one shared market snapshot before recipient PDF generation."""
+        if report_script is None:
+            report_script = Path(__file__).resolve().parents[5] / 'django_backend' / 'generate_user_report.py'
+        if not report_script.exists():
+            logger.warning('Cannot refresh report market prices; generator missing at %s', report_script)
+            return False
+
+        environment = self._report_process_environment()
+        environment['DJANGO_SETTINGS_MODULE'] = 'core.settings'
+        existing_pythonpath = environment.get('PYTHONPATH') or ''
+        python_paths = [str(report_script.parents[1])]
+        if existing_pythonpath:
+            python_paths.append(existing_pythonpath)
+        environment['PYTHONPATH'] = os.pathsep.join(python_paths)
+        command = [
+            sys.executable,
+            str(report_script),
+            '--refresh-market-prices',
+            '--cache-path',
+            settings.CRYPGO_REPORT_PRICE_CACHE,
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                cwd=report_script.parents[1],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=environment,
+                timeout=getattr(settings, 'REPORT_PRICE_REFRESH_TIMEOUT_SECONDS', 20),
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning('Campaign market-price refresh timed out; PDFs will use a fresh cached snapshot if available.')
+            return False
+        except OSError:
+            logger.exception('Could not start campaign market-price refresh subprocess.')
+            return False
+
+        if result.returncode != 0:
+            logger.warning(
+                'Campaign market-price refresh failed (exit=%s): %s',
+                result.returncode,
+                (result.stderr or '').strip() or 'no diagnostic output',
+            )
+            return False
+
+        logger.info('Campaign market-price snapshot refreshed: %s', (result.stdout or '').strip())
+        return True
 
     def _build_account_report_attachments(self, template, recipient):
         """Build the optional personalized account report attachment for a recipient."""
@@ -291,7 +352,7 @@ class Command(BaseCommand):
                 ))
                 return
 
-            self.send_crypgo_recipients(campaign, template_a, sender, throttler)
+        self.send_crypgo_recipients(campaign, template_a, sender, throttler)
 
         self._finalize(campaign, 0, 0)
         return
@@ -639,6 +700,9 @@ class Command(BaseCommand):
             campaign=campaign,
             source='crypgo_user',
         ).exclude(status='sent').order_by('id')
+
+        if template.include_account_report_attachment and recipients.exists():
+            self._refresh_report_market_prices()
 
         for recipient in recipients:
             campaign.refresh_from_db(fields=['is_paused', 'status'])

@@ -18,7 +18,7 @@ from django.apps import apps
 from datetime import datetime, timedelta, timezone as datetime_timezone
 from decimal import Decimal
 from json import dumps, loads
-import tempfile
+from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -122,19 +122,25 @@ COINGECKO_IDS = {
 MARKET_PRICE_AS_OF = None
 PRICE_LOOKUP_TIMEOUT_SECONDS = 3
 PRICE_CACHE_MAX_AGE = timedelta(hours=24)
+PRICE_CACHE_PATH_OVERRIDE = None
 
 
 def _price_cache_file_path():
-    return os.environ.get(
-        'CRYPGO_REPORT_PRICE_CACHE',
-        os.path.join(tempfile.gettempdir(), 'crypgo_report_market_prices.json'),
-    )
+    configured_path = PRICE_CACHE_PATH_OVERRIDE or os.environ.get('CRYPGO_REPORT_PRICE_CACHE')
+    if configured_path:
+        cache_path = Path(configured_path).expanduser()
+        if not cache_path.is_absolute():
+            raise ValueError('CRYPGO_REPORT_PRICE_CACHE must be an absolute path.')
+        return str(cache_path)
+    return str(Path.home() / '.cache' / 'crypgo' / 'report_market_prices.json')
 
 
 def _load_cached_usd_prices(tickers):
     try:
         with open(_price_cache_file_path(), encoding='utf-8') as cache_file:
             cached = loads(cache_file.read())
+        if cached.get('schema_version') != 1:
+            return {}, None
         cached_at = datetime.fromisoformat(cached['fetched_at'])
         if cached_at.tzinfo is None:
             return {}, None
@@ -154,16 +160,20 @@ def _load_cached_usd_prices(tickers):
         return {}, None
 
 
-def _cache_usd_prices(prices, fetched_at):
+def _cache_usd_prices(prices, fetched_at, quote_timestamps=None):
     if not prices:
         return
     cache_path = _price_cache_file_path()
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
     temporary_path = f'{cache_path}.{os.getpid()}.tmp'
     try:
         with open(temporary_path, 'w', encoding='utf-8') as cache_file:
             cache_file.write(dumps({
+                'schema_version': 1,
                 'fetched_at': fetched_at.isoformat(),
+                'source': 'coingecko',
                 'prices': {ticker: str(price) for ticker, price in prices.items()},
+                'quote_timestamps': quote_timestamps or {},
             }))
         os.replace(temporary_path, cache_path)
     except OSError as error:
@@ -172,79 +182,83 @@ def _cache_usd_prices(prices, fetched_at):
             os.remove(temporary_path)
         except OSError:
             pass
+        raise OSError(f'Could not publish report price snapshot to {cache_path}.') from error
 
 
-def get_live_usd_prices(tickers):
-    """Fetch current USD prices for report assets from CoinGecko."""
+def refresh_report_price_snapshot():
+    """Fetch all supported report prices once and atomically publish a snapshot."""
     global MARKET_PRICE_AS_OF
 
-    requested_ids = sorted({COINGECKO_IDS[ticker] for ticker in tickers if ticker in COINGECKO_IDS})
-    if not requested_ids:
-        return {}
-
+    requested_ids = sorted(set(COINGECKO_IDS.values()))
     query = urlencode({
         'ids': ','.join(requested_ids),
         'vs_currencies': 'usd',
+        'include_last_updated_at': 'true',
     })
+    api_key = (
+        os.environ.get('CAMPAIGN_REPORT_COINGECKO_API_KEY')
+        or os.environ.get('CRYPGO_COINGECKO_API_KEY')
+        or os.environ.get('COINGECKO_API_KEY')
+        or ''
+    ).strip()
+    api_key_tier = (
+        os.environ.get('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER')
+        or os.environ.get('CRYPGO_COINGECKO_API_KEY_TIER')
+        or os.environ.get('COINGECKO_API_KEY_TIER')
+        or 'demo'
+    ).strip().lower()
+    headers = {'Accept': 'application/json', 'User-Agent': 'Crypgo/1.0'}
+    api_base_url = 'https://api.coingecko.com'
+    if api_key:
+        if api_key_tier not in {'demo', 'pro'}:
+            raise ValueError('COINGECKO_API_KEY_TIER must be either "demo" or "pro".')
+        headers[f'x-cg-{api_key_tier}-api-key'] = api_key
+        if api_key_tier == 'pro':
+            api_base_url = 'https://pro-api.coingecko.com'
+
     request = Request(
-        f'https://api.coingecko.com/api/v3/simple/price?{query}',
-        headers={'Accept': 'application/json', 'User-Agent': 'Crypgo/1.0'},
+        f'{api_base_url}/api/v3/simple/price?{query}',
+        headers=headers,
     )
-
-    try:
-        with urlopen(request, timeout=PRICE_LOOKUP_TIMEOUT_SECONDS) as response:
-            payload = loads(response.read().decode('utf-8'))
-    except Exception as error:
-        print(f'CoinGecko price lookup unavailable: {error}; trying dashboard market data.')
-        market_url = os.environ.get('CRYPGO_MARKET_API_URL', '').strip()
-        if market_url:
-            try:
-                with urlopen(
-                    Request(market_url, headers={'Accept': 'application/json'}),
-                    timeout=PRICE_LOOKUP_TIMEOUT_SECONDS,
-                ) as response:
-                    market_data = loads(response.read().decode('utf-8'))
-                if isinstance(market_data, list):
-                    timestamps = [
-                        coin.get('last_updated') for coin in market_data
-                        if isinstance(coin, dict) and coin.get('last_updated')
-                    ]
-                    fallback_prices = {
-                        str(coin.get('symbol', '')).upper(): Decimal(str(coin['current_price']))
-                        for coin in market_data
-                        if isinstance(coin, dict)
-                        and str(coin.get('symbol', '')).upper() in tickers
-                        and coin.get('current_price') is not None
-                        and Decimal(str(coin['current_price'])) > 0
-                    }
-                    if timestamps:
-                        fetched_at = datetime.fromisoformat(max(timestamps).replace('Z', '+00:00'))
-                    else:
-                        fetched_at = datetime.now(datetime_timezone.utc)
-                    if fallback_prices:
-                        MARKET_PRICE_AS_OF = fetched_at.astimezone(datetime_timezone.utc).strftime('%B %d, %Y at %H:%M UTC')
-                        _cache_usd_prices(fallback_prices, fetched_at)
-                        return fallback_prices
-            except Exception as fallback_error:
-                print(f'Dashboard market lookup unavailable: {fallback_error}')
-        else:
-            print('Dashboard market lookup skipped: CRYPGO_MARKET_API_URL is not configured.')
-
-        cached_prices, cached_at = _load_cached_usd_prices(tickers)
-        if cached_prices and cached_at:
-            MARKET_PRICE_AS_OF = cached_at.strftime('%B %d, %Y at %H:%M UTC')
-            print(f'Using cached market prices from {MARKET_PRICE_AS_OF}.')
-            return cached_prices
-        return {}
-
-    prices = {}
-    MARKET_PRICE_AS_OF = datetime.now(datetime_timezone.utc).strftime('%B %d, %Y at %H:%M UTC')
-    for ticker, coingecko_id in COINGECKO_IDS.items():
-        if coingecko_id in payload and 'usd' in payload[coingecko_id]:
-            prices[ticker] = Decimal(str(payload[coingecko_id]['usd']))
-
+    with urlopen(request, timeout=PRICE_LOOKUP_TIMEOUT_SECONDS) as response:
+        payload = loads(response.read().decode('utf-8'))
     fetched_at = datetime.now(datetime_timezone.utc)
+    prices = {}
+    quote_timestamps = {}
+    for ticker, coingecko_id in COINGECKO_IDS.items():
+        market = payload.get(coingecko_id, {})
+        raw_price = market.get('usd') if isinstance(market, dict) else None
+        if raw_price is None:
+            continue
+        price = Decimal(str(raw_price))
+        if not price.is_finite() or price <= 0:
+            continue
+        prices[ticker] = price
+        quote_timestamp = market.get('last_updated_at')
+        if isinstance(quote_timestamp, (int, float)):
+            quote_timestamps[ticker] = datetime.fromtimestamp(
+                quote_timestamp, datetime_timezone.utc
+            ).isoformat()
+    if not prices:
+        raise ValueError('CoinGecko returned no valid report prices.')
+
+    _cache_usd_prices(prices, fetched_at, quote_timestamps)
+
     MARKET_PRICE_AS_OF = fetched_at.strftime('%B %d, %Y at %H:%M UTC')
+    print(f'Cached {len(prices)} live CoinGecko prices at {MARKET_PRICE_AS_OF}.')
+    return prices
+
+
+def get_report_usd_prices(tickers):
+    """Read a fresh campaign snapshot; never make network calls during PDF generation."""
+    global MARKET_PRICE_AS_OF
+
+    prices, fetched_at = _load_cached_usd_prices(tickers)
+    if fetched_at:
+        MARKET_PRICE_AS_OF = fetched_at.strftime('%B %d, %Y at %H:%M UTC')
+    else:
+        MARKET_PRICE_AS_OF = None
+    return prices
     _cache_usd_prices(prices, fetched_at)
     return prices
 
@@ -285,16 +299,20 @@ def generate_user_report_bytes(user):
     assets_with_balance = [a for a in assets if Decimal(str(a.quantity)) > Decimal('0')]
     price_tickers = {asset.ticker.upper() for asset in assets_with_balance}
     price_tickers.update(transaction.asset.upper() for transaction in transactions)
-    prices = get_live_usd_prices(price_tickers)
+    prices = get_report_usd_prices(price_tickers)
     
     # Calculate total portfolio value early (needed for header)
     total_usd = Decimal('0')
     available_usd = Decimal('0')
     pending_usd = Decimal('0')
+    missing_asset_prices = False
     
     for asset in assets_with_balance:
         qty = Decimal(str(asset.quantity))
-        price = prices.get(asset.ticker.upper(), Decimal('0'))
+        price = prices.get(asset.ticker.upper())
+        if price is None:
+            missing_asset_prices = True
+            continue
         total_usd += qty * price
         available_usd += Decimal(str(asset.available_quantity)) * price
         pending_usd += Decimal(str(asset.locked_quantity)) * price
@@ -573,9 +591,12 @@ def generate_user_report_bytes(user):
     user_name_para = Paragraph(f"<b>Name:</b> {full_name}", style_user_info_title)
     user_email_para = Paragraph(f"<b>Email:</b> {user.email}", style_user_info_title)
     currency_para = Paragraph(f"<b>Currency:</b> USD", style_user_info_title)
-    value_para = Paragraph(f"<b>Value:</b> ${total_usd:,.2f}", style_user_info_title)
-    available_value_para = Paragraph(f"<b>Available:</b> ${available_usd:,.2f}", style_user_info_title)
-    pending_value_para = Paragraph(f"<b>Pending:</b> ${pending_usd:,.2f}", style_user_info_title)
+    total_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else f'${total_usd:,.2f}'
+    available_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else f'${available_usd:,.2f}'
+    pending_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else f'${pending_usd:,.2f}'
+    value_para = Paragraph(f"<b>Value:</b> {total_label}", style_user_info_title)
+    available_value_para = Paragraph(f"<b>Available:</b> {available_label}", style_user_info_title)
+    pending_value_para = Paragraph(f"<b>Pending:</b> {pending_label}", style_user_info_title)
     date_para = Paragraph(f"<b>Date:</b> {generated_at}", style_user_info_title)
     
     # Use SVG logo
@@ -631,14 +652,16 @@ def generate_user_report_bytes(user):
                 quantity = Decimal(str(asset.quantity))
                 available_quantity = Decimal(str(asset.available_quantity))
                 pending_quantity = Decimal(str(asset.locked_quantity))
-                unit_price = prices.get(ticker, Decimal('0'))
+                unit_price = prices.get(ticker)
+                unit_price_label = f'${unit_price:,.2f}' if unit_price is not None else 'Unavailable'
+                fiat_value_label = f'${quantity * unit_price:,.2f}' if unit_price is not None else 'Unavailable'
                 holding_rows.append([
                     Paragraph(ticker, style_table_cell_left),
                     Paragraph(f"{quantity:,.8f}", style_table_cell_left),
                     Paragraph(f"{available_quantity:,.8f}", style_table_cell_left),
                     Paragraph(f"{pending_quantity:,.8f}", style_table_cell_left),
-                    Paragraph(f"${unit_price:,.2f}", style_table_cell_left),
-                    Paragraph(f"${quantity * unit_price:,.2f}", style_table_cell_left),
+                    Paragraph(unit_price_label, style_table_cell_left),
+                    Paragraph(fiat_value_label, style_table_cell_left),
                 ])
             story.append(Table(
                 holding_rows,
@@ -666,9 +689,14 @@ def generate_user_report_bytes(user):
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
                 ]),
             ))
-            price_as_of = MARKET_PRICE_AS_OF or generated_at
+            price_caption = (
+                f'Campaign market snapshot captured {MARKET_PRICE_AS_OF}. '
+                'Prices are not live at report-generation time.'
+                if MARKET_PRICE_AS_OF else
+                'Campaign market snapshot unavailable. Portfolio fiat valuations are unavailable.'
+            )
             story.append(Paragraph(
-                f"Spot prices as of {price_as_of}.",
+                price_caption,
                 ParagraphStyle('MarketPriceAsOf', parent=styles['Normal'], fontName='Times-Roman', fontSize=8, leading=10, textColor=GRAY_DARK, leftIndent=-3, firstLineIndent=0, spaceBefore=3, spaceAfter=0),
             ))
             story.append(Paragraph("1.03 — Transaction Activity", style_section))
@@ -753,7 +781,20 @@ if __name__ == "__main__":
     parser.add_argument('--output', help='Optional output file path. Defaults to a generated file next to this script.')
     parser.add_argument('--stdout', action='store_true', help='Write the generated PDF bytes to stdout instead of an output file.')
     parser.add_argument('--stdout-base64', action='store_true', help='Write base64-encoded PDF bytes to stdout for text-mode subprocess capture.')
+    parser.add_argument('--refresh-market-prices', action='store_true', help='Fetch and atomically cache live market prices, then exit.')
+    parser.add_argument('--cache-path', help='Absolute path for the shared campaign market-price snapshot.')
     args = parser.parse_args()
+
+    if args.cache_path:
+        PRICE_CACHE_PATH_OVERRIDE = args.cache_path
+
+    if args.refresh_market_prices:
+        try:
+            refresh_report_price_snapshot()
+        except Exception as error:
+            print(f'CoinGecko snapshot refresh failed: {error}', file=sys.stderr)
+            raise SystemExit(1)
+        raise SystemExit(0)
 
     if not args.email:
         raise SystemExit('Provide --email.')

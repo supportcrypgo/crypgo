@@ -145,6 +145,50 @@ python manage.py collectstatic
 python manage.py createsuperuser
 ```
 
+#### Campaign PDF Market Snapshot
+
+Campaigns that attach account reports fetch one CoinGecko market snapshot before
+the recipient loop. Each recipient PDF reads that local snapshot only; PDF
+generation does not make market-data HTTP requests. The report identifies the
+snapshot capture time, which can differ from an individual email's send time.
+
+On PythonAnywhere, configure these in the Bot deployment's environment (or
+`Bot/.env`) using an absolute path owned by the same account that runs the Bot
+worker. Do not copy the example path literally; replace the username with the
+actual PythonAnywhere account:
+
+```dotenv
+CRYPGO_REPORT_PRICE_CACHE=/home/<pythonanywhere-user>/.cache/crypgo/report_market_prices.json
+COINGECKO_API_KEY_TIER=demo
+# Optional. Keep the key secret and out of source control.
+COINGECKO_API_KEY=
+```
+
+Use `COINGECKO_API_KEY_TIER=pro` only with a Pro key. The campaign worker passes
+the configured absolute cache path and key to the report subprocess through its
+environment/arguments; the report process runs as the Bot worker's OS user. The
+cache directory is created on refresh. Ensure that account has permission to
+write the snapshot and read it while building PDFs.
+
+The campaign command refreshes prices once per run when account-report
+attachments are enabled and pending Crypgo recipients exist. A resumed campaign
+run refreshes once again. A failed refresh is logged; an existing snapshot is
+used only while it is within the configured 24-hour freshness window. If there
+is no fresh snapshot, the email can still send, but the report marks fiat
+valuations unavailable rather than substituting zero or fabricated values.
+
+To verify from the PythonAnywhere Bot project directory and virtualenv before
+a campaign, use Django's Bot settings so the same `.env`, cache path, API key,
+and subprocess environment are used as production sending:
+
+```bash
+python manage.py shell -c "from apps.core.management.commands.send_campaign import Command; raise SystemExit(0 if Command()._refresh_report_market_prices() else 1)"
+```
+
+The command exits nonzero if CoinGecko is unavailable or the snapshot cannot be
+written. Do not start/resume production sending until the refresh succeeds or
+you have deliberately accepted the fresh-snapshot fallback policy.
+
 ### Production Checklist
 - [ ] Set `DEBUG=False` in `.env`
 - [ ] Generate strong `DJANGO_SECRET_KEY`
