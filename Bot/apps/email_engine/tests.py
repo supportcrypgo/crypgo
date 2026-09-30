@@ -189,6 +189,25 @@ class EmailSenderDeliverabilityTest(TestCase):
     SITE_URL='http://testserver',
 )
 class CrypgoCampaignRecipientDeliveryTest(TestCase):
+    def test_report_subprocess_pythonpath_handles_none(self):
+        environment = {'PYTHONPATH': None}
+
+        with (
+            patch('apps.core.management.commands.send_campaign.os.environ.copy', return_value=environment),
+            patch('apps.core.management.commands.send_campaign.subprocess.run') as run_report,
+        ):
+            run_report.return_value.returncode = 0
+            run_report.return_value.stdout = b'%PDF-report'
+            run_report.return_value.stderr = b''
+
+            attachments = Command()._build_recipient_pdf_attachment(
+                CampaignLead(recipient_email='pythonpath@example.com', pk=1)
+            )
+
+        self.assertTrue(environment['PYTHONPATH'])
+        self.assertNotIn('None', environment['PYTHONPATH'])
+        self.assertEqual(len(attachments), 1)
+
     def test_recipient_gets_personalized_dashboard_link(self):
         template = EmailTemplate.objects.create(
             name='Crypgo User Campaign Template',

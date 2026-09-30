@@ -106,7 +106,11 @@ class Command(BaseCommand):
 
             env = os.environ.copy()
             env['DJANGO_SETTINGS_MODULE'] = 'core.settings'
-            env['PYTHONPATH'] = str(report_script.parents[1]) + os.pathsep + env.get('PYTHONPATH', '')
+            existing_pythonpath = env.get('PYTHONPATH') or ''
+            python_paths = [str(report_script.parents[1])]
+            if existing_pythonpath:
+                python_paths.append(existing_pythonpath)
+            env['PYTHONPATH'] = os.pathsep.join(python_paths)
 
             result = subprocess.run(
                 command,
