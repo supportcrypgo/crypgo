@@ -1,7 +1,7 @@
 from datetime import datetime, time as dt_time, timedelta
 import subprocess
 import base64
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.core import mail
 from django.test import TestCase, override_settings
@@ -225,6 +225,15 @@ class EmailSenderDeliverabilityTest(TestCase):
     SITE_URL='http://testserver',
 )
 class CrypgoCampaignRecipientDeliveryTest(TestCase):
+    def setUp(self):
+        self.market_snapshot_patcher = patch.object(
+            Command,
+            '_refresh_report_market_prices',
+            return_value=True,
+        )
+        self.market_snapshot_patcher.start()
+        self.addCleanup(self.market_snapshot_patcher.stop)
+
     def test_report_subprocess_pythonpath_handles_none(self):
         environment = {'PYTHONPATH': None}
 
@@ -345,6 +354,93 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertIn('token%3Daccess-token%26next%3Ddelete-account', delivered_html)
         self.assertIn('resetToken%3Dreset-token', delivered_html)
         self.assertNotIn('href=""', delivered_html)
+
+    def test_market_snapshot_refreshes_once_before_recipient_loop(self):
+        template = EmailTemplate.objects.create(
+            name='Campaign Snapshot Template',
+            subject='Account update',
+            html_content='<p>Account update</p>',
+            is_active=True,
+            include_account_report_attachment=True,
+        )
+        campaign = Campaign.objects.create(name='Campaign Snapshot', template=template)
+        CampaignLead.objects.bulk_create([
+            CampaignLead(
+                campaign=campaign,
+                source='crypgo_user',
+                external_user_id=f'snapshot-{index}',
+                recipient_email=f'snapshot-{index}@example.com',
+                dashboard_url=f'https://app.crypgo.com/access/{index}',
+            )
+            for index in range(2)
+        ])
+        sender = Mock()
+        events = []
+
+        def send_email(**kwargs):
+            events.append('send')
+            return type('SendResult', (), {'status': 'sent'})()
+
+        sender.send_with_tracking.side_effect = send_email
+        throttler = Mock()
+        throttler.get_remaining_day.return_value = 70
+        throttler.wait_for_next_slot.return_value = 0
+
+        with (
+            patch.object(
+                Command,
+                '_refresh_report_market_prices',
+                side_effect=lambda: events.append('refresh'),
+            ) as refresh_snapshot,
+            patch.object(Command, '_build_account_report_attachments', return_value=[]),
+        ):
+            Command().send_crypgo_recipients(campaign, template, sender, throttler)
+
+        refresh_snapshot.assert_called_once_with()
+        self.assertEqual(sender.send_with_tracking.call_count, 2)
+        self.assertEqual(events, ['refresh', 'send', 'send'])
+
+    @override_settings(
+        CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
+        COINGECKO_API_KEY='private-test-key',
+        COINGECKO_API_KEY_TIER='pro',
+    )
+    def test_snapshot_refresh_passes_shared_path_and_key_through_environment(self):
+        self.market_snapshot_patcher.stop()
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            return_value=subprocess.CompletedProcess(
+                args=[], returncode=0, stdout='snapshot updated', stderr='',
+            ),
+        ) as run_refresh:
+            refreshed = Command()._refresh_report_market_prices()
+
+        self.assertTrue(refreshed)
+        args = run_refresh.call_args.args[0]
+        env = run_refresh.call_args.kwargs['env']
+        self.assertIn('--refresh-market-prices', args)
+        self.assertEqual(args[args.index('--cache-path') + 1], 'C:/test-data/report-prices.json')
+        self.assertEqual(env['CRYPGO_REPORT_PRICE_CACHE'], 'C:/test-data/report-prices.json')
+        self.assertEqual(env['CAMPAIGN_REPORT_COINGECKO_API_KEY'], 'private-test-key')
+        self.assertEqual(env['CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER'], 'pro')
+
+    @override_settings(CRYPGO_CAMPAIGN_OWNER_EMAIL='owner@example.com')
+    def test_owner_email_campaign_still_enters_crypgo_recipient_loop(self):
+        template = EmailTemplate.objects.create(
+            name='Owner Campaign Template',
+            subject='Account update',
+            html_content='<p>Account update</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(name='Owner Campaign', template=template)
+
+        with (
+            patch.object(Command, 'send_crypgo_recipients') as send_recipients,
+            patch.object(Command, '_finalize'),
+        ):
+            Command().send_campaign(campaign)
+
+        send_recipients.assert_called_once()
 
     def test_escaped_type_error_is_traceback_logged_without_bounce(self):
         template = EmailTemplate.objects.create(

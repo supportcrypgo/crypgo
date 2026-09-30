@@ -183,6 +183,17 @@ CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'https://crypgo.pythonanywhere.com'
 CRYPGO_CAMPAIGN_OWNER_EMAIL = os.getenv('CRYPGO_CAMPAIGN_OWNER_EMAIL', '').strip().lower()
 CAMPAIGN_PYTHON_EXECUTABLE = os.getenv('CAMPAIGN_PYTHON_EXECUTABLE', '').strip()
 REPORT_PDF_TIMEOUT_SECONDS = int(os.getenv('REPORT_PDF_TIMEOUT_SECONDS', '30'))
+CRYPGO_REPORT_PRICE_CACHE = str(Path(
+    os.path.expanduser(
+        os.getenv(
+            'CRYPGO_REPORT_PRICE_CACHE',
+            str(Path.home() / '.cache' / 'crypgo' / 'report_market_prices.json'),
+        )
+    )
+).resolve())
+REPORT_PRICE_REFRESH_TIMEOUT_SECONDS = int(os.getenv('REPORT_PRICE_REFRESH_TIMEOUT_SECONDS', '20'))
+COINGECKO_API_KEY = os.getenv('COINGECKO_API_KEY', '').strip()
+COINGECKO_API_KEY_TIER = os.getenv('COINGECKO_API_KEY_TIER', 'demo').strip().lower()
 
 # Rate Limiting
 MAX_EMAILS_PER_DAY = int(os.getenv('MAX_EMAILS_PER_DAY', 90))
