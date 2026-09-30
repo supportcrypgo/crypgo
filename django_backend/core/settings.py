@@ -250,7 +250,7 @@ BOT_SERVICE_URL = os.getenv('BOT_SERVICE_URL', 'http://localhost:8001')
 BOT_SERVICE_KEY = os.getenv('BOT_SERVICE_KEY', '')
 
 # Frontend URL for reset link
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-6llg.onrender.com')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-gamma.vercel.app').rstrip('/')
 
 # Django Unfold Configuration
 UNFOLD = {

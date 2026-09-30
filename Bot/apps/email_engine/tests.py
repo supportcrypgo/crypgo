@@ -294,6 +294,7 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertEqual(run_report.call_args.kwargs['timeout'], 30)
         self.assertTrue(any('timed out' in message and 'database query timed out' in message for message in logs.output))
 
+    @override_settings(FRONTEND_URL='https://app.crypgo.com')
     def test_recipient_gets_personalized_dashboard_link(self):
         template = EmailTemplate.objects.create(
             name='Crypgo User Campaign Template',
@@ -324,6 +325,69 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn('Hi James Borunda', mail.outbox[0].body)
         self.assertIn('https://app.crypgo.com/auth/campaign-access?token=one', mail.outbox[0].body)
+
+    @override_settings(FRONTEND_URL='https://crypgo-gamma.vercel.app')
+    def test_refreshed_campaign_access_url_uses_frontend_origin(self):
+        template = EmailTemplate.objects.create(
+            name='Frontend Access URL Template',
+            subject='Account update',
+            html_content='<a href="{{ dashboard_url }}">Open account</a>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(name='Frontend Access URL Campaign', template=template)
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='frontend-link-user',
+            recipient_email='frontend-link@example.com',
+            dashboard_url='https://backend.example.net/auth/campaign-access?token=old',
+        )
+        response = Mock()
+        response.json.return_value = {'recipients': [{
+            'external_user_id': recipient.external_user_id,
+            'email': recipient.recipient_email,
+            'dashboard_url': 'https://backend.example.net/auth/campaign-access?token=fresh',
+        }]}
+
+        with (
+            patch('apps.core.management.commands.send_campaign.settings.CRYPGO_SERVICE_KEY', 'service-key'),
+            patch('apps.core.management.commands.send_campaign.requests.post', return_value=response),
+        ):
+            self.assertTrue(Command().refresh_crypgo_links(campaign))
+
+        recipient.refresh_from_db()
+        self.assertEqual(
+            recipient.dashboard_url,
+            'https://crypgo-gamma.vercel.app/auth/campaign-access?token=fresh',
+        )
+
+    @override_settings(FRONTEND_URL='https://crypgo-gamma.vercel.app')
+    def test_stored_backend_campaign_url_is_rewritten_before_email(self):
+        template = EmailTemplate.objects.create(
+            name='Stale Campaign URL Template',
+            subject='Account update',
+            html_content='<a href="{{ dashboard_url }}">Open account</a>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(name='Stale Campaign URL Campaign', template=template)
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='stale-link-user',
+            recipient_email='stale-link@example.com',
+            dashboard_url='https://backend.example.net/auth/campaign-access?token=stored',
+        )
+
+        Command().send_crypgo_recipients(campaign, template, EmailSender(), Throttler())
+
+        recipient.refresh_from_db()
+        delivered_html = getattr(mail.outbox[0], 'alternatives')[0][0]
+        self.assertEqual(
+            recipient.dashboard_url,
+            'https://crypgo-gamma.vercel.app/auth/campaign-access?token=stored',
+        )
+        self.assertIn('https%3A%2F%2Fcrypgo-gamma.vercel.app', delivered_html)
+        self.assertNotIn('backend.example.net', delivered_html)
 
     def test_recipient_email_has_clickable_account_action_links(self):
         template = EmailTemplate.objects.create(
