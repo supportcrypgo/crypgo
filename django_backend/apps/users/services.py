@@ -50,7 +50,7 @@ def send_transaction_caution_email(user):
         send_mail(
             subject='Please review your Crypgo regional settings',
             message=plain_message,
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crypgo.com'),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'support.crypgo@gmail.com',
             recipient_list=[user.email],
             fail_silently=False,
             html_message=html_message,
@@ -71,7 +71,7 @@ def send_magic_link_email(user, raw_token):
         'expiry_hours': getattr(settings, 'MAGIC_LINK_EXPIRY_HOURS', 1),
     })
     try:
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crypgo.com')
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'support.crypgo@gmail.com'
         # Format sender name as "Crypgo <email@domain.com>"
         if '<' not in from_email:
             from_email = f'Crypgo <{from_email}>'
@@ -125,7 +125,8 @@ def send_reset_password_email(user, reset_token):
     html_message = render_to_string('emails/reset_password.html', context)
     plain_message = strip_tags(html_message)
 
-    from_email = f"{getattr(settings, 'EMAIL_FROM_NAME', 'Crypgo')} <{getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crypgo.com')}>"
+    configured_from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'support.crypgo@gmail.com'
+    from_email = f"{getattr(settings, 'EMAIL_FROM_NAME', 'Crypgo')} <{configured_from_email}>"
 
     try:
         send_mail(

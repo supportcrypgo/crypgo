@@ -13,7 +13,7 @@ old_send_mail_call = '''    try:
         send_mail(
             subject,
             message,
-            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crypgo.com'),
+            getattr(settings, 'DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com'),
             [user.email],
             fail_silently=False,
         )
@@ -22,7 +22,7 @@ old_send_mail_call = '''    try:
         return False'''
 
 new_send_mail_call = '''    try:
-        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@crypgo.com')
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com')
         # Format sender name as "Crypgo <email@domain.com>"
         if '<' not in from_email:
             from_email = f'Crypgo <{from_email}>'

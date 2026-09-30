@@ -227,7 +227,8 @@ if USE_GMAIL_API:
     GMAIL_CLIENT_ID = os.getenv('GMAIL_CLIENT_ID')
     GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
     GMAIL_REFRESH_TOKEN = os.getenv('GMAIL_REFRESH_TOKEN')
-    DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com')
+    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com') or 'support.crypgo@gmail.com'
+    DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com') or 'support.crypgo@gmail.com'
     EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
 else:
     # Fallback SMTP configuration

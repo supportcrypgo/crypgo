@@ -73,10 +73,10 @@ class EmailSender:
 
         logger.warning(
             'No valid DEFAULT_FROM_EMAIL or EMAIL_HOST_USER is configured; '
-            'using noreply@crypgo.com. Configure a verified sender for delivery.'
+            'using support.crypgo@gmail.com. Configure a verified sender for delivery.'
         )
         display_name = getattr(settings, 'EMAIL_FROM_NAME', 'Crypgo') or 'Crypgo'
-        return f'{display_name} <noreply@crypgo.com>'
+        return f'{display_name} <support.crypgo@gmail.com>'
 
     def _build_headers(self, recipient_email, tracking_id):
         """Build a standard, safe set of email headers."""

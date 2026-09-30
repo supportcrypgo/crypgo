@@ -86,7 +86,7 @@ class EmailSenderDeliverabilityTest(TestCase):
         with self.settings(DEFAULT_FROM_EMAIL=None, EMAIL_HOST_USER=None):
             from_email = self.sender._resolve_from_email()
 
-        self.assertEqual(from_email, 'Crypgo <noreply@crypgo.com>')
+        self.assertEqual(from_email, 'Crypgo <support.crypgo@gmail.com>')
 
     def test_sender_attaches_pdf_payloads(self):
         start_len = len(mail.outbox)
