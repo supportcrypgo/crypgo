@@ -4,8 +4,8 @@ from django.contrib.admin.sites import AdminSite
 from django.test.client import RequestFactory
 from unittest.mock import patch
 
-from apps.campaigns.models import Campaign
-from apps.campaigns.admin import CampaignAdmin
+from apps.campaigns.models import Campaign, CampaignLead
+from apps.campaigns.admin import CampaignAdmin, CampaignLeadAdmin
 from apps.templates.models import EmailTemplate
 
 
@@ -50,6 +50,24 @@ class CampaignModelTest(TestCase):
             any('Campaign DELETED' in message for message in logs.output),
             logs.output,
         )
+
+    def test_superuser_can_delete_campaign_leads_for_campaign_cascade(self):
+        campaign_lead_admin = CampaignLeadAdmin(CampaignLead, AdminSite())
+        request = type('Request', (), {'user': self.admin_user})()
+
+        self.assertTrue(campaign_lead_admin.has_delete_permission(request))
+
+    def test_staff_without_campaign_lead_delete_permission_cannot_delete_leads(self):
+        staff_user = get_user_model().objects.create_user(
+            username='staff',
+            email='staff@example.com',
+            password='staffpass123',
+            is_staff=True,
+        )
+        campaign_lead_admin = CampaignLeadAdmin(CampaignLead, AdminSite())
+        request = type('Request', (), {'user': staff_user})()
+
+        self.assertFalse(campaign_lead_admin.has_delete_permission(request))
 
     def test_archive_action_marks_campaign_archived(self):
         admin = CampaignAdmin(Campaign, AdminSite())
