@@ -8,7 +8,7 @@ import time
 import hashlib
 import hmac
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 import requests
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -277,6 +277,10 @@ class Command(BaseCommand):
             first_name = campaign_lead.recipient_first_name or ''
             last_name = campaign_lead.recipient_last_name or ''
             dashboard_url = campaign_lead.dashboard_url or settings.SITE_URL.rstrip('/') + '/dashboard/'
+            dashboard_url = self._frontend_campaign_url(dashboard_url)
+            if campaign_lead.dashboard_url != dashboard_url:
+                campaign_lead.dashboard_url = dashboard_url
+                campaign_lead.save(update_fields=['dashboard_url', 'updated_at'])
 
             sender = EmailSender()
             context = {
@@ -408,6 +412,7 @@ class Command(BaseCommand):
                     or not isinstance(dashboard_url, str)
                 ):
                     continue
+                dashboard_url = self._frontend_campaign_url(dashboard_url)
                 lead = existing.get(recipient_email.strip().lower())
                 if lead is None:
                     continue
@@ -655,7 +660,7 @@ class Command(BaseCommand):
         dashboard_url = response.json().get('dashboard_url')
         if not isinstance(dashboard_url, str) or not dashboard_url:
             raise ValueError('Crypgo returned no dashboard URL.')
-        return dashboard_url
+        return self._frontend_campaign_url(dashboard_url)
 
     def create_password_reset_link(self, campaign, email):
         """Issue a one-use reset URL through Crypgo's Bot-authenticated endpoint."""
@@ -680,7 +685,25 @@ class Command(BaseCommand):
         password_reset_url = response.json().get('password_reset_url')
         if not isinstance(password_reset_url, str) or not password_reset_url:
             raise ValueError('Crypgo returned no password reset URL.')
-        return password_reset_url
+        return self._frontend_campaign_url(password_reset_url)
+
+    @staticmethod
+    def _frontend_campaign_url(target_url):
+        """Keep campaign routes and query tokens but always use the configured frontend origin."""
+        if not target_url:
+            return ''
+        frontend_url = settings.FRONTEND_URL.rstrip('/')
+        frontend_parts = urlsplit(frontend_url)
+        target_parts = urlsplit(target_url)
+        if target_parts.scheme and target_parts.netloc:
+            return urlunsplit((
+                frontend_parts.scheme,
+                frontend_parts.netloc,
+                target_parts.path,
+                target_parts.query,
+                target_parts.fragment,
+            ))
+        return urljoin(f'{frontend_url}/', target_url.lstrip('/'))
 
     @staticmethod
     def _delete_account_url(dashboard_url):
@@ -729,8 +752,11 @@ class Command(BaseCommand):
                 'first_name': recipient.recipient_first_name or '',
                 'last_name': recipient.recipient_last_name or '',
                 'email': recipient.recipient_email,
-                'dashboard_url': recipient.dashboard_url,
+                'dashboard_url': self._frontend_campaign_url(recipient.dashboard_url),
             }
+            if recipient.dashboard_url != context['dashboard_url']:
+                recipient.dashboard_url = context['dashboard_url']
+                recipient.save(update_fields=['dashboard_url', 'updated_at'])
             placeholders = set(TemplateRenderer.get_placeholders(template.html_content or ''))
             if 'delete_account_url' in placeholders:
                 context['delete_account_url'] = self._delete_account_url(recipient.dashboard_url)
