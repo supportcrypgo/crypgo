@@ -236,11 +236,13 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
-        CRYPGO_REPORT_PRICE_URL='https://prices.example/report-prices',
-        CRYPGO_REPORT_PRICE_SERVICE_KEY='private-report-service-key',
     )
     def test_report_subprocess_pythonpath_handles_none(self):
-        environment = {'PYTHONPATH': None}
+        environment = {
+            'PYTHONPATH': None,
+            'CRYPGO_REPORT_PRICE_URL': 'https://prices.example/report-prices',
+            'CRYPGO_REPORT_PRICE_SERVICE_KEY': 'unused-secret',
+        }
 
         with (
             patch('apps.core.management.commands.send_campaign.os.environ.copy', return_value=environment),
@@ -262,14 +264,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             run_report.call_args.kwargs['env']['CRYPGO_REPORT_PRICE_CACHE'],
             'C:/test-data/report-prices.json',
         )
-        self.assertEqual(
-            run_report.call_args.kwargs['env']['CRYPGO_REPORT_PRICE_URL'],
-            'https://prices.example/report-prices',
-        )
-        self.assertEqual(
-            run_report.call_args.kwargs['env']['CRYPGO_REPORT_PRICE_SERVICE_KEY'],
-            'private-report-service-key',
-        )
+        self.assertNotIn('CRYPGO_REPORT_PRICE_URL', run_report.call_args.kwargs['env'])
+        self.assertNotIn('CRYPGO_REPORT_PRICE_SERVICE_KEY', run_report.call_args.kwargs['env'])
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY', run_report.call_args.kwargs['env'])
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER', run_report.call_args.kwargs['env'])
         self.assertIn('--stdout-base64', run_report.call_args.args[0])
@@ -485,10 +481,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
-        CRYPGO_REPORT_PRICE_URL='https://prices.example/report-prices',
-        CRYPGO_REPORT_PRICE_SERVICE_KEY='private-report-service-key',
     )
-    def test_snapshot_refresh_passes_shared_path_without_report_coingecko_keys(self):
+    def test_snapshot_refresh_passes_shared_path_without_online_service_credentials(self):
         self.market_snapshot_patcher.stop()
         with patch(
             'apps.core.management.commands.send_campaign.subprocess.run',
@@ -504,8 +498,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertIn('--refresh-market-prices', args)
         self.assertEqual(args[args.index('--cache-path') + 1], 'C:/test-data/report-prices.json')
         self.assertEqual(env['CRYPGO_REPORT_PRICE_CACHE'], 'C:/test-data/report-prices.json')
-        self.assertEqual(env['CRYPGO_REPORT_PRICE_URL'], 'https://prices.example/report-prices')
-        self.assertEqual(env['CRYPGO_REPORT_PRICE_SERVICE_KEY'], 'private-report-service-key')
+        self.assertNotIn('CRYPGO_REPORT_PRICE_URL', env)
+        self.assertNotIn('CRYPGO_REPORT_PRICE_SERVICE_KEY', env)
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY', env)
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER', env)
 

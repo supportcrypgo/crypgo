@@ -26,8 +26,6 @@ from django.apps import apps
 from datetime import datetime, timedelta, timezone as datetime_timezone
 from decimal import Decimal
 from json import dumps, loads
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -116,9 +114,9 @@ def load_image_for_reportlab(image_path):
 REPORT_TICKERS = ('BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'LTC', 'XRP', 'ADA', 'DOT', 'DOGE', 'LINK')
 MARKET_PRICE_AS_OF = None
 MARKET_PRICE_SOURCE = None
-PRICE_LOOKUP_TIMEOUT_SECONDS = 10
 PRICE_CACHE_MAX_AGE = timedelta(hours=24)
 PRICE_CACHE_PATH_OVERRIDE = None
+DEFAULT_PRICE_CACHE_PATH = BASE_DIR / 'user_report_prices.json'
 
 
 def _price_cache_file_path():
@@ -128,7 +126,7 @@ def _price_cache_file_path():
         if not cache_path.is_absolute():
             raise ValueError('CRYPGO_REPORT_PRICE_CACHE must be an absolute path.')
         return str(cache_path)
-    return str(Path.home() / '.cache' / 'crypgo' / 'report_market_prices.json')
+    return str(DEFAULT_PRICE_CACHE_PATH)
 
 
 def _load_cached_usd_prices(tickers):
@@ -141,7 +139,9 @@ def _load_cached_usd_prices(tickers):
         if cached_at.tzinfo is None:
             return {}, None, None
         age = datetime.now(datetime_timezone.utc) - cached_at.astimezone(datetime_timezone.utc)
-        if age < timedelta(0) or age > PRICE_CACHE_MAX_AGE:
+        if cached.get('source') != 'manual_override' and (
+            age < timedelta(0) or age > PRICE_CACHE_MAX_AGE
+        ):
             return {}, None, None
         cached_prices = cached.get('prices', {})
         if not isinstance(cached_prices, dict):
@@ -156,103 +156,20 @@ def _load_cached_usd_prices(tickers):
         return {}, None, None
 
 
-def _cache_usd_prices(prices, fetched_at, quote_timestamps=None, source='crypgo_price_service'):
-    if not prices:
-        return
-    cache_path = _price_cache_file_path()
-    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    temporary_path = f'{cache_path}.{os.getpid()}.tmp'
-    try:
-        with open(temporary_path, 'w', encoding='utf-8') as cache_file:
-            cache_file.write(dumps({
-                'schema_version': 1,
-                'fetched_at': fetched_at.isoformat(),
-                'source': source,
-                'quote_currency': 'USD',
-                'prices': {ticker: str(price) for ticker, price in prices.items()},
-                'quote_timestamps': quote_timestamps or {},
-            }))
-        os.replace(temporary_path, cache_path)
-    except OSError as error:
-        print(f'Could not update report price cache: {error}')
-        try:
-            os.remove(temporary_path)
-        except OSError:
-            pass
-        raise OSError(f'Could not publish report price snapshot to {cache_path}.') from error
-
-
 def refresh_report_price_snapshot():
-    """Fetch a complete USD snapshot from Crypgo's authenticated price service."""
+    """Validate the local manual price snapshot without making network requests."""
     global MARKET_PRICE_AS_OF, MARKET_PRICE_SOURCE
 
-    endpoint = os.environ.get(
-        'CRYPGO_REPORT_PRICE_URL',
-        'https://crypgo-gamma.vercel.app/api/crypto/report-prices',
-    ).strip()
-    service_key = os.environ.get('CRYPGO_REPORT_PRICE_SERVICE_KEY', '').strip()
-    if not endpoint or not service_key:
-        raise ValueError('Report price service URL and service key must be configured.')
+    prices, fetched_at, source = _load_cached_usd_prices(set(REPORT_TICKERS))
+    missing_tickers = sorted(set(REPORT_TICKERS) - set(prices))
+    if source != 'manual_override' or missing_tickers:
+        detail = f": {', '.join(missing_tickers)}" if missing_tickers else '.'
+        raise ValueError(f'Manual report price snapshot is missing or invalid{detail}')
 
-    request = Request(
-        endpoint,
-        headers={
-            'Accept': 'application/json',
-            'User-Agent': 'Crypgo/1.0',
-            'X-Crypgo-Service-Key': service_key,
-        },
-    )
-    with urlopen(request, timeout=PRICE_LOOKUP_TIMEOUT_SECONDS) as response:
-        payload = loads(response.read().decode('utf-8'))
-
-    if not isinstance(payload, dict) or not isinstance(payload.get('prices'), dict):
-        raise ValueError('Crypgo report price service returned an invalid response.')
-    try:
-        fetched_at = datetime.fromisoformat(payload['fetched_at'])
-    except (KeyError, TypeError, ValueError) as error:
-        raise ValueError('Crypgo report price service returned an invalid timestamp.') from error
-    if fetched_at.tzinfo is None:
-        raise ValueError('Crypgo report price service timestamp must include a timezone.')
-    fetched_at = fetched_at.astimezone(datetime_timezone.utc)
-    snapshot_age = datetime.now(datetime_timezone.utc) - fetched_at
-    if snapshot_age < timedelta(0) or snapshot_age > PRICE_CACHE_MAX_AGE:
-        raise ValueError('Crypgo report price service returned a stale or future snapshot.')
-
-    prices = {}
-    quote_timestamps = {}
-    missing_tickers = []
-    for ticker in REPORT_TICKERS:
-        raw_price = payload['prices'].get(ticker)
-        try:
-            price = Decimal(str(raw_price))
-        except (ArithmeticError, TypeError, ValueError):
-            missing_tickers.append(ticker)
-            continue
-        if not price.is_finite() or price <= 0:
-            missing_tickers.append(ticker)
-            continue
-        prices[ticker] = price
-        quote_timestamps[ticker] = fetched_at.isoformat()
-
-    if missing_tickers:
-        raise ValueError(
-            'Crypgo report prices were missing or invalid for: '
-            + ', '.join(missing_tickers)
-        )
-
-    source = payload.get('source')
-    if source != 'coingecko':
-        raise ValueError('Crypgo report price service returned an unsupported source.')
-    _cache_usd_prices(
-        prices,
-        fetched_at,
-        quote_timestamps,
-        source='crypgo_price_service',
-    )
-
+    assert fetched_at is not None
     MARKET_PRICE_AS_OF = fetched_at.strftime('%B %d, %Y at %H:%M UTC')
-    MARKET_PRICE_SOURCE = 'crypgo_price_service'
-    print(f'Cached {len(prices)} Crypgo report prices at {MARKET_PRICE_AS_OF}.')
+    MARKET_PRICE_SOURCE = source
+    print(f'Validated {len(prices)} fixed manual report prices; no network request made.')
     return prices
 
 
@@ -698,15 +615,13 @@ def generate_user_report_bytes(user):
             ))
             price_caption = (
                 (
-                    'Estimated USD valuations use the CoinGecko USD snapshot delivered by '
-                    'Crypgo\'s price service. '
-                    if MARKET_PRICE_SOURCE == 'crypgo_price_service' else
+                    'USD valuations use fixed manual prices and are not live. '
+                    if MARKET_PRICE_SOURCE == 'manual_override' else
                     'Estimated USD valuations use the available market-price snapshot. '
                 )
-                + f'Campaign market snapshot captured {MARKET_PRICE_AS_OF}. '
-                + 'Prices are not live at report-generation time.'
+                + f'Prices were last set {MARKET_PRICE_AS_OF}.'
                 if MARKET_PRICE_AS_OF else
-                'Estimated USD valuations are unavailable because the campaign market snapshot is unavailable.'
+                'USD valuations are unavailable because the manual price snapshot is unavailable.'
             )
             story.append(Paragraph(
                 price_caption,
@@ -776,7 +691,7 @@ def generate_user_report_bytes(user):
     
     story.append(tx_table)
     story.append(Paragraph(
-        "Fiat uses recorded transaction values when available; otherwise it is calculated from the stored transaction price. Values marked ~ are estimates using report-date spot prices.",
+        "Fiat uses recorded transaction values when available; otherwise it is calculated from the stored transaction price. Values marked ~ use fixed manual report prices and are not live.",
         ParagraphStyle('TransactionFiatNote', parent=styles['Normal'], fontName='Times-Roman', fontSize=8, leading=10, textColor=GRAY_DARK, spaceBefore=4, spaceAfter=0),
     ))
     story.append(Spacer(1, 24))

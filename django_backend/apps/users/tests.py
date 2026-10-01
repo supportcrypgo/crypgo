@@ -259,22 +259,21 @@ class UserReportLayoutTests(TestCase):
                     snapshot.write(dumps({
                         'schema_version': 1,
                         'fetched_at': fetched_at.isoformat(),
-                        'source': 'binance_usdt_spot',
+                        'source': 'manual_override',
                         'prices': {'BTC': '62000'},
                         'quote_timestamps': {},
                     }))
 
-                with patch('generate_user_report.urlopen', side_effect=AssertionError('PDF lookup must be offline')):
-                    prices = get_report_usd_prices({'BTC', 'ETH'})
+                prices = get_report_usd_prices({'BTC', 'ETH'})
 
                 self.assertEqual(prices, {'BTC': Decimal('62000')})
                 with open(cache_path, encoding='utf-8') as snapshot:
                     stored = loads(snapshot.read())
                 self.assertEqual(stored['schema_version'], 1)
-                self.assertEqual(stored['source'], 'binance_usdt_spot')
+                self.assertEqual(stored['source'], 'manual_override')
                 self.assertEqual(stored['prices']['BTC'], '62000')
 
-    def test_report_price_lookup_rejects_stale_snapshot(self):
+    def test_manual_price_snapshot_is_not_expired(self):
         from datetime import datetime, timedelta, timezone as datetime_timezone
         from json import dumps
         from generate_user_report import get_report_usd_prices
@@ -287,90 +286,27 @@ class UserReportLayoutTests(TestCase):
                     snapshot.write(dumps({
                         'schema_version': 1,
                         'fetched_at': stale_time.isoformat(),
-                        'source': 'coingecko',
+                        'source': 'manual_override',
                         'prices': {'BTC': '62000'},
                     }))
-                with patch('generate_user_report.urlopen', side_effect=AssertionError('report must stay offline')):
-                    self.assertEqual(get_report_usd_prices({'BTC'}), {})
+                self.assertEqual(get_report_usd_prices({'BTC'}), {'BTC': Decimal('62000')})
 
-    def test_snapshot_refresh_uses_authenticated_crypgo_price_service(self):
+    def test_snapshot_refresh_validates_manual_prices_without_network(self):
         from decimal import Decimal
-        from datetime import datetime, timezone as datetime_timezone
-        from json import dumps, loads
-        from generate_user_report import (
-            REPORT_TICKERS,
-            get_report_usd_prices,
-            refresh_report_price_snapshot,
-        )
+        from json import loads
+        from generate_user_report import DEFAULT_PRICE_CACHE_PATH, REPORT_TICKERS, refresh_report_price_snapshot
 
-        with tempfile.TemporaryDirectory() as cache_dir:
-            cache_path = os.path.join(cache_dir, 'market-prices.json')
-            with patch.dict(os.environ, {
-                'CRYPGO_REPORT_PRICE_CACHE': cache_path,
-                'CRYPGO_REPORT_PRICE_URL': 'https://crypgo.example/api/crypto/report-prices',
-                'CRYPGO_REPORT_PRICE_SERVICE_KEY': 'report-service-secret',
-            }, clear=False):
-                with patch('generate_user_report.urlopen') as urlopen:
-                    response = urlopen.return_value.__enter__.return_value
-                    service_time = datetime.now(datetime_timezone.utc).isoformat()
-                    expected_prices = {
-                        ticker: Decimal(index + 1)
-                        for index, ticker in enumerate(REPORT_TICKERS)
-                    }
-                    response.read.return_value = dumps({
-                        'source': 'coingecko',
-                        'fetched_at': service_time,
-                        'prices': {ticker: str(price) for ticker, price in expected_prices.items()},
-                    }).encode('utf-8')
-                    prices = refresh_report_price_snapshot()
+        cache_path = DEFAULT_PRICE_CACHE_PATH
+        with patch.dict(os.environ, {'CRYPGO_REPORT_PRICE_CACHE': str(cache_path)}):
+            prices = refresh_report_price_snapshot()
 
-                request = urlopen.call_args.args[0]
-                self.assertEqual(request.full_url, 'https://crypgo.example/api/crypto/report-prices')
-                self.assertEqual(request.get_header('X-crypgo-service-key'), 'report-service-secret')
-                self.assertEqual(urlopen.call_args.kwargs['timeout'], 10)
-                self.assertEqual(prices, expected_prices)
-                self.assertEqual(get_report_usd_prices(set(REPORT_TICKERS)), prices)
-                with open(cache_path, encoding='utf-8') as snapshot:
-                    stored = loads(snapshot.read())
-
-        self.assertEqual(stored['schema_version'], 1)
-        self.assertEqual(stored['source'], 'crypgo_price_service')
-        self.assertEqual(stored['quote_currency'], 'USD')
-        self.assertNotIn('report-service-secret', str(stored))
-
-    def test_incomplete_service_snapshot_does_not_replace_existing_cache(self):
-        from datetime import datetime, timezone as datetime_timezone
-        from json import dumps
-        from generate_user_report import REPORT_TICKERS, refresh_report_price_snapshot
-
-        with tempfile.TemporaryDirectory() as cache_dir:
-            cache_path = os.path.join(cache_dir, 'market-prices.json')
-            original_snapshot = dumps({
-                'schema_version': 1,
-                'fetched_at': '2026-10-01T00:00:00+00:00',
-                'source': 'previous_snapshot',
-                'prices': {'BTC': '62000'},
-            })
-            with open(cache_path, 'w', encoding='utf-8') as snapshot:
-                snapshot.write(original_snapshot)
-
-            with patch.dict(os.environ, {
-                'CRYPGO_REPORT_PRICE_CACHE': cache_path,
-                'CRYPGO_REPORT_PRICE_URL': 'https://crypgo.example/api/crypto/report-prices',
-                'CRYPGO_REPORT_PRICE_SERVICE_KEY': 'report-service-secret',
-            }, clear=False):
-                with patch('generate_user_report.urlopen') as urlopen:
-                    response = urlopen.return_value.__enter__.return_value
-                    response.read.return_value = dumps({
-                        'source': 'coingecko',
-                        'fetched_at': datetime.now(datetime_timezone.utc).isoformat(),
-                        'prices': {REPORT_TICKERS[0]: '62000'},
-                    }).encode('utf-8')
-                    with self.assertRaisesRegex(ValueError, 'missing or invalid'):
-                        refresh_report_price_snapshot()
-
-            with open(cache_path, encoding='utf-8') as snapshot:
-                self.assertEqual(snapshot.read(), original_snapshot)
+        self.assertEqual(set(prices), set(REPORT_TICKERS))
+        self.assertEqual(prices['BTC'], Decimal('83805.00'))
+        self.assertEqual(prices['LTC'], Decimal('67.29'))
+        with open(cache_path, encoding='utf-8') as snapshot:
+            stored = loads(snapshot.read())
+        self.assertEqual(stored['source'], 'manual_override')
+        self.assertEqual(stored['prices']['USDT'], '1.00')
 
     def test_report_shows_unavailable_for_missing_market_snapshot(self):
         from generate_user_report import generate_user_report_bytes
@@ -395,7 +331,7 @@ class UserReportLayoutTests(TestCase):
         with tempfile.TemporaryDirectory() as cache_dir:
             with patch.dict(os.environ, {
                 'CRYPGO_REPORT_PRICE_CACHE': os.path.join(cache_dir, 'missing-prices.json'),
-            }), patch('generate_user_report.urlopen', side_effect=AssertionError('report must stay offline')):
+            }):
                 document = pymupdf.open(
                     stream=generate_user_report_bytes(user),
                     filetype='pdf',
@@ -404,13 +340,11 @@ class UserReportLayoutTests(TestCase):
         report_text = cast(str, document[0].get_text())
         self.assertIn('Value: Unavailable', report_text)
         self.assertIn('Unavailable', report_text)
-        self.assertIn('Estimated USD valuations are unavailable', report_text)
+        self.assertIn('USD valuations are unavailable', report_text)
         self.assertNotIn('$0.00', report_text)
 
-    def test_report_discloses_binance_usdt_parity_assumption(self):
-        from datetime import datetime, timezone as datetime_timezone
-        from json import dumps
-        from generate_user_report import generate_user_report_bytes
+    def test_report_discloses_manual_prices_are_not_live(self):
+        from generate_user_report import DEFAULT_PRICE_CACHE_PATH, generate_user_report_bytes
         import pymupdf
 
         user = CustomUser.objects.create_user(
@@ -423,30 +357,48 @@ class UserReportLayoutTests(TestCase):
             ticker='BTC',
             defaults={
                 'name': 'Bitcoin',
-                'quantity': Decimal('1'),
-                'available_quantity': Decimal('1'),
-                'locked_quantity': Decimal('0'),
+                'quantity': Decimal('2'),
+                'available_quantity': Decimal('1.5'),
+                'locked_quantity': Decimal('0.5'),
+            },
+        )
+        WalletAsset.objects.update_or_create(
+            user=user,
+            ticker='LTC',
+            defaults={
+                'name': 'Litecoin',
+                'quantity': Decimal('3'),
+                'available_quantity': Decimal('2'),
+                'locked_quantity': Decimal('1'),
             },
         )
 
-        with tempfile.TemporaryDirectory() as cache_dir:
-            cache_path = os.path.join(cache_dir, 'market-prices.json')
-            with open(cache_path, 'w', encoding='utf-8') as snapshot:
-                snapshot.write(dumps({
-                    'schema_version': 1,
-                    'fetched_at': datetime.now(datetime_timezone.utc).isoformat(),
-                    'source': 'crypgo_price_service',
-                    'prices': {'BTC': '62000', 'USDT': '1'},
-                }))
-
-            with patch.dict(os.environ, {'CRYPGO_REPORT_PRICE_CACHE': cache_path}):
-                document = pymupdf.open(
-                    stream=generate_user_report_bytes(user),
-                    filetype='pdf',
-                )
+        with patch.dict(os.environ, {'CRYPGO_REPORT_PRICE_CACHE': str(DEFAULT_PRICE_CACHE_PATH)}):
+            document = pymupdf.open(
+                stream=generate_user_report_bytes(user),
+                filetype='pdf',
+            )
 
         report_text = cast(str, document[0].get_text())
-        self.assertIn('Estimated USD valuations use the CoinGecko USD snapshot', report_text)
+        self.assertIn('USD valuations use fixed manual prices and are not live', report_text)
+        self.assertIn('$83,805.00', report_text)
+        self.assertIn('$167,610.00', report_text)
+        self.assertIn('$67.29', report_text)
+        self.assertIn('$201.87', report_text)
+        self.assertIn('Value: $167,811.87', report_text)
+
+    def test_default_report_prices_load_from_local_manual_file(self):
+        from decimal import Decimal
+        from generate_user_report import DEFAULT_PRICE_CACHE_PATH, REPORT_TICKERS, get_report_usd_prices
+
+        with patch.dict(os.environ):
+            os.environ.pop('CRYPGO_REPORT_PRICE_CACHE', None)
+            prices = get_report_usd_prices(set(REPORT_TICKERS))
+
+        self.assertEqual(DEFAULT_PRICE_CACHE_PATH.name, 'user_report_prices.json')
+        self.assertEqual(prices['BTC'], Decimal('83805.00'))
+        self.assertEqual(prices['LTC'], Decimal('67.29'))
+        self.assertEqual(set(prices), set(REPORT_TICKERS))
 
     def test_report_transaction_labels_normalize_transfers_only(self):
         from generate_user_report import get_report_transaction_type
