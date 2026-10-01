@@ -14,6 +14,17 @@ from django.views.decorators.http import require_POST
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 
+def legacy_click_tracking_relay(request, tracking_id):
+    """Forward old API-host tracking links to the email application."""
+    destination = (
+        f'{settings.CRYPGO_EMAIL_TRACKING_URL}/click/{tracking_id}/'
+    )
+    query_string = request.META.get('QUERY_STRING', '')
+    if query_string:
+        destination = f'{destination}?{query_string}'
+    return HttpResponseRedirect(destination)
+
+
 def health_check(request):
     return HttpResponse('OK', status=200)
 
@@ -260,6 +271,11 @@ def api_root(request):
 
 
 urlpatterns = [
+    re_path(
+        r'^track/click/(?P<tracking_id>[^/]+)/?$',
+        legacy_click_tracking_relay,
+        name='legacy-click-tracking-relay',
+    ),
     path('', api_root, name='root'),
     re_path(r'^api/$', api_root, name='api-root'),
     path('api/', include('apps.users.urls')),

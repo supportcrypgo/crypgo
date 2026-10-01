@@ -13,12 +13,19 @@ import base64
 from contextlib import redirect_stdout
 import os
 import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR.parent / '.env')
+
 import django
 from django.apps import apps
 from datetime import datetime, timedelta, timezone as datetime_timezone
 from decimal import Decimal
 from json import dumps, loads
-from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 

@@ -1,4 +1,6 @@
 import logging
+from urllib.parse import urlsplit
+
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -41,9 +43,7 @@ def track_open(request, tracking_id):
 
 def track_click(request, tracking_id):
     """Track email link clicks"""
-    destination = request.GET.get('url') or settings.FRONTEND_URL or '/'
-    if not destination.startswith(('http://', 'https://', '/')):
-        destination = settings.FRONTEND_URL or '/'
+    destination = _validated_click_destination(request.GET.get('url'))
     if destination == settings.FRONTEND_URL.rstrip('/'):
         destination = settings.FRONTEND_URL.rstrip('/') + '/'
 
@@ -64,3 +64,58 @@ def track_click(request, tracking_id):
             url_clicked=destination,
         )
     return HttpResponseRedirect(destination)
+
+
+def _validated_click_destination(destination):
+    fallback = settings.FRONTEND_URL or '/'
+    if not destination:
+        return fallback
+    if destination != destination.strip() or '\\' in destination:
+        return fallback
+    if any(ord(character) < 32 or ord(character) == 127 for character in destination):
+        return fallback
+
+    if destination.startswith('/'):
+        return destination if not destination.startswith('//') else fallback
+
+    try:
+        parsed = urlsplit(destination)
+        if parsed.scheme.lower() not in ('http', 'https') or not parsed.hostname:
+            return fallback
+        if parsed.username is not None or parsed.password is not None:
+            return fallback
+        port = parsed.port
+    except ValueError:
+        return fallback
+
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname.lower()
+    default_port = 443 if scheme == 'https' else 80
+    origin = f'{scheme}://{hostname}'
+    if port is not None and port != default_port:
+        origin += f':{port}'
+
+    allowed_origins = {
+        _normalized_origin(allowed_origin)
+        for allowed_origin in settings.CLICK_TRACKING_ALLOWED_ORIGINS
+    }
+    return destination if origin in allowed_origins else fallback
+
+
+def _normalized_origin(value):
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme.lower() not in ('http', 'https') or not parsed.hostname:
+            return ''
+        if parsed.username is not None or parsed.password is not None:
+            return ''
+        port = parsed.port
+    except ValueError:
+        return ''
+
+    scheme = parsed.scheme.lower()
+    origin = f'{scheme}://{parsed.hostname.lower()}'
+    default_port = 443 if scheme == 'https' else 80
+    if port is not None and port != default_port:
+        origin += f':{port}'
+    return origin
