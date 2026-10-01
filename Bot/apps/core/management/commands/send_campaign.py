@@ -184,8 +184,8 @@ class Command(BaseCommand):
     def _report_process_environment(environment=None):
         environment = environment or os.environ.copy()
         environment['CRYPGO_REPORT_PRICE_CACHE'] = settings.CRYPGO_REPORT_PRICE_CACHE
-        environment['CRYPGO_REPORT_PRICE_URL'] = settings.CRYPGO_REPORT_PRICE_URL
-        environment['CRYPGO_REPORT_PRICE_SERVICE_KEY'] = settings.CRYPGO_REPORT_PRICE_SERVICE_KEY
+        environment.pop('CRYPGO_REPORT_PRICE_URL', None)
+        environment.pop('CRYPGO_REPORT_PRICE_SERVICE_KEY', None)
         return environment
 
     def _refresh_report_market_prices(self, report_script=None):
@@ -221,7 +221,7 @@ class Command(BaseCommand):
                 timeout=getattr(settings, 'REPORT_PRICE_REFRESH_TIMEOUT_SECONDS', 20),
             )
         except subprocess.TimeoutExpired:
-            logger.warning('Campaign market-price refresh timed out; PDFs will use a fresh cached snapshot if available.')
+            logger.warning('Manual report price validation timed out; PDFs will read the configured local snapshot.')
             return False
         except OSError:
             logger.exception('Could not start campaign market-price refresh subprocess.')
@@ -229,13 +229,13 @@ class Command(BaseCommand):
 
         if result.returncode != 0:
             logger.warning(
-                'Campaign market-price refresh failed (exit=%s): %s',
+                'Manual report price snapshot validation failed (exit=%s): %s',
                 result.returncode,
                 (result.stderr or '').strip() or 'no diagnostic output',
             )
             return False
 
-        logger.info('Campaign market-price snapshot refreshed: %s', (result.stdout or '').strip())
+        logger.info('Manual report price snapshot validated: %s', (result.stdout or '').strip())
         return True
 
     def _build_account_report_attachments(self, template, recipient):

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "fetched_at": "2026-10-01T12:00:00Z",
+  "source": "manual_override",
+  "quote_currency": "USD",
+  "prices": {
+    "BTC": "83805.00",
+    "ETH": "2696.61",
+    "USDT": "1.00",
+    "BNB": "769.42",
+    "XRP": "1.49",
+    "SOL": "117.98",
+    "ADA": "0.25",
+    "DOGE": "0.09",
+    "DOT": "1.20",
+    "LINK": "14.37",
+    "LTC": "67.29"
+  },
+  "quote_timestamps": {}
+}

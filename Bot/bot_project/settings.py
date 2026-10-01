@@ -192,16 +192,11 @@ CRYPGO_REPORT_PRICE_CACHE = str(Path(
     os.path.expanduser(
         os.getenv(
             'CRYPGO_REPORT_PRICE_CACHE',
-            str(Path.home() / '.cache' / 'crypgo' / 'report_market_prices.json'),
+            str(BASE_DIR.parent / 'django_backend' / 'user_report_prices.json'),
         )
     )
 ).resolve())
 REPORT_PRICE_REFRESH_TIMEOUT_SECONDS = int(os.getenv('REPORT_PRICE_REFRESH_TIMEOUT_SECONDS', '20'))
-CRYPGO_REPORT_PRICE_URL = os.getenv(
-    'CRYPGO_REPORT_PRICE_URL',
-    'https://crypgo-gamma.vercel.app/api/crypto/report-prices',
-).strip()
-CRYPGO_REPORT_PRICE_SERVICE_KEY = os.getenv('CRYPGO_REPORT_PRICE_SERVICE_KEY', '').strip()
 COINGECKO_API_KEY = os.getenv('COINGECKO_API_KEY', '').strip()
 COINGECKO_API_KEY_TIER = os.getenv('COINGECKO_API_KEY_TIER', 'demo').strip().lower()
 
