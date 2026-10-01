@@ -176,8 +176,13 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom Settings
-SITE_URL = os.getenv('SITE_URL', 'https://crypgo.pythonanywhere.com')
+SITE_URL = os.getenv('SITE_URL', 'https://Crypgoemail.pythonanywhere.com')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-gamma.vercel.app')
+CLICK_TRACKING_ALLOWED_ORIGINS = tuple(dict.fromkeys(
+    origin.strip().rstrip('/')
+    for origin in (FRONTEND_URL + ',' + os.getenv('CLICK_TRACKING_ALLOWED_ORIGINS', '')).split(',')
+    if origin.strip()
+))
 CRYPGO_SERVICE_KEY = os.getenv('CRYPGO_SERVICE_KEY', '')
 CRYPGO_API_URL = os.getenv('CRYPGO_API_URL', 'https://crypgo.pythonanywhere.com')
 CRYPGO_CAMPAIGN_OWNER_EMAIL = os.getenv('CRYPGO_CAMPAIGN_OWNER_EMAIL', '').strip().lower()

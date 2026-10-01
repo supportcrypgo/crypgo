@@ -6,11 +6,14 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from the django_backend directory
-# override=True ensures .env file values take precedence over system env vars
-load_dotenv(BASE_DIR / '.env', override=True)
+# Keep explicitly supplied process values authoritative; use .env only as a fallback.
+load_dotenv(BASE_DIR / '.env')
 
 SECRET_KEY = os.getenv('SECRET_KEY')
+CRYPGO_EMAIL_TRACKING_URL = os.getenv(
+    'CRYPGO_EMAIL_TRACKING_URL',
+    'https://Crypgoemail.pythonanywhere.com/track',
+).rstrip('/')
 
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 

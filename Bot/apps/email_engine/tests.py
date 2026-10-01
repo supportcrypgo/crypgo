@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from apps.campaigns.models import Campaign
 from apps.campaigns.models import CampaignLead
-from apps.email_engine.models import Bounce, EmailLog
+from apps.email_engine.models import Bounce, EmailLog, Tracking
 from apps.email_engine.sender import EmailSender
 from apps.email_engine.throttler import Throttler
 from apps.leads.models import BlacklistedLead
@@ -234,6 +234,11 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.market_snapshot_patcher.start()
         self.addCleanup(self.market_snapshot_patcher.stop)
 
+    @override_settings(
+        CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
+        COINGECKO_API_KEY='private-test-key',
+        COINGECKO_API_KEY_TIER='pro',
+    )
     def test_report_subprocess_pythonpath_handles_none(self):
         environment = {'PYTHONPATH': None}
 
@@ -253,6 +258,18 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertNotIn('None', environment['PYTHONPATH'])
         self.assertTrue(run_report.call_args.kwargs['capture_output'])
         self.assertTrue(run_report.call_args.kwargs['text'])
+        self.assertEqual(
+            run_report.call_args.kwargs['env']['CRYPGO_REPORT_PRICE_CACHE'],
+            'C:/test-data/report-prices.json',
+        )
+        self.assertEqual(
+            run_report.call_args.kwargs['env']['CAMPAIGN_REPORT_COINGECKO_API_KEY'],
+            'private-test-key',
+        )
+        self.assertEqual(
+            run_report.call_args.kwargs['env']['CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER'],
+            'pro',
+        )
         self.assertIn('--stdout-base64', run_report.call_args.args[0])
         self.assertEqual(len(attachments), 1)
         self.assertEqual(attachments[0][1], b'%PDF-report')
@@ -696,3 +713,62 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, 'https://public.example.com/')
+
+    @override_settings(
+        FRONTEND_URL='https://crypgo-gamma.vercel.app',
+        CLICK_TRACKING_ALLOWED_ORIGINS=(
+            'https://crypgo-gamma.vercel.app',
+            'https://app.crypgo.com',
+        ),
+    )
+    def test_click_tracking_redirects_to_configured_origin_and_records_click(self):
+        email_log = EmailLog.objects.create(
+            tracking_id='approved-target-123',
+            recipient_email='user@example.com',
+            subject='Test',
+            status='sent',
+            sent_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            '/track/click/approved-target-123/',
+            {'url': 'https://app.crypgo.com/auth/campaign-access?token=abc'},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response['Location'],
+            'https://app.crypgo.com/auth/campaign-access?token=abc',
+        )
+        email_log.refresh_from_db()
+        self.assertIsNotNone(email_log.clicked_at)
+        self.assertEqual(
+            Tracking.objects.get(email_log=email_log).url_clicked,
+            response['Location'],
+        )
+
+    @override_settings(
+        FRONTEND_URL='https://crypgo-gamma.vercel.app',
+        CLICK_TRACKING_ALLOWED_ORIGINS=('https://crypgo-gamma.vercel.app',),
+    )
+    def test_click_tracking_rejects_unapproved_and_protocol_relative_destinations(self):
+        for tracking_id, destination in (
+            ('unapproved-target-123', 'https://attacker.example/path'),
+            ('protocol-relative-123', '//attacker.example/path'),
+            ('credential-target-123', 'https://crypgo-gamma.vercel.app@attacker.example/'),
+        ):
+            EmailLog.objects.create(
+                tracking_id=tracking_id,
+                recipient_email='user@example.com',
+                subject='Test',
+                status='sent',
+                sent_at=timezone.now(),
+            )
+
+            response = self.client.get(
+                f'/track/click/{tracking_id}/',
+                {'url': destination},
+            )
+
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response['Location'], 'https://crypgo-gamma.vercel.app/')
