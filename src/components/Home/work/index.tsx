@@ -68,11 +68,12 @@ const Work = () => {
           <motion.div {...TopAnimation} className="lg:col-span-5 col-span-12">
             <div className="2xl:-mr-40 mt-9 flex justify-center">
               <Image
-                src= {`${getImagePrefix()}images/work/img-work-with-us.png`}
+                src= {`${getImagePrefix()}images/work/img-work-with-us.webp`}
                 alt="image"
                 width={600}
                 height={425}
                 className="lg:w-full"
+                loading="lazy"
               />
             </div>
           </motion.div>
