@@ -113,20 +113,10 @@ def load_image_for_reportlab(image_path):
         return None
 
 
-COINGECKO_IDS = {
-    'BTC': 'bitcoin',
-    'ETH': 'ethereum',
-    'USDT': 'tether',
-    'BNB': 'binancecoin',
-    'SOL': 'solana',
-    'LTC': 'litecoin',
-    'XRP': 'ripple',
-    'ADA': 'cardano',
-    'DOT': 'polkadot',
-    'DOGE': 'dogecoin',
-    'LINK': 'chainlink',
-}
+REPORT_TICKERS = ('BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'LTC', 'XRP', 'ADA', 'DOT', 'DOGE', 'LINK')
+BINANCE_USDT_PAIRS = {ticker: f'{ticker}USDT' for ticker in REPORT_TICKERS if ticker != 'USDT'}
 MARKET_PRICE_AS_OF = None
+MARKET_PRICE_SOURCE = None
 PRICE_LOOKUP_TIMEOUT_SECONDS = 3
 PRICE_CACHE_MAX_AGE = timedelta(hours=24)
 PRICE_CACHE_PATH_OVERRIDE = None
@@ -147,27 +137,27 @@ def _load_cached_usd_prices(tickers):
         with open(_price_cache_file_path(), encoding='utf-8') as cache_file:
             cached = loads(cache_file.read())
         if cached.get('schema_version') != 1:
-            return {}, None
+            return {}, None, None
         cached_at = datetime.fromisoformat(cached['fetched_at'])
         if cached_at.tzinfo is None:
-            return {}, None
+            return {}, None, None
         age = datetime.now(datetime_timezone.utc) - cached_at.astimezone(datetime_timezone.utc)
         if age < timedelta(0) or age > PRICE_CACHE_MAX_AGE:
-            return {}, None
+            return {}, None, None
         cached_prices = cached.get('prices', {})
         if not isinstance(cached_prices, dict):
-            return {}, None
+            return {}, None, None
         prices = {
             ticker: Decimal(str(price))
             for ticker, price in cached_prices.items()
-            if ticker in tickers and ticker in COINGECKO_IDS and Decimal(str(price)) > 0
+            if ticker in tickers and ticker in REPORT_TICKERS and Decimal(str(price)) > 0
         }
-        return prices, cached_at.astimezone(datetime_timezone.utc)
+        return prices, cached_at.astimezone(datetime_timezone.utc), cached.get('source')
     except (ArithmeticError, OSError, KeyError, TypeError, ValueError):
-        return {}, None
+        return {}, None, None
 
 
-def _cache_usd_prices(prices, fetched_at, quote_timestamps=None):
+def _cache_usd_prices(prices, fetched_at, quote_timestamps=None, source='binance_usdt_spot'):
     if not prices:
         return
     cache_path = _price_cache_file_path()
@@ -178,7 +168,9 @@ def _cache_usd_prices(prices, fetched_at, quote_timestamps=None):
             cache_file.write(dumps({
                 'schema_version': 1,
                 'fetched_at': fetched_at.isoformat(),
-                'source': 'coingecko',
+                'source': source,
+                'quote_currency': 'USDT',
+                'usdt_usd_assumption': '1 USDT approximately equals 1 USD',
                 'prices': {ticker: str(price) for ticker, price in prices.items()},
                 'quote_timestamps': quote_timestamps or {},
             }))
@@ -193,80 +185,73 @@ def _cache_usd_prices(prices, fetched_at, quote_timestamps=None):
 
 
 def refresh_report_price_snapshot():
-    """Fetch all supported report prices once and atomically publish a snapshot."""
-    global MARKET_PRICE_AS_OF
+    """Fetch report tickers from Binance USDT spot pairs and publish a complete snapshot."""
+    global MARKET_PRICE_AS_OF, MARKET_PRICE_SOURCE
 
-    requested_ids = sorted(set(COINGECKO_IDS.values()))
-    query = urlencode({
-        'ids': ','.join(requested_ids),
-        'vs_currencies': 'usd',
-        'include_last_updated_at': 'true',
-    })
-    api_key = (
-        os.environ.get('CAMPAIGN_REPORT_COINGECKO_API_KEY')
-        or os.environ.get('CRYPGO_COINGECKO_API_KEY')
-        or os.environ.get('COINGECKO_API_KEY')
-        or ''
-    ).strip()
-    api_key_tier = (
-        os.environ.get('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER')
-        or os.environ.get('CRYPGO_COINGECKO_API_KEY_TIER')
-        or os.environ.get('COINGECKO_API_KEY_TIER')
-        or 'demo'
-    ).strip().lower()
-    headers = {'Accept': 'application/json', 'User-Agent': 'Crypgo/1.0'}
-    api_base_url = 'https://api.coingecko.com'
-    if api_key:
-        if api_key_tier not in {'demo', 'pro'}:
-            raise ValueError('COINGECKO_API_KEY_TIER must be either "demo" or "pro".')
-        headers[f'x-cg-{api_key_tier}-api-key'] = api_key
-        if api_key_tier == 'pro':
-            api_base_url = 'https://pro-api.coingecko.com'
-
+    requested_pairs = list(BINANCE_USDT_PAIRS.values())
+    query = urlencode({'symbols': dumps(requested_pairs, separators=(',', ':'))})
     request = Request(
-        f'{api_base_url}/api/v3/simple/price?{query}',
-        headers=headers,
+        f'https://api.binance.com/api/v3/ticker/price?{query}',
+        headers={'Accept': 'application/json', 'User-Agent': 'Crypgo/1.0'},
     )
     with urlopen(request, timeout=PRICE_LOOKUP_TIMEOUT_SECONDS) as response:
         payload = loads(response.read().decode('utf-8'))
+
+    if not isinstance(payload, list):
+        raise ValueError('Binance returned an invalid report price response.')
+
     fetched_at = datetime.now(datetime_timezone.utc)
-    prices = {}
-    quote_timestamps = {}
-    for ticker, coingecko_id in COINGECKO_IDS.items():
-        market = payload.get(coingecko_id, {})
-        raw_price = market.get('usd') if isinstance(market, dict) else None
-        if raw_price is None:
+    prices = {'USDT': Decimal('1')}
+    quote_timestamps = {'USDT': fetched_at.isoformat()}
+    pair_prices = {
+        item.get('symbol'): item.get('price')
+        for item in payload
+        if isinstance(item, dict) and isinstance(item.get('symbol'), str)
+    }
+    missing_pairs = []
+    for ticker, pair in BINANCE_USDT_PAIRS.items():
+        raw_price = pair_prices.get(pair)
+        try:
+            price = Decimal(str(raw_price))
+        except (ArithmeticError, TypeError, ValueError):
+            missing_pairs.append(pair)
             continue
-        price = Decimal(str(raw_price))
         if not price.is_finite() or price <= 0:
+            missing_pairs.append(pair)
             continue
         prices[ticker] = price
-        quote_timestamp = market.get('last_updated_at')
-        if isinstance(quote_timestamp, (int, float)):
-            quote_timestamps[ticker] = datetime.fromtimestamp(
-                quote_timestamp, datetime_timezone.utc
-            ).isoformat()
-    if not prices:
-        raise ValueError('CoinGecko returned no valid report prices.')
+        quote_timestamps[ticker] = fetched_at.isoformat()
 
-    _cache_usd_prices(prices, fetched_at, quote_timestamps)
+    if missing_pairs:
+        raise ValueError(
+            'Binance report prices were missing or invalid for: '
+            + ', '.join(missing_pairs)
+        )
+
+    _cache_usd_prices(
+        prices,
+        fetched_at,
+        quote_timestamps,
+        source='binance_usdt_spot',
+    )
 
     MARKET_PRICE_AS_OF = fetched_at.strftime('%B %d, %Y at %H:%M UTC')
-    print(f'Cached {len(prices)} live CoinGecko prices at {MARKET_PRICE_AS_OF}.')
+    MARKET_PRICE_SOURCE = 'binance_usdt_spot'
+    print(f'Cached {len(prices)} Binance report prices at {MARKET_PRICE_AS_OF}.')
     return prices
 
 
 def get_report_usd_prices(tickers):
     """Read a fresh campaign snapshot; never make network calls during PDF generation."""
-    global MARKET_PRICE_AS_OF
+    global MARKET_PRICE_AS_OF, MARKET_PRICE_SOURCE
 
-    prices, fetched_at = _load_cached_usd_prices(tickers)
+    prices, fetched_at, source = _load_cached_usd_prices(tickers)
     if fetched_at:
         MARKET_PRICE_AS_OF = fetched_at.strftime('%B %d, %Y at %H:%M UTC')
+        MARKET_PRICE_SOURCE = source
     else:
         MARKET_PRICE_AS_OF = None
-    return prices
-    _cache_usd_prices(prices, fetched_at)
+        MARKET_PRICE_SOURCE = None
     return prices
 
 
@@ -697,10 +682,16 @@ def generate_user_report_bytes(user):
                 ]),
             ))
             price_caption = (
-                f'Campaign market snapshot captured {MARKET_PRICE_AS_OF}. '
-                'Prices are not live at report-generation time.'
+                (
+                    'Estimated USD valuations use Binance USDT spot prices and assume '
+                    '1 USDT is approximately 1 USD. '
+                    if MARKET_PRICE_SOURCE == 'binance_usdt_spot' else
+                    'Estimated USD valuations use the available market-price snapshot. '
+                )
+                + f'Campaign market snapshot captured {MARKET_PRICE_AS_OF}. '
+                + 'Prices are not live at report-generation time.'
                 if MARKET_PRICE_AS_OF else
-                'Campaign market snapshot unavailable. Portfolio fiat valuations are unavailable.'
+                'Estimated USD valuations are unavailable because the campaign market snapshot is unavailable.'
             )
             story.append(Paragraph(
                 price_caption,
@@ -799,7 +790,7 @@ if __name__ == "__main__":
         try:
             refresh_report_price_snapshot()
         except Exception as error:
-            print(f'CoinGecko snapshot refresh failed: {error}', file=sys.stderr)
+            print(f'Binance snapshot refresh failed: {error}', file=sys.stderr)
             raise SystemExit(1)
         raise SystemExit(0)
 

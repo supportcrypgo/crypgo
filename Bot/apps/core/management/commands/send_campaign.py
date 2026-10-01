@@ -184,8 +184,6 @@ class Command(BaseCommand):
     def _report_process_environment(environment=None):
         environment = environment or os.environ.copy()
         environment['CRYPGO_REPORT_PRICE_CACHE'] = settings.CRYPGO_REPORT_PRICE_CACHE
-        environment['CAMPAIGN_REPORT_COINGECKO_API_KEY'] = settings.COINGECKO_API_KEY
-        environment['CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER'] = settings.COINGECKO_API_KEY_TIER
         return environment
 
     def _refresh_report_market_prices(self, report_script=None):

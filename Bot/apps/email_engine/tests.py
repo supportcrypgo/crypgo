@@ -236,8 +236,6 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
-        COINGECKO_API_KEY='private-test-key',
-        COINGECKO_API_KEY_TIER='pro',
     )
     def test_report_subprocess_pythonpath_handles_none(self):
         environment = {'PYTHONPATH': None}
@@ -262,14 +260,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             run_report.call_args.kwargs['env']['CRYPGO_REPORT_PRICE_CACHE'],
             'C:/test-data/report-prices.json',
         )
-        self.assertEqual(
-            run_report.call_args.kwargs['env']['CAMPAIGN_REPORT_COINGECKO_API_KEY'],
-            'private-test-key',
-        )
-        self.assertEqual(
-            run_report.call_args.kwargs['env']['CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER'],
-            'pro',
-        )
+        self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY', run_report.call_args.kwargs['env'])
+        self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER', run_report.call_args.kwargs['env'])
         self.assertIn('--stdout-base64', run_report.call_args.args[0])
         self.assertEqual(len(attachments), 1)
         self.assertEqual(attachments[0][1], b'%PDF-report')
@@ -483,10 +475,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
-        COINGECKO_API_KEY='private-test-key',
-        COINGECKO_API_KEY_TIER='pro',
     )
-    def test_snapshot_refresh_passes_shared_path_and_key_through_environment(self):
+    def test_snapshot_refresh_passes_shared_path_without_report_coingecko_keys(self):
         self.market_snapshot_patcher.stop()
         with patch(
             'apps.core.management.commands.send_campaign.subprocess.run',
@@ -502,8 +492,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertIn('--refresh-market-prices', args)
         self.assertEqual(args[args.index('--cache-path') + 1], 'C:/test-data/report-prices.json')
         self.assertEqual(env['CRYPGO_REPORT_PRICE_CACHE'], 'C:/test-data/report-prices.json')
-        self.assertEqual(env['CAMPAIGN_REPORT_COINGECKO_API_KEY'], 'private-test-key')
-        self.assertEqual(env['CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER'], 'pro')
+        self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY', env)
+        self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER', env)
 
     @override_settings(CRYPGO_CAMPAIGN_OWNER_EMAIL='owner@example.com')
     def test_owner_email_campaign_still_enters_crypgo_recipient_loop(self):

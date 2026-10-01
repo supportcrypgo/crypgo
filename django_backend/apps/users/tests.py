@@ -259,7 +259,7 @@ class UserReportLayoutTests(TestCase):
                     snapshot.write(dumps({
                         'schema_version': 1,
                         'fetched_at': fetched_at.isoformat(),
-                        'source': 'coingecko',
+                        'source': 'binance_usdt_spot',
                         'prices': {'BTC': '62000'},
                         'quote_timestamps': {},
                     }))
@@ -271,7 +271,7 @@ class UserReportLayoutTests(TestCase):
                 with open(cache_path, encoding='utf-8') as snapshot:
                     stored = loads(snapshot.read())
                 self.assertEqual(stored['schema_version'], 1)
-                self.assertEqual(stored['source'], 'coingecko')
+                self.assertEqual(stored['source'], 'binance_usdt_spot')
                 self.assertEqual(stored['prices']['BTC'], '62000')
 
     def test_report_price_lookup_rejects_stale_snapshot(self):
@@ -293,59 +293,81 @@ class UserReportLayoutTests(TestCase):
                 with patch('generate_user_report.urlopen', side_effect=AssertionError('report must stay offline')):
                     self.assertEqual(get_report_usd_prices({'BTC'}), {})
 
-    def test_snapshot_refresh_uses_configured_demo_key_and_quote_timestamp(self):
+    def test_snapshot_refresh_uses_binance_usdt_pairs_for_all_report_tickers(self):
         from decimal import Decimal
-        from datetime import datetime, timezone as datetime_timezone
-        from json import loads
-        from generate_user_report import refresh_report_price_snapshot, get_report_usd_prices
+        from urllib.parse import parse_qs, urlsplit
+        from json import dumps, loads
+        from generate_user_report import (
+            BINANCE_USDT_PAIRS,
+            REPORT_TICKERS,
+            get_report_usd_prices,
+            refresh_report_price_snapshot,
+        )
 
         with tempfile.TemporaryDirectory() as cache_dir:
             cache_path = os.path.join(cache_dir, 'market-prices.json')
             with patch.dict(os.environ, {
                 'CRYPGO_REPORT_PRICE_CACHE': cache_path,
-                'CRYPGO_COINGECKO_API_KEY': 'test-secret-key',
-                'CRYPGO_COINGECKO_API_KEY_TIER': 'demo',
             }, clear=False):
                 with patch('generate_user_report.urlopen') as urlopen:
                     response = urlopen.return_value.__enter__.return_value
-                    response.read.return_value = (
-                        b'{"bitcoin":{"usd":62000,"last_updated_at":1790000000}}'
-                    )
+                    pair_prices = {
+                        pair: str(index + 2)
+                        for index, pair in enumerate(BINANCE_USDT_PAIRS.values())
+                    }
+                    response.read.return_value = dumps([
+                        {'symbol': pair, 'price': price}
+                        for pair, price in pair_prices.items()
+                    ]).encode('utf-8')
                     prices = refresh_report_price_snapshot()
 
                 request = urlopen.call_args.args[0]
-                self.assertEqual(request.get_header('X-cg-demo-api-key'), 'test-secret-key')
+                requested_pairs = loads(parse_qs(urlsplit(request.full_url).query)['symbols'][0])
+                expected_prices = {
+                    ticker: Decimal(str(index + 2))
+                    for index, ticker in enumerate(BINANCE_USDT_PAIRS)
+                }
+                expected_prices['USDT'] = Decimal('1')
+                self.assertEqual(request.full_url.split('/api/v3/')[0], 'https://api.binance.com')
+                self.assertCountEqual(requested_pairs, BINANCE_USDT_PAIRS.values())
                 self.assertEqual(urlopen.call_args.kwargs['timeout'], 3)
-                self.assertEqual(prices, {'BTC': Decimal('62000')})
-                self.assertEqual(get_report_usd_prices({'BTC'}), prices)
+                self.assertEqual(prices, expected_prices)
+                self.assertEqual(get_report_usd_prices(set(REPORT_TICKERS)), prices)
                 with open(cache_path, encoding='utf-8') as snapshot:
                     stored = loads(snapshot.read())
 
         self.assertEqual(stored['schema_version'], 1)
-        self.assertEqual(stored['quote_timestamps']['BTC'], datetime.fromtimestamp(
-            1790000000, datetime_timezone.utc,
-        ).isoformat())
-        self.assertNotIn('test-secret-key', str(stored))
+        self.assertEqual(stored['source'], 'binance_usdt_spot')
+        self.assertEqual(stored['quote_currency'], 'USDT')
+        self.assertEqual(stored['prices']['USDT'], '1')
 
-    def test_snapshot_refresh_uses_pro_api_host_and_header(self):
-        from generate_user_report import refresh_report_price_snapshot
+    def test_incomplete_binance_snapshot_does_not_replace_existing_cache(self):
+        from json import dumps
+        from generate_user_report import BINANCE_USDT_PAIRS, refresh_report_price_snapshot
 
         with tempfile.TemporaryDirectory() as cache_dir:
             cache_path = os.path.join(cache_dir, 'market-prices.json')
-            with patch.dict(os.environ, {
-                'CRYPGO_REPORT_PRICE_CACHE': cache_path,
-                'CAMPAIGN_REPORT_COINGECKO_API_KEY': 'private-pro-key',
-                'CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER': 'pro',
-            }, clear=False):
+            original_snapshot = dumps({
+                'schema_version': 1,
+                'fetched_at': '2026-10-01T00:00:00+00:00',
+                'source': 'previous_snapshot',
+                'prices': {'BTC': '62000'},
+            })
+            with open(cache_path, 'w', encoding='utf-8') as snapshot:
+                snapshot.write(original_snapshot)
+
+            with patch.dict(os.environ, {'CRYPGO_REPORT_PRICE_CACHE': cache_path}, clear=False):
                 with patch('generate_user_report.urlopen') as urlopen:
                     response = urlopen.return_value.__enter__.return_value
-                    response.read.return_value = b'{"bitcoin":{"usd":62000}}'
-                    refresh_report_price_snapshot()
+                    first_pair = next(iter(BINANCE_USDT_PAIRS.values()))
+                    response.read.return_value = dumps([
+                        {'symbol': first_pair, 'price': '62000'},
+                    ]).encode('utf-8')
+                    with self.assertRaisesRegex(ValueError, 'missing or invalid'):
+                        refresh_report_price_snapshot()
 
-                request = urlopen.call_args.args[0]
-
-        self.assertTrue(request.full_url.startswith('https://pro-api.coingecko.com/api/v3/'))
-        self.assertEqual(request.get_header('X-cg-pro-api-key'), 'private-pro-key')
+            with open(cache_path, encoding='utf-8') as snapshot:
+                self.assertEqual(snapshot.read(), original_snapshot)
 
     def test_report_shows_unavailable_for_missing_market_snapshot(self):
         from generate_user_report import generate_user_report_bytes
@@ -379,7 +401,50 @@ class UserReportLayoutTests(TestCase):
         report_text = cast(str, document[0].get_text())
         self.assertIn('Value: Unavailable', report_text)
         self.assertIn('Unavailable', report_text)
+        self.assertIn('Estimated USD valuations are unavailable', report_text)
         self.assertNotIn('$0.00', report_text)
+
+    def test_report_discloses_binance_usdt_parity_assumption(self):
+        from datetime import datetime, timezone as datetime_timezone
+        from json import dumps
+        from generate_user_report import generate_user_report_bytes
+        import pymupdf
+
+        user = CustomUser.objects.create_user(
+            username='binance-report-user',
+            email='binance-report@example.com',
+            password='Password123!',
+        )
+        WalletAsset.objects.update_or_create(
+            user=user,
+            ticker='BTC',
+            defaults={
+                'name': 'Bitcoin',
+                'quantity': Decimal('1'),
+                'available_quantity': Decimal('1'),
+                'locked_quantity': Decimal('0'),
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as cache_dir:
+            cache_path = os.path.join(cache_dir, 'market-prices.json')
+            with open(cache_path, 'w', encoding='utf-8') as snapshot:
+                snapshot.write(dumps({
+                    'schema_version': 1,
+                    'fetched_at': datetime.now(datetime_timezone.utc).isoformat(),
+                    'source': 'binance_usdt_spot',
+                    'prices': {'BTC': '62000', 'USDT': '1'},
+                }))
+
+            with patch.dict(os.environ, {'CRYPGO_REPORT_PRICE_CACHE': cache_path}):
+                document = pymupdf.open(
+                    stream=generate_user_report_bytes(user),
+                    filetype='pdf',
+                )
+
+        report_text = cast(str, document[0].get_text())
+        self.assertIn('Estimated USD valuations use Binance USDT spot prices', report_text)
+        self.assertIn('assume 1 USDT is approximately 1 USD', report_text)
 
     def test_report_transaction_labels_normalize_transfers_only(self):
         from generate_user_report import get_report_transaction_type
