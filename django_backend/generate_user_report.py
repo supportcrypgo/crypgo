@@ -114,10 +114,9 @@ def load_image_for_reportlab(image_path):
 
 
 REPORT_TICKERS = ('BTC', 'ETH', 'USDT', 'BNB', 'SOL', 'LTC', 'XRP', 'ADA', 'DOT', 'DOGE', 'LINK')
-BINANCE_USDT_PAIRS = {ticker: f'{ticker}USDT' for ticker in REPORT_TICKERS if ticker != 'USDT'}
 MARKET_PRICE_AS_OF = None
 MARKET_PRICE_SOURCE = None
-PRICE_LOOKUP_TIMEOUT_SECONDS = 3
+PRICE_LOOKUP_TIMEOUT_SECONDS = 10
 PRICE_CACHE_MAX_AGE = timedelta(hours=24)
 PRICE_CACHE_PATH_OVERRIDE = None
 
@@ -157,7 +156,7 @@ def _load_cached_usd_prices(tickers):
         return {}, None, None
 
 
-def _cache_usd_prices(prices, fetched_at, quote_timestamps=None, source='binance_usdt_spot'):
+def _cache_usd_prices(prices, fetched_at, quote_timestamps=None, source='crypgo_price_service'):
     if not prices:
         return
     cache_path = _price_cache_file_path()
@@ -169,8 +168,7 @@ def _cache_usd_prices(prices, fetched_at, quote_timestamps=None, source='binance
                 'schema_version': 1,
                 'fetched_at': fetched_at.isoformat(),
                 'source': source,
-                'quote_currency': 'USDT',
-                'usdt_usd_assumption': '1 USDT approximately equals 1 USD',
+                'quote_currency': 'USD',
                 'prices': {ticker: str(price) for ticker, price in prices.items()},
                 'quote_timestamps': quote_timestamps or {},
             }))
@@ -185,59 +183,76 @@ def _cache_usd_prices(prices, fetched_at, quote_timestamps=None, source='binance
 
 
 def refresh_report_price_snapshot():
-    """Fetch report tickers from Binance USDT spot pairs and publish a complete snapshot."""
+    """Fetch a complete USD snapshot from Crypgo's authenticated price service."""
     global MARKET_PRICE_AS_OF, MARKET_PRICE_SOURCE
 
-    requested_pairs = list(BINANCE_USDT_PAIRS.values())
-    query = urlencode({'symbols': dumps(requested_pairs, separators=(',', ':'))})
+    endpoint = os.environ.get(
+        'CRYPGO_REPORT_PRICE_URL',
+        'https://crypgo-gamma.vercel.app/api/crypto/report-prices',
+    ).strip()
+    service_key = os.environ.get('CRYPGO_REPORT_PRICE_SERVICE_KEY', '').strip()
+    if not endpoint or not service_key:
+        raise ValueError('Report price service URL and service key must be configured.')
+
     request = Request(
-        f'https://api.binance.com/api/v3/ticker/price?{query}',
-        headers={'Accept': 'application/json', 'User-Agent': 'Crypgo/1.0'},
+        endpoint,
+        headers={
+            'Accept': 'application/json',
+            'User-Agent': 'Crypgo/1.0',
+            'X-Crypgo-Service-Key': service_key,
+        },
     )
     with urlopen(request, timeout=PRICE_LOOKUP_TIMEOUT_SECONDS) as response:
         payload = loads(response.read().decode('utf-8'))
 
-    if not isinstance(payload, list):
-        raise ValueError('Binance returned an invalid report price response.')
+    if not isinstance(payload, dict) or not isinstance(payload.get('prices'), dict):
+        raise ValueError('Crypgo report price service returned an invalid response.')
+    try:
+        fetched_at = datetime.fromisoformat(payload['fetched_at'])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError('Crypgo report price service returned an invalid timestamp.') from error
+    if fetched_at.tzinfo is None:
+        raise ValueError('Crypgo report price service timestamp must include a timezone.')
+    fetched_at = fetched_at.astimezone(datetime_timezone.utc)
+    snapshot_age = datetime.now(datetime_timezone.utc) - fetched_at
+    if snapshot_age < timedelta(0) or snapshot_age > PRICE_CACHE_MAX_AGE:
+        raise ValueError('Crypgo report price service returned a stale or future snapshot.')
 
-    fetched_at = datetime.now(datetime_timezone.utc)
-    prices = {'USDT': Decimal('1')}
-    quote_timestamps = {'USDT': fetched_at.isoformat()}
-    pair_prices = {
-        item.get('symbol'): item.get('price')
-        for item in payload
-        if isinstance(item, dict) and isinstance(item.get('symbol'), str)
-    }
-    missing_pairs = []
-    for ticker, pair in BINANCE_USDT_PAIRS.items():
-        raw_price = pair_prices.get(pair)
+    prices = {}
+    quote_timestamps = {}
+    missing_tickers = []
+    for ticker in REPORT_TICKERS:
+        raw_price = payload['prices'].get(ticker)
         try:
             price = Decimal(str(raw_price))
         except (ArithmeticError, TypeError, ValueError):
-            missing_pairs.append(pair)
+            missing_tickers.append(ticker)
             continue
         if not price.is_finite() or price <= 0:
-            missing_pairs.append(pair)
+            missing_tickers.append(ticker)
             continue
         prices[ticker] = price
         quote_timestamps[ticker] = fetched_at.isoformat()
 
-    if missing_pairs:
+    if missing_tickers:
         raise ValueError(
-            'Binance report prices were missing or invalid for: '
-            + ', '.join(missing_pairs)
+            'Crypgo report prices were missing or invalid for: '
+            + ', '.join(missing_tickers)
         )
 
+    source = payload.get('source')
+    if source != 'coingecko':
+        raise ValueError('Crypgo report price service returned an unsupported source.')
     _cache_usd_prices(
         prices,
         fetched_at,
         quote_timestamps,
-        source='binance_usdt_spot',
+        source='crypgo_price_service',
     )
 
     MARKET_PRICE_AS_OF = fetched_at.strftime('%B %d, %Y at %H:%M UTC')
-    MARKET_PRICE_SOURCE = 'binance_usdt_spot'
-    print(f'Cached {len(prices)} Binance report prices at {MARKET_PRICE_AS_OF}.')
+    MARKET_PRICE_SOURCE = 'crypgo_price_service'
+    print(f'Cached {len(prices)} Crypgo report prices at {MARKET_PRICE_AS_OF}.')
     return prices
 
 
@@ -683,9 +698,9 @@ def generate_user_report_bytes(user):
             ))
             price_caption = (
                 (
-                    'Estimated USD valuations use Binance USDT spot prices and assume '
-                    '1 USDT is approximately 1 USD. '
-                    if MARKET_PRICE_SOURCE == 'binance_usdt_spot' else
+                    'Estimated USD valuations use the CoinGecko USD snapshot delivered by '
+                    'Crypgo\'s price service. '
+                    if MARKET_PRICE_SOURCE == 'crypgo_price_service' else
                     'Estimated USD valuations use the available market-price snapshot. '
                 )
                 + f'Campaign market snapshot captured {MARKET_PRICE_AS_OF}. '
@@ -790,7 +805,7 @@ if __name__ == "__main__":
         try:
             refresh_report_price_snapshot()
         except Exception as error:
-            print(f'Binance snapshot refresh failed: {error}', file=sys.stderr)
+            print(f'Crypgo price service refresh failed: {error}', file=sys.stderr)
             raise SystemExit(1)
         raise SystemExit(0)
 

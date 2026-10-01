@@ -184,6 +184,8 @@ class Command(BaseCommand):
     def _report_process_environment(environment=None):
         environment = environment or os.environ.copy()
         environment['CRYPGO_REPORT_PRICE_CACHE'] = settings.CRYPGO_REPORT_PRICE_CACHE
+        environment['CRYPGO_REPORT_PRICE_URL'] = settings.CRYPGO_REPORT_PRICE_URL
+        environment['CRYPGO_REPORT_PRICE_SERVICE_KEY'] = settings.CRYPGO_REPORT_PRICE_SERVICE_KEY
         return environment
 
     def _refresh_report_market_prices(self, report_script=None):
