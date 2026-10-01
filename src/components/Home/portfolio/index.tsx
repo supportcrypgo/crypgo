@@ -16,10 +16,11 @@ const Portfolio = () => {
             className="lg:-ml-32"
           >
             <Image
-              src= {`${getImagePrefix()}images/portfolio/img-portfolio.png`}
+              src= {`${getImagePrefix()}images/portfolio/img-portfolio.webp`}
               alt="Crypto Portfolio"
               width={780}
               height={700}
+              loading="lazy"
             />
           </motion.div>
 

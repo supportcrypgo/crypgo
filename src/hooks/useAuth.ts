@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, createElement } from 'react';
 import { UnifiedUser } from '@/types/unified';
-import { authApi, profileApi } from '@/data/api';
+import { authApi, hasStoredAccessToken, profileApi } from '@/data/api';
 import { usePathname } from 'next/navigation';
 import { clearCautionRestriction } from '@/lib/cautionRestriction';
 
@@ -40,6 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (pathname?.startsWith('/auth/campaign-access')) {
+      setLoading(false);
+      return;
+    }
+    if (!hasStoredAccessToken()) {
+      setUser(null);
       setLoading(false);
       return;
     }

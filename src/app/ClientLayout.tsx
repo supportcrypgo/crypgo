@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from '../components/Layout/Header/index';
 import Footer from '../components/Layout/Footer/index';
@@ -17,7 +18,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   const publicContent = (
     <Aoscompo>
-      {!isDashboardShell && !isCampaignAccessRoute && <Header />}
+      {!isDashboardShell && !isCampaignAccessRoute && (
+        <Suspense fallback={null}>
+          <Header />
+        </Suspense>
+      )}
       {children}
       {!isDashboardShell && !isCampaignAccessRoute && <Footer />}
     </Aoscompo>
