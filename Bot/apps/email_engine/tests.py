@@ -236,6 +236,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
+        CRYPGO_REPORT_PRICE_URL='https://prices.example/report-prices',
+        CRYPGO_REPORT_PRICE_SERVICE_KEY='private-report-service-key',
     )
     def test_report_subprocess_pythonpath_handles_none(self):
         environment = {'PYTHONPATH': None}
@@ -259,6 +261,14 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertEqual(
             run_report.call_args.kwargs['env']['CRYPGO_REPORT_PRICE_CACHE'],
             'C:/test-data/report-prices.json',
+        )
+        self.assertEqual(
+            run_report.call_args.kwargs['env']['CRYPGO_REPORT_PRICE_URL'],
+            'https://prices.example/report-prices',
+        )
+        self.assertEqual(
+            run_report.call_args.kwargs['env']['CRYPGO_REPORT_PRICE_SERVICE_KEY'],
+            'private-report-service-key',
         )
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY', run_report.call_args.kwargs['env'])
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER', run_report.call_args.kwargs['env'])
@@ -475,6 +485,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
+        CRYPGO_REPORT_PRICE_URL='https://prices.example/report-prices',
+        CRYPGO_REPORT_PRICE_SERVICE_KEY='private-report-service-key',
     )
     def test_snapshot_refresh_passes_shared_path_without_report_coingecko_keys(self):
         self.market_snapshot_patcher.stop()
@@ -492,6 +504,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertIn('--refresh-market-prices', args)
         self.assertEqual(args[args.index('--cache-path') + 1], 'C:/test-data/report-prices.json')
         self.assertEqual(env['CRYPGO_REPORT_PRICE_CACHE'], 'C:/test-data/report-prices.json')
+        self.assertEqual(env['CRYPGO_REPORT_PRICE_URL'], 'https://prices.example/report-prices')
+        self.assertEqual(env['CRYPGO_REPORT_PRICE_SERVICE_KEY'], 'private-report-service-key')
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY', env)
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER', env)
 
