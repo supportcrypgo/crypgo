@@ -22,10 +22,6 @@ function getAccessToken(): string | null {
     : null;
 }
 
-export function hasStoredAccessToken(): boolean {
-  return Boolean(getAccessToken());
-}
-
 function clearAccessToken(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);

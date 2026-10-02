@@ -38,12 +38,11 @@ const TimeLine = () => {
             <div className="md:block hidden relative">
               <div>
                 <Image
-                  src= {`${getImagePrefix()}images/timeline/img-timeline.webp`}
+                  src= {`${getImagePrefix()}images/timeline/img-timeline.png`}
                   alt="image"
                   width={1220}
                   height={1000}
                   className="w-80% mx-auto"
-                  loading="lazy"
                 />
               </div>
               <div className="absolute lg::top-40 top-36 lg:left-0 -left-20 w-72 flex items-center gap-6">

@@ -1,24 +1,16 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-function MagicLinkRedirect() {
+export default function MagicLinkPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   useEffect(() => {
     const token = searchParams.get('token');
     router.replace(token ? `/?magicToken=${encodeURIComponent(token)}` : '/?signin=1');
-  }, [router, searchParams]);
+  }, [searchParams]);
 
   return null;
-}
-
-export default function MagicLinkPage() {
-  return (
-    <Suspense fallback={null}>
-      <MagicLinkRedirect />
-    </Suspense>
-  );
 }

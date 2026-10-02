@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { headerData } from "../Header/Navigation/menuData";
 import Logo from "./Logo";
 import Image from "next/image";
@@ -11,62 +11,9 @@ import MobileHeaderLink from "../Header/Navigation/MobileHeaderLink";
 import Signin from "@/components/Auth/SignIn";
 import SignUp from "@/components/Auth/SignUp";
 
-type AuthQueryHandlerProps = {
-  pathUrl: string | null;
-  setIsSignInOpen: (open: boolean) => void;
-  setIsSignUpOpen: (open: boolean) => void;
-  setMagicLinkToken: (token: string | null) => void;
-  setPasswordResetToken: (token: string | null) => void;
-};
-
-function AuthQueryHandler({
-  pathUrl,
-  setIsSignInOpen,
-  setIsSignUpOpen,
-  setMagicLinkToken,
-  setPasswordResetToken,
-}: AuthQueryHandlerProps) {
-  const searchParams = useSearchParams();
-
-  useEffect(() => {
-    if (pathUrl !== "/") return;
-    const resetToken = searchParams.get("resetToken");
-    if (resetToken) {
-      setPasswordResetToken(resetToken);
-      setMagicLinkToken(null);
-      setIsSignInOpen(true);
-      window.history.replaceState({}, "", "/");
-      return;
-    }
-    const token = searchParams.get("magicToken");
-    if (token) {
-      setMagicLinkToken(token);
-      setPasswordResetToken(null);
-      setIsSignInOpen(true);
-      window.history.replaceState({}, "", "/");
-      return;
-    }
-    if (searchParams.get("signin") === "1") {
-      setMagicLinkToken(null);
-      setIsSignInOpen(true);
-    }
-    if (searchParams.get("signup") === "1") {
-      setIsSignUpOpen(true);
-    }
-  }, [
-    pathUrl,
-    searchParams,
-    setIsSignInOpen,
-    setIsSignUpOpen,
-    setMagicLinkToken,
-    setPasswordResetToken,
-  ]);
-
-  return null;
-}
-
 const Header: React.FC = () => {
   const pathUrl = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
 
   const [navbarOpen, setNavbarOpen] = useState(false);
@@ -80,7 +27,6 @@ const Header: React.FC = () => {
   const signInRef = useRef<HTMLDivElement>(null);
   const signUpRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
-  const previousBodyOverflow = useRef<string | null>(null);
 
   const handleScroll = () => {
     setSticky(window.scrollY >= 80);
@@ -110,49 +56,54 @@ const Header: React.FC = () => {
 
   useEffect(() => {
     window.addEventListener("scroll", handleScroll);
-    handleScroll();
-    document.addEventListener("pointerdown", handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      document.removeEventListener("pointerdown", handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [navbarOpen, isSignInOpen, isSignUpOpen]);
 
   useEffect(() => {
-    const shouldLockScroll = isSignInOpen || isSignUpOpen || navbarOpen;
-    if (shouldLockScroll && previousBodyOverflow.current === null) {
-      previousBodyOverflow.current = document.body.style.overflow;
+    if (pathUrl !== '/') return;
+    const resetToken = searchParams.get('resetToken');
+    if (resetToken) {
+      setPasswordResetToken(resetToken);
+      setMagicLinkToken(null);
+      setIsSignInOpen(true);
+      window.history.replaceState({}, '', '/');
+      return;
+    }
+    const token = searchParams.get('magicToken');
+    if (token) {
+      setMagicLinkToken(token);
+      setPasswordResetToken(null);
+      setIsSignInOpen(true);
+      window.history.replaceState({}, '', '/');
+      return;
+    }
+    if (searchParams.get('signin') === '1') {
+      setMagicLinkToken(null);
+      setIsSignInOpen(true);
+    }
+    if (searchParams.get('signup') === '1') {
+      setIsSignUpOpen(true);
+    }
+  }, [pathUrl, searchParams]);
+
+  useEffect(() => {
+    if (isSignInOpen || isSignUpOpen || navbarOpen) {
       document.body.style.overflow = "hidden";
-    } else if (!shouldLockScroll && previousBodyOverflow.current !== null) {
-      document.body.style.overflow = previousBodyOverflow.current;
-      previousBodyOverflow.current = null;
+    } else {
+      document.body.style.overflow = "";
     }
   }, [isSignInOpen, isSignUpOpen, navbarOpen]);
-
-  useEffect(() => () => {
-    if (previousBodyOverflow.current !== null) {
-      document.body.style.overflow = previousBodyOverflow.current;
-      previousBodyOverflow.current = null;
-    }
-  }, []);
 
   return (
     <header
       className={`fixed top-0 z-[60] w-full pb-5 transition-all duration-300 ${
-        sticky
-          ? "border-b border-white/10 bg-darkmode shadow-lg pt-5"
-          : "shadow-none md:pt-14 pt-5"
+        sticky ? " shadow-lg bg-darkmode pt-5" : "shadow-none md:pt-14 pt-5"
       }`}
     >
-      <Suspense fallback={null}>
-        <AuthQueryHandler
-          pathUrl={pathUrl}
-          setIsSignInOpen={setIsSignInOpen}
-          setIsSignUpOpen={setIsSignUpOpen}
-          setMagicLinkToken={setMagicLinkToken}
-          setPasswordResetToken={setPasswordResetToken}
-        />
-      </Suspense>
       <div className="lg:py-0 py-2">
         <div className="container mx-auto lg:max-w-screen-xl md:max-w-screen-md flex items-center justify-between px-4">
           <Logo />
@@ -274,8 +225,6 @@ const Header: React.FC = () => {
               onClick={() => setNavbarOpen(!navbarOpen)}
               className="block lg:hidden p-2 rounded-lg"
               aria-label="Toggle mobile menu"
-              aria-expanded={navbarOpen}
-              aria-controls="mobile-navigation"
             >
               <span className="block w-6 h-0.5 bg-white"></span>
               <span className="block w-6 h-0.5 bg-white mt-1.5"></span>
@@ -284,17 +233,10 @@ const Header: React.FC = () => {
           </div>
         </div>
         {navbarOpen && (
-          <button
-            type="button"
-            aria-label="Dismiss mobile navigation"
-            onClick={() => setNavbarOpen(false)}
-            className="fixed inset-0 z-40 border-0 bg-black/50 p-0 lg:hidden"
-          />
+          <div className="fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 z-40" />
         )}
         <div
           ref={mobileMenuRef}
-          id="mobile-navigation"
-          aria-hidden={!navbarOpen}
           className={`lg:hidden fixed top-0 right-0 h-full w-full bg-darkmode shadow-lg transform transition-transform duration-300 max-w-xs ${
             navbarOpen ? "translate-x-0" : "translate-x-full"
           } z-50`}
@@ -308,16 +250,12 @@ const Header: React.FC = () => {
             <button
               onClick={() => setNavbarOpen(false)}
               className="bg-[url('/images/closed.svg')] bg-no-repeat bg-contain w-5 h-5 absolute top-0 right-0 mr-8 mt-8 dark:invert"
-              aria-label="Close mobile menu"
+              aria-label="Close menu Modal"
             ></button>
           </div>
-          <nav aria-label="Mobile navigation" className="flex flex-col items-start p-4">
+          <nav className="flex flex-col items-start p-4">
             {headerData.map((item, index) => (
-              <MobileHeaderLink
-                key={index}
-                item={item}
-                onNavigate={() => setNavbarOpen(false)}
-              />
+              <MobileHeaderLink key={index} item={item} />
             ))}
             <div className="mt-4 flex flex-col space-y-4 w-full">
               <Link
