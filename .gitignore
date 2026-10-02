@@ -9,8 +9,6 @@ build/
 .vercel/
 coverage/
 *.tsbuildinfo
-test-results/
-playwright-report/
 
 # Python environments and caches
 .venv/
