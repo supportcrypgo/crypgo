@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from django.db import models
 from django.utils import timezone
@@ -111,6 +112,10 @@ class Campaign(models.Model):
 @receiver(pre_delete, sender=Campaign)
 def log_campaign_deletion(sender, instance, **kwargs):
     """Write an audit log whenever a campaign is deleted."""
+    CampaignRun.objects.filter(
+        campaign_id=instance.pk,
+        status='running',
+    ).update(cancel_requested=True, heartbeat_at=timezone.now())
     logger.warning(
         "Campaign DELETED: ID=%s, Name=%s, Status=%s",
         instance.id,
@@ -178,3 +183,34 @@ class CampaignLead(models.Model):
     def __str__(self):
         email = self.recipient_email or 'unknown recipient'
         return f"{self.campaign.name} - {email}"
+
+
+class CampaignRun(models.Model):
+    """Durable worker ownership and cancellation state, retained after campaign deletion."""
+    STATUS_CHOICES = [
+        ('running', 'Running'),
+        ('paused', 'Paused'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+        ('failed', 'Failed'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    campaign_id = models.PositiveBigIntegerField(db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='running')
+    cancel_requested = models.BooleanField(default=False)
+    process_id = models.PositiveIntegerField(blank=True, null=True)
+    started_at = models.DateTimeField(default=timezone.now)
+    heartbeat_at = models.DateTimeField(default=timezone.now, db_index=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['campaign_id', 'status'])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['campaign_id'],
+                condition=models.Q(status='running'),
+                name='unique_active_campaign_run',
+            ),
+        ]

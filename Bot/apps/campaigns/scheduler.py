@@ -1,9 +1,8 @@
 import logging
-import subprocess
 from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Q
-from apps.campaigns.process_utils import get_campaign_python_executable
+from apps.campaigns.worker import launch_campaign_worker
 
 logger = logging.getLogger(__name__)
 
@@ -18,15 +17,10 @@ class CampaignScheduler:
         pass
 
     def _spawn_send_command(self, campaign_id):
-        """Launch send_campaign in a detached subprocess (non-blocking)."""
-        manage_py = self._get_manage_py_path()
-        subprocess.Popen(
-            [get_campaign_python_executable(), manage_py, 'send_campaign', f'--campaign-id={campaign_id}'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-        )
+        """Launch through the shared campaign claim and durable run record."""
+        started, message = launch_campaign_worker(campaign_id)
+        if not started:
+            raise RuntimeError(message)
         logger.info("Spawned send_campaign subprocess for campaign ID %s", campaign_id)
 
     def _get_manage_py_path(self):
@@ -66,9 +60,6 @@ class CampaignScheduler:
                     "Failed to start campaign '%s' (ID: %d): %s",
                     campaign.name, campaign.pk, str(e)
                 )
-                # Mark as failed to prevent retry loops
-                campaign.status = 'cancelled'
-                campaign.save(update_fields=['status', 'updated_at'])
 
         return started_count
 

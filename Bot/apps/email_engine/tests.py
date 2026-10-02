@@ -7,12 +7,12 @@ from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from apps.campaigns.models import Campaign
-from apps.campaigns.models import CampaignLead
+from apps.campaigns.models import Campaign, CampaignLead, CampaignRun
 from apps.email_engine.models import Bounce, EmailLog, Tracking
 from apps.email_engine.sender import EmailSender
 from apps.email_engine.throttler import Throttler
 from apps.leads.models import BlacklistedLead
+from apps.unsubscribes.models import UnsubscribedLead
 from apps.templates.models import EmailTemplate
 from apps.core.management.commands.send_campaign import Command
 
@@ -217,6 +217,21 @@ class EmailSenderDeliverabilityTest(TestCase):
 
         self.assertEqual(throttler.get_remaining_day(self.campaign), 0)
         self.assertFalse(throttler.can_send_campaign(self.campaign))
+
+    def test_throttler_history_is_campaign_scoped(self):
+        other_campaign = Campaign.objects.create(name='Other Throttle Campaign', subject='Test')
+        EmailLog.objects.bulk_create([
+            EmailLog(
+                campaign=other_campaign,
+                recipient_email=f'other-{idx}@example.com',
+                subject='Test',
+                tracking_id=f'other-campaign-throttle-{idx}',
+                status='sent',
+            )
+            for idx in range(70)
+        ])
+
+        self.assertEqual(Throttler().get_remaining_day(self.campaign), 70)
 
 
 @override_settings(
@@ -478,6 +493,155 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         refresh_snapshot.assert_called_once_with()
         self.assertEqual(sender.send_with_tracking.call_count, 2)
         self.assertEqual(events, ['refresh', 'send', 'send'])
+
+    def test_campaign_b_can_send_after_campaign_a_and_skips_its_own_sent_rows(self):
+        template = EmailTemplate.objects.create(
+            name='Campaign Isolation Template',
+            subject='Account update',
+            html_content='<p>Hello {{ first_name }}</p>',
+            is_active=True,
+        )
+        campaign_a = Campaign.objects.create(name='Campaign A', template=template, status='completed')
+        campaign_b = Campaign.objects.create(name='Campaign B', template=template, status='running')
+        CampaignLead.objects.create(
+            campaign=campaign_a,
+            source='crypgo_user',
+            external_user_id='shared-user',
+            recipient_email='shared@example.com',
+            dashboard_url='https://app.crypgo.com/access/a',
+            status='sent',
+        )
+        pending_b = CampaignLead.objects.create(
+            campaign=campaign_b,
+            source='crypgo_user',
+            external_user_id='shared-user',
+            recipient_email='shared@example.com',
+            dashboard_url='https://app.crypgo.com/access/b',
+            status='pending',
+        )
+        CampaignLead.objects.create(
+            campaign=campaign_b,
+            source='crypgo_user',
+            external_user_id='already-sent-in-b',
+            recipient_email='already-sent@example.com',
+            dashboard_url='https://app.crypgo.com/access/sent',
+            status='sent',
+        )
+        EmailLog.objects.create(
+            campaign=campaign_a,
+            recipient_email='shared@example.com',
+            subject='Campaign A',
+            tracking_id='campaign-a-shared-user',
+            status='sent',
+        )
+        sender = Mock()
+        sender.send_with_tracking.return_value = type('SendResult', (), {'status': 'sent'})()
+        throttler = Mock()
+        throttler.get_remaining_day.return_value = 70
+        throttler.wait_for_next_slot.return_value = 0
+
+        with patch.object(Command, '_build_account_report_attachments', return_value=[]):
+            Command().send_crypgo_recipients(campaign_b, template, sender, throttler)
+
+        sender.send_with_tracking.assert_called_once()
+        self.assertEqual(sender.send_with_tracking.call_args.kwargs['recipient_email'], 'shared@example.com')
+        pending_b.refresh_from_db()
+        self.assertEqual(pending_b.status, 'sent')
+
+    def test_global_unsubscribe_blacklist_and_hard_bounce_suppress_new_campaign(self):
+        template = EmailTemplate.objects.create(
+            name='Suppression Template',
+            subject='Account update',
+            html_content='<p>Hello {{ first_name }}</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(name='Suppression Campaign', template=template)
+        recipients = [
+            CampaignLead.objects.create(
+                campaign=campaign,
+                source='crypgo_user',
+                external_user_id=f'suppressed-{index}',
+                recipient_email=email,
+                dashboard_url='https://app.crypgo.com/access/test',
+                status='pending',
+            )
+            for index, email in enumerate((
+                ' opted-out@example.com ',
+                'blocked@example.com',
+                'hard-bounce@example.com',
+            ))
+        ]
+        UnsubscribedLead.objects.create(email='OPTED-OUT@example.com')
+        BlacklistedLead.objects.create(email='blocked@example.com', reason='test')
+        Bounce.objects.create(email='HARD-BOUNCE@example.com', bounce_type='hard')
+        sender = Mock()
+        throttler = Mock()
+        throttler.get_remaining_day.return_value = 70
+        throttler.wait_for_next_slot.return_value = 0
+
+        Command().send_crypgo_recipients(campaign, template, sender, throttler)
+
+        sender.send_with_tracking.assert_not_called()
+        for recipient in recipients:
+            recipient.refresh_from_db()
+        self.assertEqual(recipients[0].status, 'unsubscribed')
+        self.assertEqual(recipients[1].status, 'bounced')
+        self.assertEqual(recipients[2].status, 'bounced')
+
+    def test_campaign_deletion_during_throttle_wait_stops_before_send(self):
+        template = EmailTemplate.objects.create(
+            name='Cancellation Template',
+            subject='Account update',
+            html_content='<p>Hello</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Cancellation Campaign',
+            template=template,
+            status='running',
+        )
+        CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='cancel-user',
+            recipient_email='cancel@example.com',
+            dashboard_url='https://app.crypgo.com/access/cancel',
+        )
+        run = CampaignRun.objects.create(campaign_id=campaign.pk)
+        command = Command()
+        command._active_run_id = run.pk
+        sender = Mock()
+        throttler = Mock()
+        throttler.get_remaining_day.return_value = 70
+        throttler.wait_for_next_slot.return_value = 2
+
+        with patch(
+            'apps.core.management.commands.send_campaign.time.sleep',
+            side_effect=lambda _seconds: campaign.delete(),
+        ):
+            command.send_crypgo_recipients(campaign, template, sender, throttler)
+
+        sender.send_with_tracking.assert_not_called()
+        run.refresh_from_db()
+        self.assertTrue(run.cancel_requested)
+
+    def test_worker_starting_after_campaign_delete_releases_cancelled_run(self):
+        campaign = Campaign.objects.create(name='Deleted Before Worker Start')
+        run = CampaignRun.objects.create(campaign_id=campaign.pk)
+        campaign_id = campaign.pk
+        campaign.delete()
+
+        Command().handle(
+            campaign_id=campaign_id,
+            dry_run=False,
+            test=False,
+            test_email=None,
+            batch_size=None,
+            run_id=run.pk,
+        )
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, 'cancelled')
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',

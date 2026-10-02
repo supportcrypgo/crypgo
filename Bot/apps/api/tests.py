@@ -58,3 +58,26 @@ class CampaignRecipientSyncTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertFalse(CampaignLead.objects.filter(campaign=self.campaign).exists())
+
+    def test_resync_preserves_sent_status(self):
+        recipient = CampaignLead.objects.create(
+            campaign=self.campaign,
+            source='crypgo_user',
+            external_user_id='crypgo-289',
+            recipient_email='user@example.com',
+            status='sent',
+        )
+
+        response = self.signed_post({
+            'recipients': [{
+                'external_user_id': 'crypgo-289',
+                'email': 'user@example.com',
+                'first_name': 'James',
+                'last_name': 'Borunda',
+                'dashboard_url': 'https://app.crypgo.com/campaign-access?token=two',
+            }],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        recipient.refresh_from_db()
+        self.assertEqual(recipient.status, 'sent')

@@ -217,7 +217,6 @@ def sync_campaign_recipients(request, campaign_id):
                 'recipient_first_name': recipient.get('first_name', ''),
                 'recipient_last_name': recipient.get('last_name', ''),
                 'dashboard_url': dashboard_url,
-                'status': 'pending',
             },
         )
         if was_created:
