@@ -13,7 +13,7 @@ class EmailLog(models.Model):
         ('failed', 'Failed'),
         ('pending', 'Pending'),
     )
-    campaign = models.ForeignKey('campaigns.Campaign', on_delete=models.SET_NULL, null=True, blank=True)
+    campaign = models.ForeignKey('campaigns.Campaign', on_delete=models.CASCADE, null=True, blank=True)
     recipient_email = models.EmailField()
     subject = models.CharField(max_length=500)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')

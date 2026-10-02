@@ -7,6 +7,7 @@ import sys
 import time
 import hashlib
 import hmac
+import uuid
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 import requests
@@ -14,8 +15,10 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.text import slugify
 from django.db.models import Count, F
+from django.db.models.functions import Lower, Trim
 from django.conf import settings
-from apps.campaigns.models import Campaign
+from apps.campaigns.models import Campaign, CampaignRun
+from apps.campaigns.worker import claim_campaign_run, finish_campaign_run
 
 logger = logging.getLogger('email_bot')
 
@@ -29,17 +32,25 @@ class Command(BaseCommand):
         parser.add_argument('--test', action='store_true', help='Test mode - send to test email only')
         parser.add_argument('--test-email', type=str, help='Email address for test mode (requires --test)')
         parser.add_argument('--batch-size', type=int, default=None, help='Override batch size')
+        parser.add_argument('--run-id', type=uuid.UUID, help='Durable campaign worker run identifier')
 
     def handle(self, *args, **options):
         campaign_id = options['campaign_id']
         dry_run = options['dry_run']
         test_mode = options.get('test', False)
         test_email = options.get('test_email', None)
+        requested_run_id = options.get('run_id')
+
+        if requested_run_id and not campaign_id:
+            self.stderr.write('--run-id requires --campaign-id')
+            return
 
         if campaign_id:
             try:
                 campaign = Campaign.objects.get(id=campaign_id)
             except Campaign.DoesNotExist:
+                if requested_run_id:
+                    finish_campaign_run(requested_run_id, 'cancelled')
                 self.stdout.write(self.style.ERROR(f'Campaign with ID {campaign_id} does not exist.'))
                 return
             campaigns = [campaign]
@@ -83,7 +94,107 @@ class Command(BaseCommand):
                 self.stdout.write(f'[DRY RUN] Template: {campaign.template.name if campaign.template else "None"}')
                 continue
 
-            self.send_campaign(campaign)
+            run = self._claim_worker_run(campaign, requested_run_id)
+            if run is None:
+                self.stderr.write(self.style.WARNING(
+                    f'Campaign "{campaign.name}" already has an active worker or its run was cancelled.'
+                ))
+                continue
+
+            self._active_run_id = run.pk
+            self._worker_stop_status = None
+            run_status = 'completed'
+            error_message = ''
+            try:
+                self.send_campaign(campaign)
+                run_status = self._worker_stop_status or self._finished_run_status(campaign.pk)
+            except Exception as error:
+                run_status = 'failed'
+                error_message = f'{type(error).__name__}: {error}'
+                logger.exception('Campaign worker failed for campaign %s run %s', campaign.pk, run.pk)
+                Campaign.objects.filter(pk=campaign.pk, status='running').update(
+                    status='cancelled',
+                    updated_at=timezone.now(),
+                )
+                self.stderr.write(self.style.ERROR(error_message))
+            finally:
+                finish_campaign_run(run.pk, run_status, error_message)
+                self._active_run_id = None
+
+    def _claim_worker_run(self, campaign, requested_run_id):
+        if requested_run_id:
+            return CampaignRun.objects.filter(
+                pk=requested_run_id,
+                campaign_id=campaign.pk,
+                status='running',
+            ).first()
+        return claim_campaign_run(campaign.pk)
+
+    def _finished_run_status(self, campaign_id):
+        campaign_state = Campaign.objects.filter(pk=campaign_id).values('status', 'is_paused').first()
+        if campaign_state is None:
+            return 'cancelled'
+        if campaign_state['is_paused'] or campaign_state['status'] == 'paused':
+            return 'paused'
+        if campaign_state['status'] == 'cancelled':
+            return 'cancelled'
+        return 'completed'
+
+    def _worker_active(self, campaign_id):
+        run_id = getattr(self, '_active_run_id', None)
+        if run_id is None:
+            return True
+
+        run = CampaignRun.objects.filter(pk=run_id).first()
+        if run is None or run.cancel_requested or run.status != 'running':
+            self._worker_stop_status = 'cancelled'
+            return False
+
+        now = timezone.now()
+        CampaignRun.objects.filter(pk=run_id, status='running').update(heartbeat_at=now)
+        campaign_state = Campaign.objects.filter(pk=campaign_id).values('status', 'is_paused').first()
+        if campaign_state is None or campaign_state['status'] in ('cancelled', 'completed'):
+            CampaignRun.objects.filter(pk=run_id, status='running').update(cancel_requested=True)
+            self._worker_stop_status = 'cancelled'
+            return False
+        if campaign_state['is_paused'] or campaign_state['status'] == 'paused':
+            self._worker_stop_status = 'paused'
+            return False
+        if campaign_state['status'] != 'running':
+            self._worker_stop_status = 'cancelled'
+            return False
+        return True
+
+    @staticmethod
+    def _normalized_email(email):
+        return (email or '').strip().lower()
+
+    def _global_suppression_reason(self, email):
+        from apps.email_engine.models import Bounce
+        from apps.leads.models import BlacklistedLead
+        from apps.unsubscribes.models import UnsubscribedLead
+
+        normalized_email = self._normalized_email(email)
+        if not normalized_email:
+            return None
+
+        def contains_normalized(model):
+            return model.objects.annotate(
+                normalized_email=Lower(Trim('email')),
+            ).filter(normalized_email=normalized_email).exists()
+
+        if contains_normalized(UnsubscribedLead):
+            return 'unsubscribed'
+        if contains_normalized(BlacklistedLead):
+            return 'blacklisted'
+        if Bounce.objects.annotate(
+            normalized_email=Lower(Trim('email')),
+        ).filter(
+            normalized_email=normalized_email,
+            bounce_type__in=('hard', 'spam', 'blocked'),
+        ).exists():
+            return 'hard-bounced'
+        return None
 
     def _build_recipient_pdf_attachment(self, recipient):
         """Build a recipient-specific PDF attachment from the API-side user report generator."""
@@ -317,12 +428,7 @@ class Command(BaseCommand):
 
     def send_campaign(self, campaign):
         """Send campaign using the full email engine pipeline"""
-        from apps.campaigns.models import CampaignLead
-        from apps.leads.models import BlacklistedLead
-        from apps.unsubscribes.models import UnsubscribedLead
         from apps.email_engine.sender import EmailSender
-        from apps.email_engine.models import EmailLog
-        from apps.templates.renderer import TemplateRenderer
         from apps.email_engine.throttler import Throttler
 
         sender = EmailSender()
@@ -343,6 +449,10 @@ class Command(BaseCommand):
 
         if not template_a:
             self.stderr.write(self.style.ERROR(f'Campaign "{campaign.name}" has no template assigned.'))
+            self._worker_stop_status = 'failed'
+            return
+
+        if not self._worker_active(campaign.pk):
             return
 
         if settings.CRYPGO_CAMPAIGN_OWNER_EMAIL:
@@ -354,11 +464,15 @@ class Command(BaseCommand):
                 self.stderr.write(self.style.ERROR(
                     f'Campaign "{campaign.name}" stopped because campaign-access links could not be refreshed.'
                 ))
+                self._worker_stop_status = 'failed'
                 return
 
+        if not self._worker_active(campaign.pk):
+            return
         self.send_crypgo_recipients(campaign, template_a, sender, throttler)
 
-        self._finalize(campaign, 0, 0)
+        if self._worker_active(campaign.pk):
+            self._finalize(campaign, 0, 0)
         return
 
     def refresh_crypgo_links(self, campaign):
@@ -722,31 +836,72 @@ class Command(BaseCommand):
         recipients = CampaignLead.objects.filter(
             campaign=campaign,
             source='crypgo_user',
-        ).exclude(status='sent').order_by('id')
+            status__in=('pending', 'queued', 'failed'),
+        ).order_by('id')
 
         if template.include_account_report_attachment and recipients.exists():
             self._refresh_report_market_prices()
 
         for recipient in recipients:
-            campaign.refresh_from_db(fields=['is_paused', 'status'])
-            if campaign.is_paused or campaign.status == 'paused':
-                logger.info('Campaign %s paused. Stopping recipient send.', campaign.pk)
+            if not self._worker_active(campaign.pk):
+                logger.info('Campaign %s worker stopping before next recipient.', campaign.pk)
                 return
+
+            recipient = CampaignLead.objects.filter(pk=recipient.pk).first()
+            if recipient is None:
+                logger.info('Campaign recipient was deleted before send; campaign=%s', campaign.pk)
+                continue
+            if recipient.status not in ('pending', 'queued', 'failed'):
+                continue
+
             if throttler.get_remaining_day(campaign) <= 0:
                 logger.warning('Campaign %s reached its daily cap. Pausing.', campaign.pk)
                 campaign.status = 'paused'
                 campaign.is_paused = True
-                campaign.save(update_fields=['status', 'is_paused', 'updated_at'])
+                Campaign.objects.filter(pk=campaign.pk).update(
+                    status='paused', is_paused=True, updated_at=timezone.now(),
+                )
+                self._worker_stop_status = 'paused'
                 return
             if not recipient.recipient_email or not recipient.dashboard_url:
-                recipient.status = 'failed'
-                recipient.error_message = 'Recipient email or dashboard URL is missing.'
-                recipient.save(update_fields=['status', 'error_message', 'updated_at'])
+                CampaignLead.objects.filter(pk=recipient.pk).update(
+                    status='failed',
+                    error_message='Recipient email or dashboard URL is missing.',
+                    updated_at=timezone.now(),
+                )
                 continue
 
             wait_time = throttler.wait_for_next_slot(campaign)
-            if wait_time > 0:
-                time.sleep(wait_time)
+            while wait_time > 0:
+                sleep_interval = min(wait_time, 1)
+                time.sleep(sleep_interval)
+                if not self._worker_active(campaign.pk):
+                    return
+                wait_time -= sleep_interval
+
+            if not self._worker_active(campaign.pk):
+                return
+            recipient = CampaignLead.objects.filter(pk=recipient.pk).first()
+            if recipient is None:
+                continue
+            if recipient.status not in ('pending', 'queued', 'failed'):
+                continue
+
+            suppression_reason = self._global_suppression_reason(recipient.recipient_email)
+            if suppression_reason:
+                terminal_status = 'unsubscribed' if suppression_reason == 'unsubscribed' else 'bounced'
+                CampaignLead.objects.filter(pk=recipient.pk).update(
+                    status=terminal_status,
+                    error_message=f'Globally suppressed: {suppression_reason}.',
+                    updated_at=timezone.now(),
+                )
+                logger.info(
+                    'Skipping globally suppressed campaign recipient campaign=%s recipient=%s reason=%s',
+                    campaign.pk,
+                    recipient.recipient_email,
+                    suppression_reason,
+                )
+                continue
 
             context = {
                 'first_name': recipient.recipient_first_name or '',
@@ -780,23 +935,36 @@ class Command(BaseCommand):
                 )
             except Exception as exc:
                 logger.exception('ERROR - Send failed to %s', recipient.recipient_email)
-                recipient.status = 'failed'
-                recipient.error_message = f'{type(exc).__name__}: {exc}'[:500]
-                recipient.save(update_fields=['status', 'error_message', 'updated_at'])
+                CampaignLead.objects.filter(pk=recipient.pk).update(
+                    status='failed',
+                    error_message=f'{type(exc).__name__}: {exc}'[:500],
+                    updated_at=timezone.now(),
+                )
+                if not self._worker_active(campaign.pk):
+                    return
                 continue
 
             if result and getattr(result, 'status', None) in ('sent', 'delivered'):
-                recipient.status = 'sent'
-                recipient.sent_at = timezone.now()
-                recipient.error_message = ''
+                CampaignLead.objects.filter(pk=recipient.pk).update(
+                    status='sent',
+                    sent_at=timezone.now(),
+                    error_message='',
+                    updated_at=timezone.now(),
+                )
             else:
-                campaign.refresh_from_db()
-                if campaign.is_paused:
-                    logger.warning('Campaign %s paused after a provider limit error.', campaign.pk)
+                current_campaign = Campaign.objects.filter(pk=campaign.pk).values('is_paused', 'status').first()
+                if current_campaign is None:
+                    self._worker_stop_status = 'cancelled'
                     return
-                recipient.status = 'failed'
-                recipient.error_message = f'Email send returned status: {getattr(result, "status", "unknown")}'
-            recipient.save(update_fields=['status', 'sent_at', 'error_message', 'updated_at'])
+                if current_campaign['is_paused'] or current_campaign['status'] == 'paused':
+                    logger.warning('Campaign %s paused after a provider limit error.', campaign.pk)
+                    self._worker_stop_status = 'paused'
+                    return
+                CampaignLead.objects.filter(pk=recipient.pk).update(
+                    status='failed',
+                    error_message=f'Email send returned status: {getattr(result, "status", "unknown")}',
+                    updated_at=timezone.now(),
+                )
 
         Campaign.objects.filter(pk=campaign.pk).update(
             sent_count=CampaignLead.objects.filter(campaign=campaign, status='sent').count()
@@ -806,7 +974,14 @@ class Command(BaseCommand):
         """Finalize campaign"""
         from apps.campaigns.models import CampaignLead
 
-        campaign.refresh_from_db()
+        if not self._worker_active(campaign.pk):
+            return
+        try:
+            campaign.refresh_from_db()
+        except Campaign.DoesNotExist:
+            self._worker_stop_status = 'cancelled'
+            logger.info('Campaign %s was deleted before finalization.', campaign.pk)
+            return
         pending_count = CampaignLead.objects.filter(
             campaign=campaign, status__in=['pending', 'queued', 'failed']
         ).count()

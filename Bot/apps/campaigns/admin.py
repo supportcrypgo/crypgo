@@ -2,13 +2,10 @@ import logging
 import hashlib
 import hmac
 import json
-import os
-import subprocess
 
 from django.contrib import admin
 from django.conf import settings
 from django.contrib import messages
-from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -17,7 +14,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 from .models import Campaign, CampaignLead
-from .process_utils import get_campaign_python_executable
+from .worker import launch_campaign_worker
 import requests
 
 logger = logging.getLogger(__name__)
@@ -129,44 +126,8 @@ class CampaignAdmin(ModelAdmin):
         if not synced:
             return False, sync_message
 
-        if campaign.status == 'draft':
-            campaign.started_at = campaign.started_at or timezone.now()
-
-        campaign.status = 'running'
-        campaign.is_paused = False
-        campaign.save(update_fields=['status', 'is_paused', 'started_at', 'updated_at'])
-
-        manage_py = os.path.normpath(
-            os.path.join(os.path.dirname(__file__), '..', '..', 'manage.py')
-        )
-        try:
-            proc = subprocess.Popen(
-                [get_campaign_python_executable(), manage_py, 'send_campaign', f'--campaign-id={campaign.pk}'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                close_fds=True,
-            )
-            output = proc.communicate(timeout=30)
-        except subprocess.TimeoutExpired:
-            logger.warning("Subprocess for campaign %s still running (expected for long sends).", campaign.pk)
-            return True, f"Campaign '{campaign.name}' started sending in the background."
-        except (OSError, ImproperlyConfigured) as error:
-            logger.exception('Could not launch campaign worker for campaign %s', campaign.pk)
-            campaign.status = 'cancelled'
-            campaign.save(update_fields=['status', 'updated_at'])
-            return False, f'Campaign worker could not start: {error}'
-
-        stdout_bytes = output[0] if output else b''
-        if stdout_bytes:
-            logger.info("Subprocess output for campaign %s:\n%s", campaign.pk, stdout_bytes.decode('utf-8', errors='replace'))
-        if proc.returncode != 0:
-            campaign.status = 'cancelled'
-            campaign.save(update_fields=['status', 'updated_at'])
-            logger.error('Campaign worker for campaign %s exited with code %s', campaign.pk, proc.returncode)
-            return False, f'Campaign worker exited with code {proc.returncode}; see Bot logs for details.'
-
-        return True, f"Campaign '{campaign.name}' started sending in the background."
+        started, message = launch_campaign_worker(campaign.pk)
+        return started, message if started else f"Campaign '{campaign.name}' was not started: {message}"
 
     def _sync_crypgo_users(self, campaign):
         if settings.CRYPGO_CAMPAIGN_OWNER_EMAIL:
