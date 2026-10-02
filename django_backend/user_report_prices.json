@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "fetched_at": "2026-10-01T12:00:00Z",
+  "fetched_at": "2026-10-02T13:55:37Z",
   "source": "manual_override",
   "quote_currency": "USD",
   "prices": {
-    "BTC": "83805.00",
-    "ETH": "2696.61",
+    "BTC": "86350.00",
+    "ETH": "2743.14",
     "USDT": "1.00",
     "BNB": "769.42",
     "XRP": "1.49",

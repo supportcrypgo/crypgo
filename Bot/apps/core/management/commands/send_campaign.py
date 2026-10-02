@@ -407,6 +407,8 @@ class Command(BaseCommand):
                 reset_email = settings.CRYPGO_CAMPAIGN_OWNER_EMAIL or test_email
                 context['password_reset_url'] = self.create_password_reset_link(campaign, reset_email)
             attachments = self._build_account_report_attachments(campaign.template, campaign_lead)
+            if attachments:
+                context['report_attachment_name'] = attachments[0][0]
             result = sender.send_with_tracking(
                 recipient_email=test_email,
                 subject=TemplateRenderer.render_subject(campaign.template.subject, context),
@@ -912,6 +914,9 @@ class Command(BaseCommand):
             if recipient.dashboard_url != context['dashboard_url']:
                 recipient.dashboard_url = context['dashboard_url']
                 recipient.save(update_fields=['dashboard_url', 'updated_at'])
+            attachments = self._build_account_report_attachments(template, recipient)
+            if attachments:
+                context['report_attachment_name'] = attachments[0][0]
             placeholders = set(TemplateRenderer.get_placeholders(template.html_content or ''))
             if 'delete_account_url' in placeholders:
                 context['delete_account_url'] = self._delete_account_url(recipient.dashboard_url)
@@ -921,7 +926,6 @@ class Command(BaseCommand):
             rendered_html = TemplateRenderer.render(template.html_content, context)
             rendered_plain = TemplateRenderer._simple_render(template.plain_text or '', context)
             rendered_subject = TemplateRenderer.render_subject(template.subject, context)
-            attachments = self._build_account_report_attachments(template, recipient)
 
             try:
                 result = sender.send_with_tracking(
@@ -960,9 +964,14 @@ class Command(BaseCommand):
                     logger.warning('Campaign %s paused after a provider limit error.', campaign.pk)
                     self._worker_stop_status = 'paused'
                     return
+                send_status = getattr(result, 'status', 'unknown')
+                provider_error = getattr(result, 'error_message', None)
+                lead_status = 'bounced' if send_status == 'bounced' else 'failed'
                 CampaignLead.objects.filter(pk=recipient.pk).update(
-                    status='failed',
-                    error_message=f'Email send returned status: {getattr(result, "status", "unknown")}',
+                    status=lead_status,
+                    error_message=(
+                        provider_error or f'Email send returned status: {send_status}'
+                    )[:500],
                     updated_at=timezone.now(),
                 )
 
@@ -982,13 +991,21 @@ class Command(BaseCommand):
             self._worker_stop_status = 'cancelled'
             logger.info('Campaign %s was deleted before finalization.', campaign.pk)
             return
-        pending_count = CampaignLead.objects.filter(
-            campaign=campaign, status__in=['pending', 'queued', 'failed']
-        ).count()
+        status_counts = {
+            item['status']: item['count']
+            for item in CampaignLead.objects.filter(campaign=campaign)
+            .values('status')
+            .annotate(count=Count('id'))
+        }
+        pending_count = sum(status_counts.get(status, 0) for status in ('pending', 'queued', 'failed'))
+        failed_count = status_counts.get('failed', 0)
 
         if pending_count == 0 and not campaign.is_paused:
             Campaign.objects.filter(pk=campaign.pk).update(
-                status='completed', completed_at=timezone.now(),
+                status='completed',
+                is_paused=False,
+                completed_at=timezone.now(),
+                failed_count=failed_count,
             )
             self.stdout.write(self.style.SUCCESS(
                 f'\nCampaign "{campaign.name}" fully completed!\n'
@@ -996,10 +1013,18 @@ class Command(BaseCommand):
                 f'  Total failed: {campaign.failed_count}'
             ))
         else:
+            Campaign.objects.filter(pk=campaign.pk).update(
+                status='paused',
+                is_paused=True,
+                failed_count=failed_count,
+                updated_at=timezone.now(),
+            )
+            campaign.status = 'paused'
+            campaign.is_paused = True
             self.stdout.write(
                 f'\nCampaign "{campaign.name}" progress saved.\n'
                 f'  Sent: {campaign.sent_count}\n'
-                f'  Failed: {campaign.failed_count}\n'
+                f'  Failed: {failed_count}\n'
                 f'  Remaining (pending/failed): {pending_count}\n'
                 f'  Status: {campaign.get_status_display()}'
             )
