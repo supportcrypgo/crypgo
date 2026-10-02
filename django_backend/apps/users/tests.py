@@ -301,7 +301,8 @@ class UserReportLayoutTests(TestCase):
             prices = refresh_report_price_snapshot()
 
         self.assertEqual(set(prices), set(REPORT_TICKERS))
-        self.assertEqual(prices['BTC'], Decimal('83805.00'))
+        self.assertEqual(prices['BTC'], Decimal('86350.00'))
+        self.assertEqual(prices['ETH'], Decimal('2743.14'))
         self.assertEqual(prices['LTC'], Decimal('67.29'))
         with open(cache_path, encoding='utf-8') as snapshot:
             stored = loads(snapshot.read())
@@ -348,8 +349,8 @@ class UserReportLayoutTests(TestCase):
         import pymupdf
 
         user = CustomUser.objects.create_user(
-            username='binance-report-user',
-            email='binance-report@example.com',
+            username='manual-price-report-user',
+            email='manual-price-report@example.com',
             password='Password123!',
         )
         WalletAsset.objects.update_or_create(
@@ -360,6 +361,16 @@ class UserReportLayoutTests(TestCase):
                 'quantity': Decimal('2'),
                 'available_quantity': Decimal('1.5'),
                 'locked_quantity': Decimal('0.5'),
+            },
+        )
+        WalletAsset.objects.update_or_create(
+            user=user,
+            ticker='ETH',
+            defaults={
+                'name': 'Ethereum',
+                'quantity': Decimal('1'),
+                'available_quantity': Decimal('1'),
+                'locked_quantity': Decimal('0'),
             },
         )
         WalletAsset.objects.update_or_create(
@@ -381,11 +392,12 @@ class UserReportLayoutTests(TestCase):
 
         report_text = cast(str, document[0].get_text())
         self.assertIn('USD valuations use fixed manual prices and are not live', report_text)
-        self.assertIn('$83,805.00', report_text)
-        self.assertIn('$167,610.00', report_text)
+        self.assertIn('$86,350.00', report_text)
+        self.assertIn('$172,700.00', report_text)
+        self.assertIn('$2,743.14', report_text)
         self.assertIn('$67.29', report_text)
         self.assertIn('$201.87', report_text)
-        self.assertIn('Value: $167,811.87', report_text)
+        self.assertIn('Value: $175,645.01', report_text)
 
     def test_default_report_prices_load_from_local_manual_file(self):
         from decimal import Decimal
@@ -396,7 +408,8 @@ class UserReportLayoutTests(TestCase):
             prices = get_report_usd_prices(set(REPORT_TICKERS))
 
         self.assertEqual(DEFAULT_PRICE_CACHE_PATH.name, 'user_report_prices.json')
-        self.assertEqual(prices['BTC'], Decimal('83805.00'))
+        self.assertEqual(prices['BTC'], Decimal('86350.00'))
+        self.assertEqual(prices['ETH'], Decimal('2743.14'))
         self.assertEqual(prices['LTC'], Decimal('67.29'))
         self.assertEqual(set(prices), set(REPORT_TICKERS))
 

@@ -1,3 +1,6 @@
+import tempfile
+from pathlib import Path
+
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.contrib.admin.sites import AdminSite
@@ -162,13 +165,19 @@ class CampaignModelTest(TestCase):
         admin = CampaignAdmin(Campaign, AdminSite())
         request = type('Request', (), {'user': self.admin_user})()
 
-        with (
-            patch('apps.campaigns.worker.get_campaign_python_executable', return_value='/home/bot/venv/bin/python'),
-            patch('apps.campaigns.worker.subprocess.Popen') as popen,
-            patch.object(admin, 'message_user') as message_user,
-        ):
-            popen.return_value.pid = 12345
-            admin.send_campaign_now(request, Campaign.objects.filter(pk=self.campaign.pk))
+        with tempfile.TemporaryDirectory() as log_dir:
+            with override_settings(CAMPAIGN_WORKER_LOG_DIR=log_dir):
+                with (
+                    patch('apps.campaigns.worker.get_campaign_python_executable', return_value='/home/bot/venv/bin/python'),
+                    patch('apps.campaigns.worker.subprocess.Popen') as popen,
+                    patch.object(admin, 'message_user') as message_user,
+                ):
+                    popen.return_value.pid = 12345
+                    admin.send_campaign_now(request, Campaign.objects.filter(pk=self.campaign.pk))
+
+            worker_log = Path(popen.call_args.kwargs['stdout'].name)
+            self.assertTrue(worker_log.is_file())
+            self.assertEqual(worker_log.parent, Path(log_dir))
 
         self.campaign.refresh_from_db()
         self.assertEqual(self.campaign.status, 'running')

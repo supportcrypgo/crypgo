@@ -39,12 +39,12 @@ from reportlab.lib.units import mm
 from reportlab.lib.colors import black, white, Color
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 )
 from reportlab.platypus.flowables import Flowable
 from io import BytesIO
-from svglib.svglib import svg2rlg
 
 
 # ============================================================
@@ -413,48 +413,58 @@ def generate_user_report_bytes(user):
     story = []
     
     # ---- FORMAL REPORT HEADER ----
-    # Use SVG logo for better quality
-    logo_svg_path = os.path.join(os.path.dirname(__file__), '..', 'public', 'images', 'logo', 'logo.svg')
-    logo_svg_path = os.path.normpath(logo_svg_path)
-    
-    def create_svg_logo_badge(svg_path, container_width, container_height, logo_size):
-        """Create a centered, borderless logo flowable."""
-        class SVGLogoBadge(Flowable):
-            def __init__(self, svg_path, container_width, container_height, logo_size):
+    logo_directory = Path(__file__).resolve().parent.parent / 'public' / 'images' / 'logo'
+    logo_star_path = logo_directory / 'star.png'
+    logo_text_path = logo_directory / 'text.png'
+
+    def create_stacked_png_logo(star_path, text_path, container_width):
+        """Create a centered star-over-wordmark logo flowable."""
+        class StackedPngLogo(Flowable):
+            def __init__(self, star_path, text_path, container_width):
                 Flowable.__init__(self)
-                self.svg_path = svg_path
+                star_reader = ImageReader(str(star_path))
+                text_reader = ImageReader(str(text_path))
+                star_pixel_width, star_pixel_height = star_reader.getSize()
+                text_pixel_width, text_pixel_height = text_reader.getSize()
+
                 self.container_width = container_width
-                self.container_height = container_height
-                self.logo_size = logo_size
+                self.star_width = 8 * mm
+                self.star_height = self.star_width * star_pixel_height / star_pixel_width
+                self.text_width = 38 * mm
+                self.text_height = self.text_width * text_pixel_height / text_pixel_width
+                self.gap = 1.5 * mm
                 self.width = container_width
-                self.height = container_height
+                self.height = self.star_height + self.gap + self.text_height + 2 * mm
                 self.hAlign = 'CENTER'
                 self.spaceBefore = 0
                 self.spaceAfter = 0
-            
+                self.star_reader = star_reader
+                self.text_reader = text_reader
+
             def draw(self):
                 canvas = self.canv
-                try:
-                    # Convert SVG to ReportLab drawing
-                    drawing = svg2rlg(self.svg_path)
-                    if drawing:
-                        # Scale the drawing to fit within logo_size (maintaining aspect ratio)
-                        scale = self.logo_size / max(drawing.width, drawing.height)
-                        # Calculate actual rendered dimensions
-                        rendered_width = drawing.width * scale
-                        rendered_height = drawing.height * scale
-                        # Center the rendered logo in the container
-                        logo_x = (self.container_width - rendered_width) / 2
-                        logo_y = (self.container_height - rendered_height) / 2
-                        canvas.saveState()
-                        canvas.translate(logo_x, logo_y)
-                        canvas.scale(scale, scale)
-                        drawing.drawOn(canvas, 0, 0)
-                        canvas.restoreState()
-                except Exception as e:
-                    print(f"SVG rendering error: {e}")
-        
-        return SVGLogoBadge(svg_path, container_width, container_height, logo_size)
+                content_height = self.star_height + self.gap + self.text_height
+                vertical_offset = (self.height - content_height) / 2
+                star_x = (self.container_width - self.star_width) / 2
+                text_x = (self.container_width - self.text_width) / 2
+                canvas.drawImage(
+                    self.star_reader,
+                    star_x,
+                    vertical_offset + self.text_height + self.gap,
+                    width=self.star_width,
+                    height=self.star_height,
+                    mask='auto',
+                )
+                canvas.drawImage(
+                    self.text_reader,
+                    text_x,
+                    vertical_offset,
+                    width=self.text_width,
+                    height=self.text_height,
+                    mask='auto',
+                )
+
+        return StackedPngLogo(star_path, text_path, container_width)
     
     # ---- USER INFO (top left, bold labels, opposite logo) ----
     style_user_info_title = ParagraphStyle(
@@ -496,19 +506,6 @@ def generate_user_report_bytes(user):
         spaceBefore=0,
     )
     
-    # Style for company name under logo
-    style_company_name = ParagraphStyle(
-        'CompanyName',
-        parent=ParagraphStyle('Normal', parent=styles['Normal']),
-        fontName='Times-Roman',
-        fontSize=8.5,
-        leading=11,
-        textColor=GRAY_DARK,
-        alignment=TA_CENTER,
-        spaceAfter=0,
-        spaceBefore=2,
-    )
-    
     full_name = f"{user.first_name} {user.last_name}".strip().upper()
     
     # Name paragraph with label, same style as other user info fields
@@ -523,10 +520,10 @@ def generate_user_report_bytes(user):
     pending_value_para = Paragraph(f"<b>Pending:</b> {pending_label}", style_user_info_title)
     date_para = Paragraph(f"<b>Date:</b> {generated_at}", style_user_info_title)
     
-    # Use SVG logo
-    if os.path.exists(logo_svg_path):
+    # Stack the transparent star above the transparent wordmark.
+    if logo_star_path.is_file() and logo_text_path.is_file():
         try:
-            logo_badge = create_svg_logo_badge(logo_svg_path, 60, 36, 34)
+            logo_badge = create_stacked_png_logo(logo_star_path, logo_text_path, 60 * mm)
             
             metadata_table = Table(
                 [[user_name_para, user_email_para],
@@ -541,7 +538,6 @@ def generate_user_report_bytes(user):
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
             ]))
             header_table = Table([
-                [Paragraph("CRYPGO PLATFORM, INC.", style_company_name)],
                 [logo_badge],
                 [Paragraph("ACCOUNT PORTFOLIO REPORT", style_report_title)],
                 [Paragraph("Confidential account statement", style_subtitle)],
@@ -553,6 +549,7 @@ def generate_user_report_bytes(user):
                 ('LEFTPADDING', (0, 0), (-1, -1), 0),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
                 ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('TOPPADDING', (0, 3), (-1, 3), 8),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ]))
             story.append(header_table)
@@ -629,10 +626,10 @@ def generate_user_report_bytes(user):
             ))
             story.append(Paragraph("1.03 — Transaction Activity", style_section))
         except Exception as e:
-            print(f"SVG logo load error in header: {e}")
+            print(f"PNG logo load error in header: {e}")
             story.append(Paragraph("Crypgo", style_title))
     else:
-        print(f"SVG logo file not found at: {logo_svg_path}")
+        print(f"PNG logo files not found at: {logo_star_path} and {logo_text_path}")
         story.append(Paragraph("Crypgo", style_title))
     
     # ---- TRANSACTION HISTORY ----

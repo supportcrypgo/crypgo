@@ -1,4 +1,5 @@
 from datetime import datetime, time as dt_time, timedelta
+from pathlib import Path
 import subprocess
 import base64
 from unittest.mock import Mock, patch
@@ -548,6 +549,100 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         pending_b.refresh_from_db()
         self.assertEqual(pending_b.status, 'sent')
 
+    def test_provider_error_is_saved_on_lead_and_campaign_finishes_paused(self):
+        template = EmailTemplate.objects.create(
+            name='Provider Error Template',
+            subject='Account update',
+            html_content='<p>Hello {{ first_name }}</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Provider Error Campaign',
+            template=template,
+            status='running',
+        )
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='provider-error-user',
+            recipient_email='provider-error@example.com',
+            dashboard_url='https://app.crypgo.com/access/provider-error',
+        )
+        provider_error = '[Errno 101] Network is unreachable'
+        email_log = EmailLog.objects.create(
+            campaign=campaign,
+            recipient_email=recipient.recipient_email,
+            subject='Account update',
+            tracking_id='provider-error-tracking-id',
+            status='failed',
+            error_message=provider_error,
+        )
+        sender = Mock()
+        sender.send_with_tracking.return_value = email_log
+        throttler = Mock()
+        throttler.get_remaining_day.return_value = 70
+        throttler.wait_for_next_slot.return_value = 0
+        command = Command()
+
+        with patch.object(Command, '_build_account_report_attachments', return_value=[]):
+            command.send_crypgo_recipients(campaign, template, sender, throttler)
+        command._finalize(campaign, 0, 0)
+
+        recipient.refresh_from_db()
+        campaign.refresh_from_db()
+        self.assertEqual(recipient.status, 'failed')
+        self.assertEqual(recipient.error_message, provider_error)
+        self.assertEqual(campaign.status, 'paused')
+        self.assertTrue(campaign.is_paused)
+        self.assertEqual(campaign.failed_count, 1)
+
+    def test_report_remains_attachment_without_inline_card(self):
+        template_path = Path(__file__).resolve().parents[2] / 'templates' / 'emails' / 'newemail.html'
+        template = EmailTemplate.objects.create(
+            name='Closure Email With Report Preview',
+            subject='Account closure notice',
+            html_content=template_path.read_text(encoding='utf-8'),
+            is_active=True,
+            include_account_report_attachment=True,
+        )
+        campaign = Campaign.objects.create(name='Closure With Report', template=template)
+        CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='preview-report-user',
+            recipient_email='preview-report@example.com',
+            recipient_first_name='Matt',
+            recipient_last_name='Frewer',
+            dashboard_url='https://app.crypgo.com/access/preview',
+        )
+        report_attachment = (
+            'Crypgo_Portfolio_Report_preview-report_example_com_2026-10-02.pdf',
+            b'%PDF-1.4 test report',
+            'application/pdf',
+        )
+        sender = Mock()
+        sender.send_with_tracking.return_value = type('SendResult', (), {'status': 'sent'})()
+        throttler = Mock()
+        throttler.get_remaining_day.return_value = 70
+        throttler.wait_for_next_slot.return_value = 0
+
+        with (
+            patch.object(Command, '_build_account_report_attachments', return_value=[report_attachment]),
+            patch.object(Command, 'create_password_reset_link', return_value='https://example.invalid/reset'),
+        ):
+            Command().send_crypgo_recipients(campaign, template, sender, throttler)
+
+        call = sender.send_with_tracking.call_args.kwargs
+        html_body = call['html_body']
+        headline_position = html_body.index('Your Crypgo account closes in 7 days.')
+        intro_position = html_body.index(
+            'Attached to the email address receiving this message is your official account statement'
+        )
+        self.assertNotIn(report_attachment[0], html_body)
+        self.assertLess(headline_position, intro_position)
+        self.assertEqual(call['attachments'], [report_attachment])
+        self.assertIn('background-color: transparent', html_body)
+
     def test_global_unsubscribe_blacklist_and_hard_bounce_suppress_new_campaign(self):
         template = EmailTemplate.objects.create(
             name='Suppression Template',
@@ -718,7 +813,7 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         template = EmailTemplate.objects.create(
             name='Crypgo Campaign With Attachments',
             subject='Account update',
-            html_content='<p>Hi {{ first_name }}</p>',
+            html_content='<p>Hi {{ first_name }}</p><p>{{ report_attachment_name }}</p>',
             is_active=True,
             include_account_report_attachment=True,
         )
@@ -745,6 +840,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertEqual(mail.outbox[0].attachments, [
             ('account-report.pdf', b'%PDF-report', 'application/pdf'),
         ])
+        rendered_html = mail.outbox[0].alternatives[0][0]
+        self.assertIn('account-report.pdf', rendered_html)
         recipient.refresh_from_db()
         self.assertEqual(recipient.status, 'sent')
 

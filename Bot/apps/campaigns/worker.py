@@ -60,6 +60,12 @@ def launch_campaign_worker(campaign_id):
         return False, 'Campaign is unavailable or already has an active worker.'
 
     manage_py = Path(__file__).resolve().parents[2] / 'manage.py'
+    log_dir = Path(getattr(
+        settings,
+        'CAMPAIGN_WORKER_LOG_DIR',
+        Path(settings.BASE_DIR) / 'logs' / 'campaign_workers',
+    ))
+    log_path = log_dir / f'campaign_{campaign_id}_{run.pk}.log'
     try:
         command = [
             get_campaign_python_executable(),
@@ -68,13 +74,16 @@ def launch_campaign_worker(campaign_id):
             f'--campaign-id={campaign_id}',
             f'--run-id={run.pk}',
         ]
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.STDOUT,
-            stdin=subprocess.DEVNULL,
-            close_fds=True,
-        )
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with log_path.open('a', encoding='utf-8', buffering=1) as worker_log:
+            process = subprocess.Popen(
+                command,
+                cwd=str(manage_py.parent),
+                stdout=worker_log,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+            )
     except (ImproperlyConfigured, OSError, ValueError) as error:
         finish_campaign_run(run.pk, 'failed', f'Worker launch failed: {error}')
         Campaign.objects.filter(pk=campaign_id, status='running').update(
@@ -89,10 +98,11 @@ def launch_campaign_worker(campaign_id):
         heartbeat_at=timezone.now(),
     )
     logger.info(
-        'Launched campaign worker campaign_id=%s run_id=%s pid=%s executable=%s',
+        'Launched campaign worker campaign_id=%s run_id=%s pid=%s executable=%s log=%s',
         campaign_id,
         run.pk,
         process.pid,
         command[0],
+        log_path,
     )
-    return True, f'Campaign worker started (run {run.pk}).'
+    return True, f'Campaign worker started (run {run.pk}); log: {log_path}.'
