@@ -1,7 +1,5 @@
 import React from "react";
 
-export const dynamic = 'force-dynamic';
-
 import Hero from "@/components/Home/Hero";
 import Work from "@/components/Home/work";
 import TimeLine from "@/components/Home/timeline";

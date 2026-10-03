@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authApi } from '@/data/api';
@@ -8,7 +9,7 @@ import { clearCautionRestriction } from '@/lib/cautionRestriction';
 
 const CAMPAIGN_ACCESS_SESSION_KEY = 'crypgo-campaign-access-session';
 
-export default function CampaignAccessPage() {
+function CampaignAccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { refreshUser } = useAuth();
@@ -43,4 +44,12 @@ export default function CampaignAccessPage() {
   }, [refreshUser, router, searchParams]);
 
   return null;
+}
+
+export default function CampaignAccessPage() {
+  return (
+    <Suspense fallback={null}>
+      <CampaignAccessContent />
+    </Suspense>
+  );
 }

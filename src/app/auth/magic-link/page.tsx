@@ -1,9 +1,10 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function MagicLinkPage() {
+function MagicLinkContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -13,4 +14,12 @@ export default function MagicLinkPage() {
   }, [searchParams]);
 
   return null;
+}
+
+export default function MagicLinkPage() {
+  return (
+    <Suspense fallback={null}>
+      <MagicLinkContent />
+    </Suspense>
+  );
 }
