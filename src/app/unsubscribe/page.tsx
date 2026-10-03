@@ -1,9 +1,10 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export default function UnsubscribePage() {
+function UnsubscribeContent() {
   const searchParams = useSearchParams();
   const email = (searchParams.get('email') ?? '').trim();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -93,5 +94,21 @@ export default function UnsubscribePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function UnsubscribePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-darkmode text-white">
+          <section className="pt-28 pb-24 text-center">
+            <p className="text-muted">Processing your unsubscribe request...</p>
+          </section>
+        </main>
+      }
+    >
+      <UnsubscribeContent />
+    </Suspense>
   );
 }

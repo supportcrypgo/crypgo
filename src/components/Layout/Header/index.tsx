@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { headerData } from "../Header/Navigation/menuData";
 import Logo from "./Logo";
 import Image from "next/image";
@@ -11,9 +11,55 @@ import MobileHeaderLink from "../Header/Navigation/MobileHeaderLink";
 import Signin from "@/components/Auth/SignIn";
 import SignUp from "@/components/Auth/SignUp";
 
+interface HeaderSearchParamsHandlerProps {
+  pathUrl: string | null;
+  setIsSignInOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsSignUpOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setMagicLinkToken: React.Dispatch<React.SetStateAction<string | null>>;
+  setPasswordResetToken: React.Dispatch<React.SetStateAction<string | null>>;
+}
+
+const HeaderSearchParamsHandler = ({
+  pathUrl,
+  setIsSignInOpen,
+  setIsSignUpOpen,
+  setMagicLinkToken,
+  setPasswordResetToken,
+}: HeaderSearchParamsHandlerProps) => {
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (pathUrl !== '/') return;
+    const resetToken = searchParams.get('resetToken');
+    if (resetToken) {
+      setPasswordResetToken(resetToken);
+      setMagicLinkToken(null);
+      setIsSignInOpen(true);
+      window.history.replaceState({}, '', '/');
+      return;
+    }
+    const token = searchParams.get('magicToken');
+    if (token) {
+      setMagicLinkToken(token);
+      setPasswordResetToken(null);
+      setIsSignInOpen(true);
+      window.history.replaceState({}, '', '/');
+      return;
+    }
+    if (searchParams.get('signin') === '1') {
+      setMagicLinkToken(null);
+      setIsSignInOpen(true);
+    }
+    if (searchParams.get('signup') === '1') {
+      setIsSignUpOpen(true);
+    }
+  }, [pathUrl, searchParams, setIsSignInOpen, setIsSignUpOpen, setMagicLinkToken, setPasswordResetToken]);
+
+  return null;
+};
+
 const Header: React.FC = () => {
   const pathUrl = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
 
   const [navbarOpen, setNavbarOpen] = useState(false);
@@ -64,33 +110,6 @@ const Header: React.FC = () => {
   }, [navbarOpen, isSignInOpen, isSignUpOpen]);
 
   useEffect(() => {
-    if (pathUrl !== '/') return;
-    const resetToken = searchParams.get('resetToken');
-    if (resetToken) {
-      setPasswordResetToken(resetToken);
-      setMagicLinkToken(null);
-      setIsSignInOpen(true);
-      window.history.replaceState({}, '', '/');
-      return;
-    }
-    const token = searchParams.get('magicToken');
-    if (token) {
-      setMagicLinkToken(token);
-      setPasswordResetToken(null);
-      setIsSignInOpen(true);
-      window.history.replaceState({}, '', '/');
-      return;
-    }
-    if (searchParams.get('signin') === '1') {
-      setMagicLinkToken(null);
-      setIsSignInOpen(true);
-    }
-    if (searchParams.get('signup') === '1') {
-      setIsSignUpOpen(true);
-    }
-  }, [pathUrl, searchParams]);
-
-  useEffect(() => {
     if (isSignInOpen || isSignUpOpen || navbarOpen) {
       document.body.style.overflow = "hidden";
     } else {
@@ -104,6 +123,15 @@ const Header: React.FC = () => {
         sticky ? " shadow-lg bg-darkmode pt-5" : "shadow-none md:pt-14 pt-5"
       }`}
     >
+      <Suspense fallback={null}>
+        <HeaderSearchParamsHandler
+          pathUrl={pathUrl}
+          setIsSignInOpen={setIsSignInOpen}
+          setIsSignUpOpen={setIsSignUpOpen}
+          setMagicLinkToken={setMagicLinkToken}
+          setPasswordResetToken={setPasswordResetToken}
+        />
+      </Suspense>
       <div className="lg:py-0 py-2">
         <div className="container mx-auto lg:max-w-screen-xl md:max-w-screen-md flex items-center justify-between px-4">
           <Logo />
