@@ -99,6 +99,13 @@ a[href*="tradingview.com"] {
   scrollbar-width: none;
 }
 
+#profile-identity-email,
+#profile-identity-email a,
+#profile-identity-email a[x-apple-data-detectors] {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }

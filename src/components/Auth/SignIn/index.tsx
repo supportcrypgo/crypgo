@@ -4,8 +4,17 @@ import { useState, type FormEvent } from "react";
 import toast from "react-hot-toast";
 import Logo from "@/components/Layout/Header/Logo";
 import { useAuth } from '@/hooks/useAuth';
-import { authApi } from '@/data/api';
+import { AccountSelectionResponse, authApi } from '@/data/api';
 import { useEffect } from 'react';
+
+function maskAccountEmail(email: string) {
+  const [localPart, domain] = email.split('@');
+  if (!localPart || !domain) return email;
+  if (localPart.length <= 5) {
+    return `${localPart[0]}${'*'.repeat(localPart.length - 1)}@${domain}`;
+  }
+  return `${localPart.slice(0, 3)}${'*'.repeat(localPart.length - 5)}${localPart.slice(-2)}@${domain}`;
+}
 
 const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetToken }: { onSuccess?: () => void; onPasswordChanged?: () => void; magicLinkToken?: string | null; passwordResetToken?: string | null }) => {
   const [loading, setLoading] = useState(false);
@@ -16,8 +25,10 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
   const [resetTokenValid, setResetTokenValid] = useState<boolean | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [accountSelection, setAccountSelection] = useState<AccountSelectionResponse | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
 
-  const { login } = useAuth();
+  const { login, selectLoginAccount } = useAuth();
 
   useEffect(() => {
     if (!magicLinkToken) {
@@ -62,7 +73,12 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
     setLoading(true);
     setFormError('');
     try {
-      await login(email, password);
+      const result = await login(email, password);
+      if (result) {
+        setAccountSelection(result);
+        setSelectedAccountId(result.accounts[0]?.id ?? null);
+        return;
+      }
       setFormError('');
       toast.success('Login successful');
       onSuccess?.();
@@ -73,6 +89,25 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
       console.error('[Signin.loginUser] error', msg, err);
       setFormError(msg);
       toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const continueWithSelectedAccount = async () => {
+    if (!accountSelection || selectedAccountId === null) return;
+    setLoading(true);
+    setFormError('');
+    try {
+      await selectLoginAccount(accountSelection.selection_token, selectedAccountId);
+      setAccountSelection(null);
+      toast.success('Login successful');
+      onSuccess?.();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to select this account.';
+      setFormError(message);
+      setAccountSelection(null);
+      setSelectedAccountId(null);
     } finally {
       setLoading(false);
     }
@@ -139,7 +174,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
       </div>
 
       <h2 className="text-center text-2xl font-bold text-white mb-6">
-        {magicLinkToken || passwordResetToken ? 'Change Password' : isForgotPassword ? 'Forgot Password' : 'Sign In'}
+        {magicLinkToken || passwordResetToken ? 'Change Password' : accountSelection ? 'Choose account' : isForgotPassword ? 'Forgot Password' : 'Sign In'}
       </h2>
 
       {passwordResetToken && resetTokenValid === null && !formError && (
@@ -184,6 +219,52 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
           </button>
         </div>
       </form>
+      ) : accountSelection ? (
+        <div>
+          <p className="mb-5 text-sm text-muted text-center">Choose which Crypgo account to open.</p>
+          <fieldset className="mb-6 space-y-3">
+            <legend className="sr-only">Choose an account</legend>
+            {accountSelection.accounts.map((account) => (
+              <label
+                key={account.id}
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-left ${selectedAccountId === account.id ? 'border-primary bg-primary/10' : 'border-dark_border'}`}
+              >
+                <input
+                  type="radio"
+                  name="selected-account"
+                  value={account.id}
+                  checked={selectedAccountId === account.id}
+                  onChange={() => setSelectedAccountId(account.id)}
+                  className="accent-primary"
+                />
+                <span className="flex flex-col text-white">
+                  <span className="font-medium">{account.label}</span>
+                  <span className="text-sm text-muted">{maskAccountEmail(account.email_hint)}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          {formError && <p className="mb-4 text-sm text-red-400" role="alert">{formError}</p>}
+          <button
+            type="button"
+            onClick={continueWithSelectedAccount}
+            disabled={loading || selectedAccountId === null}
+            className="mb-4 w-full rounded-lg border border-primary bg-primary py-3 text-18 font-medium text-darkmode hover:bg-transparent hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? 'Opening account...' : 'Continue'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAccountSelection(null);
+              setSelectedAccountId(null);
+              setFormError('');
+            }}
+            className="w-full bg-transparent py-2 text-white hover:text-primary"
+          >
+            Back to sign in
+          </button>
+        </div>
       ) : !magicLinkToken && !passwordResetToken ? <form onSubmit={handleSubmit}>
         <div className="mb-[22px]">
           <input

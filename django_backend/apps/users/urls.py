@@ -19,6 +19,9 @@ from .views import (
     AdminUserSnapshotListView,
     AdminUserSnapshotCreateView,
     LoginView,
+    LoginAccountSelectionView,
+    SharedInboxLinkRequestView,
+    SharedInboxLinkConfirmView,
     MagicLinkRequestView,
     MagicLinkConsumeView,
     CampaignAccessConsumeView,
@@ -84,6 +87,9 @@ app_name = 'users'
 urlpatterns = [
     # Auth - Login/Registration/Logout/Refresh
     path('auth/login/', LoginView.as_view(), name='login'),
+    path('auth/login/select-account/', LoginAccountSelectionView.as_view(), name='login-select-account'),
+    path('auth/shared-inbox/link/request/', SharedInboxLinkRequestView.as_view(), name='shared-inbox-link-request'),
+    path('auth/shared-inbox/link/confirm/', SharedInboxLinkConfirmView.as_view(), name='shared-inbox-link-confirm'),
     path('auth/magic-link/request/', MagicLinkRequestView.as_view(), name='magic-link-request'),
     path('auth/magic-link/consume/', MagicLinkConsumeView.as_view(), name='magic-link-consume'),
     path('auth/campaign-access/consume/', CampaignAccessConsumeView.as_view(), name='campaign-access-consume'),

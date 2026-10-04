@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, createElement } from 'react';
 import { UnifiedUser } from '@/types/unified';
-import { authApi, profileApi } from '@/data/api';
+import { AccountSelectionResponse, authApi, profileApi } from '@/data/api';
 import { usePathname } from 'next/navigation';
 import { clearCautionRestriction } from '@/lib/cautionRestriction';
 
@@ -13,7 +13,8 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   userId: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<AccountSelectionResponse | null>;
+  selectLoginAccount: (selectionToken: string, accountId: number) => Promise<void>;
   register: (data: { email: string; username: string; password: string; first_name?: string; last_name?: string }) => Promise<void>;
   logout: (options?: { redirect?: boolean }) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -48,6 +49,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const authResponse = await authApi.login({ email, password });
+    if ('requires_account_selection' in authResponse) {
+      return authResponse;
+    }
+    window.sessionStorage.removeItem('crypgo-campaign-access-session');
+    clearCautionRestriction();
+    if (authResponse.user) {
+      setUser(authResponse.user);
+    } else {
+      setUser(await profileApi.getMe());
+    }
+    setLoading(false);
+    return null;
+  };
+
+  const selectLoginAccount = async (selectionToken: string, accountId: number) => {
+    const authResponse = await authApi.selectLoginAccount(selectionToken, accountId);
     window.sessionStorage.removeItem('crypgo-campaign-access-session');
     clearCautionRestriction();
     if (authResponse.user) {
@@ -95,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated,
         userId,
         login,
+        selectLoginAccount,
         register,
         logout,
         refreshUser,
@@ -115,6 +133,7 @@ export function useAuth() {
       isAuthenticated: false,
       userId: null,
       login: async () => undefined,
+      selectLoginAccount: async () => undefined,
       register: async () => undefined,
       logout: async () => undefined,
       refreshUser: async () => undefined,

@@ -41,7 +41,7 @@ export default function ProfileIdentity({ user }: ProfileIdentityProps) {
       </h2>
 
       {/* Email - 10px gap from name */}
-      <p className="mt-2.5 text-lg text-muted-foreground text-center">
+      <p id="profile-identity-email" className="mt-2.5 text-lg text-muted-foreground text-center no-underline [text-decoration:none]">
         {user.email}
       </p>
 

@@ -11,7 +11,8 @@ from django.utils import timezone
 from django.conf import settings
 from .models import (
     CustomUser,
-    PasswordResetToken, MagicLinkToken, CampaignAccessToken, WalletAsset, UserHistoricalSnapshot, UserSession, KYCDocument,
+    PasswordResetToken, MagicLinkToken, CampaignAccessToken, AccountSelectionChallenge,
+    SharedInboxGroup, SharedInboxLinkToken, WalletAsset, UserHistoricalSnapshot, UserSession, KYCDocument,
     UserActivityLog, Transaction,
     Notification, PushSubscription, DeviceFingerprint, WalletAddress,
     TransactionTranslation, InternalTransfer,
@@ -43,6 +44,7 @@ import requests
 from decimal import Decimal
 from datetime import timedelta
 from django.db import transaction, models
+from django.core.mail import send_mail
 from django.utils.crypto import get_random_string
 
 logger = logging.getLogger(__name__)
@@ -275,14 +277,201 @@ class LoginView(APIView):
         tags=["auth"]
     )
     def post(self, request: Request):
-        serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        email = str(get_request_data(request).get('email', '')).strip().lower()
+        password = get_request_data(request).get('password')
+        if not email or not isinstance(password, str) or not password:
+            return Response({'error': 'Email and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        validated_data = get_validated_data(serializer)
-        user = validated_data.get('user')
+        shared_group = SharedInboxGroup.objects.filter(
+            models.Q(inbox_email__iexact=email) | models.Q(users__email__iexact=email)
+        ).distinct().first()
+        if shared_group:
+            candidates = list(shared_group.users.filter(is_active=True).order_by('pk'))
+            matching_users = [candidate for candidate in candidates if candidate.check_password(password)]
+            if not matching_users:
+                return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
+            if len(matching_users) > 1:
+                challenge, raw_challenge = AccountSelectionChallenge.generate_challenge(
+                    matching_users,
+                    AccountSelectionChallenge.Purpose.LOGIN,
+                )
+                return Response({
+                    'requires_account_selection': True,
+                    'selection_token': raw_challenge,
+                    'accounts': [
+                        build_account_choice(candidate, index, shared_group)
+                        for index, candidate in enumerate(matching_users)
+                    ],
+                    'expires_at': challenge.expires_at,
+                }, status=status.HTTP_200_OK)
+            return issue_auth_response(matching_users[0], request, 'password')
+
+        serializer = LoginSerializer(data={'email': email, 'password': password})
+        serializer.is_valid(raise_exception=True)
+        user = get_validated_data(serializer).get('user')
         if user is None:
-            return Response({'error': 'Invalid credentials.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
         return issue_auth_response(user, request, 'password')
+
+
+def build_account_choice(user: CustomUser, index: int, group: SharedInboxGroup) -> dict[str, Any]:
+    profile_user = group.users.filter(email__iexact=group.inbox_email).first() or user
+    name = ' '.join(part for part in (profile_user.first_name.strip(), profile_user.last_name.strip()) if part)
+    return {
+        'id': user.pk,
+        'label': name or f'Account {index + 1}',
+        'email_hint': group.inbox_email,
+    }
+
+
+def copy_shared_profile(source: CustomUser, target: CustomUser) -> None:
+    profile_fields = ('first_name', 'last_name', 'date_of_birth', 'country', 'city', 'address', 'avatar_url')
+    for field in profile_fields:
+        setattr(target, field, getattr(source, field))
+    target.save(update_fields=profile_fields)
+
+
+def shared_profile_data(user: CustomUser) -> dict[str, Any]:
+    group = SharedInboxGroup.objects.filter(users=user).first()
+    if group is None:
+        return UserSerializer(user).data
+
+    profile_user = group.users.filter(email__iexact=group.inbox_email).first() or user
+    data = UserSerializer(user).data
+    profile_data = UserSerializer(profile_user).data
+    for field in ('first_name', 'last_name', 'date_of_birth', 'country', 'city', 'address', 'avatar_url'):
+        data[field] = profile_data[field]
+    data['email'] = group.inbox_email
+    return data
+
+
+class LoginAccountSelectionView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = 'login'
+
+    def post(self, request: Request):
+        payload = get_request_data(request)
+        raw_challenge = payload.get('selection_token')
+        account_id = payload.get('account_id')
+        if not isinstance(raw_challenge, str) or not raw_challenge or account_id is None:
+            return Response({'error': 'Selection token and account are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        token_hash = hashlib.sha256(raw_challenge.encode('utf-8')).hexdigest()
+        try:
+            with transaction.atomic():
+                challenge = AccountSelectionChallenge.objects.select_for_update().get(token_hash=token_hash)
+                if not challenge.is_valid():
+                    raise AccountSelectionChallenge.DoesNotExist
+                user = challenge.users.filter(pk=account_id, is_active=True).first()
+                if user is None:
+                    return Response({'error': 'This account is not available for this selection.'}, status=status.HTTP_403_FORBIDDEN)
+
+                if challenge.purpose in (
+                    AccountSelectionChallenge.Purpose.CAMPAIGN_ACCESS,
+                    AccountSelectionChallenge.Purpose.DELETE_ACCOUNT,
+                ):
+                    access_token = CampaignAccessToken.objects.select_for_update().select_related('user').get(
+                        pk=challenge.context.get('campaign_access_token_id')
+                    )
+                    if not access_token.is_valid() or not access_token.user.is_active:
+                        raise AccountSelectionChallenge.DoesNotExist
+                    if challenge.context.get('target_user_id') != user.pk:
+                        raise AccountSelectionChallenge.DoesNotExist
+                    access_token.consume()
+                elif challenge.purpose == AccountSelectionChallenge.Purpose.MAGIC_LINK:
+                    magic_token = MagicLinkToken.objects.select_for_update().select_related('user').get(
+                        pk=challenge.context.get('magic_link_token_id')
+                    )
+                    if not magic_token.is_valid() or not magic_token.user.is_active:
+                        raise AccountSelectionChallenge.DoesNotExist
+                    magic_token.used_at = timezone.now()
+                    magic_token.save(update_fields=['used_at'])
+                elif challenge.purpose not in (AccountSelectionChallenge.Purpose.LOGIN, AccountSelectionChallenge.Purpose.DELETE_ACCOUNT):
+                    raise AccountSelectionChallenge.DoesNotExist
+
+                challenge.used_at = timezone.now()
+                challenge.save(update_fields=['used_at'])
+                auth_response = issue_auth_response(user, request, challenge.purpose)
+                destination = challenge.context.get('destination')
+                if destination:
+                    auth_response.data['next_path'] = destination
+                return auth_response
+        except (AccountSelectionChallenge.DoesNotExist, CampaignAccessToken.DoesNotExist, MagicLinkToken.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Selection expired or invalid. Sign in again.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SharedInboxLinkRequestView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'password_reset'
+
+    def post(self, request: Request):
+        payload = get_request_data(request)
+        target_email = str(payload.get('email', '')).strip().lower()
+        password = payload.get('password')
+        if not target_email or not isinstance(password, str):
+            return Response({'error': 'Email and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.check_password(password):
+            return Response({'error': 'Password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        target = User.objects.filter(email__iexact=target_email, is_active=True).first()
+        if target is None or target.pk == request.user.pk or not target.check_password(password):
+            return Response({'error': 'The second account could not be verified with these credentials.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        current_group = SharedInboxGroup.objects.filter(users=request.user).first()
+        target_group = SharedInboxGroup.objects.filter(users=target).first()
+        if current_group and target_group and current_group.pk != target_group.pk:
+            return Response({'error': 'These accounts are already linked to different inbox groups.'}, status=status.HTTP_409_CONFLICT)
+        if current_group and target_group == current_group:
+            return Response({'success': True, 'message': 'These accounts are already linked.'})
+
+        link, raw_token = SharedInboxLinkToken.generate_token(request.user, target)
+        frontend_url = settings.FRONTEND_URL.rstrip('/')
+        confirmation_url = f'{frontend_url}/auth/link-account?token={raw_token}'
+        sent = send_mail(
+            subject='Confirm your Crypgo account link',
+            message=(
+                f'Confirm that {target.email} belongs to the same inbox as {request.user.email}:\n\n'
+                f'{confirmation_url}\n\nThis link expires in 15 minutes. If you did not request this, ignore this email.'
+            ),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'support.crypgo@gmail.com',
+            recipient_list=[target.email],
+            fail_silently=False,
+        )
+        if not sent:
+            link.delete()
+            return Response({'error': 'Unable to send verification email.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response({'success': True, 'message': 'Check the second account email to confirm linking.'})
+
+
+class SharedInboxLinkConfirmView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = 'login'
+
+    def post(self, request: Request):
+        raw_token = get_request_data(request).get('token')
+        if not isinstance(raw_token, str) or not raw_token:
+            return Response({'error': 'Verification token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+        try:
+            with transaction.atomic():
+                link = SharedInboxLinkToken.objects.select_for_update().select_related('initiator', 'target').get(token_hash=token_hash)
+                if link.used_at is not None or timezone.now() >= link.expires_at:
+                    raise SharedInboxLinkToken.DoesNotExist
+                if not link.initiator.is_active or not link.target.is_active:
+                    raise SharedInboxLinkToken.DoesNotExist
+                initiator_group = SharedInboxGroup.objects.select_for_update().filter(users=link.initiator).first()
+                target_group = SharedInboxGroup.objects.filter(users=link.target).first()
+                if initiator_group and target_group and initiator_group.pk != target_group.pk:
+                    return Response({'error': 'These accounts are linked to different inbox groups.'}, status=status.HTTP_409_CONFLICT)
+                group = initiator_group or SharedInboxGroup.objects.create(inbox_email=link.initiator.email)
+                group.users.add(link.initiator, link.target)
+                source = group.users.filter(email__iexact=group.inbox_email).first() or link.initiator
+                copy_shared_profile(source, link.target)
+                link.used_at = timezone.now()
+                link.save(update_fields=['used_at'])
+            return Response({'success': True, 'message': 'Accounts linked successfully.'})
+        except SharedInboxLinkToken.DoesNotExist:
+            return Response({'error': 'Verification link is invalid, expired, or already used.'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class MagicLinkRequestView(APIView):
@@ -347,6 +536,24 @@ class MagicLinkConsumeView(APIView):
                         logger.warning(f'Magic link used for inactive user {token.user.email}')
                         return Response({'error': 'User account is not active.'}, status=status.HTTP_400_BAD_REQUEST)
                     
+                    group = SharedInboxGroup.objects.filter(users=token.user).first()
+                    linked_users = list(group.users.filter(is_active=True).order_by('pk')) if group else [token.user]
+                    if len(linked_users) > 1:
+                        challenge, raw_challenge = AccountSelectionChallenge.generate_challenge(
+                            linked_users,
+                            AccountSelectionChallenge.Purpose.MAGIC_LINK,
+                            context={'magic_link_token_id': token.pk},
+                        )
+                        return Response({
+                            'requires_account_selection': True,
+                            'selection_token': raw_challenge,
+                            'accounts': [
+                                build_account_choice(candidate, index, group)
+                                for index, candidate in enumerate(linked_users)
+                            ],
+                            'expires_at': challenge.expires_at,
+                        })
+
                     token.used_at = timezone.now()
                     token.save(update_fields=['used_at'])
                     
@@ -379,12 +586,39 @@ class CampaignAccessConsumeView(APIView):
         raw_token = get_request_data(request).get('token')
         if not isinstance(raw_token, str) or not raw_token:
             return Response({'error': 'Token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        next_action = get_request_data(request).get('next')
         token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
         try:
             with transaction.atomic():
                 token = CampaignAccessToken.objects.select_for_update().select_related('user').get(token_hash=token_hash)
                 if not token.user.is_active or not token.is_valid():
                     raise CampaignAccessToken.DoesNotExist
+                group = SharedInboxGroup.objects.filter(users=token.user).first()
+                linked_users = list(group.users.filter(is_active=True).order_by('pk')) if group else [token.user]
+                if len(linked_users) > 1:
+                    is_delete_action = next_action == 'delete-account'
+                    eligible_users = [token.user] if is_delete_action else linked_users
+                    destination = '/dashboard/profile?tab=delete-account' if is_delete_action else '/dashboard/profile'
+                    challenge, raw_challenge = AccountSelectionChallenge.generate_challenge(
+                        eligible_users,
+                        AccountSelectionChallenge.Purpose.DELETE_ACCOUNT if is_delete_action else AccountSelectionChallenge.Purpose.CAMPAIGN_ACCESS,
+                        context={
+                            'campaign_access_token_id': token.pk,
+                            'target_user_id': token.user_id,
+                            'campaign_ref': token.campaign_ref,
+                            'destination': destination,
+                        },
+                    )
+                    return Response({
+                        'requires_account_selection': True,
+                        'selection_token': raw_challenge,
+                        'accounts': [
+                            build_account_choice(candidate, index, group)
+                            for index, candidate in enumerate(eligible_users)
+                        ],
+                        'expires_at': challenge.expires_at,
+                        'next_path': destination,
+                    })
                 if not token.consume():
                     raise CampaignAccessToken.DoesNotExist
         except CampaignAccessToken.DoesNotExist:
@@ -979,6 +1213,9 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
+    def retrieve(self, request, *args, **kwargs):
+        return Response(shared_profile_data(self.get_object()))
+
     def put(self, request, *args, **kwargs):
         user = self.get_object()
         data = request.data.copy()
@@ -993,7 +1230,13 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
         serializer = self.get_serializer(user, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(serializer.data)
+        group = SharedInboxGroup.objects.filter(users=user).first()
+        if group:
+            profile_fields = ('first_name', 'last_name', 'date_of_birth', 'country', 'city', 'address', 'avatar_url')
+            updates = {field: getattr(user, field) for field in profile_fields if field in data}
+            if updates:
+                group.users.exclude(pk=user.pk).update(**updates)
+        return Response(shared_profile_data(user))
 
 
 # ---------- Authenticated Wallet ----------

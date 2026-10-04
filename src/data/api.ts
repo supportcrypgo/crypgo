@@ -291,6 +291,22 @@ export interface TokenResponse {
   user?: UnifiedUser;
 }
 
+export interface AccountChoice {
+  id: number;
+  label: string;
+  email_hint: string;
+}
+
+export interface AccountSelectionResponse {
+  requires_account_selection: true;
+  selection_token: string;
+  accounts: AccountChoice[];
+  expires_at: string;
+  next_path?: string;
+}
+
+export type LoginResponse = TokenResponse | AccountSelectionResponse;
+
 export interface ChangePasswordData {
   current_password: string;
   new_password: string;
@@ -726,8 +742,7 @@ export const authApi = {
   /**
    * Login user - tokens are set as http-only cookies by the backend
    */
-  async login(credentials: LoginCredentials): Promise<TokenResponse> {
-    console.log('[authApi.login] request start', { email: credentials.email });
+  async login(credentials: LoginCredentials): Promise<LoginResponse> {
     const response = await fetch(`${API_BASE_URL}/auth/login/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -735,26 +750,55 @@ export const authApi = {
       credentials: 'include',
     });
 
-    console.log('[authApi.login] response status', response.status);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const message = extractErrorMessage(errorData, response.status) || 'Login failed.';
-      console.error('[authApi.login] response error', { 
-        status: response.status, 
-        statusText: response.statusText,
-        errorData, 
-        message 
-      });
       throw new Error(message);
     }
 
     const data = await response.json();
-    console.log('[authApi.login] response data', data);
     if (data?.access_token && typeof window !== 'undefined') {
       localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, data.access_token);
     }
 
     return data;
+  },
+
+  async selectLoginAccount(selectionToken: string, accountId: number): Promise<TokenResponse> {
+    const response = await fetch(`${API_BASE_URL}/auth/login/select-account/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ selection_token: selectionToken, account_id: accountId }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(extractErrorMessage(data, response.status) || 'Unable to select account.');
+    }
+    if (data.access_token && typeof window !== 'undefined') {
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, data.access_token);
+    }
+    return data;
+  },
+
+  async requestSharedInboxLink(email: string, password: string): Promise<void> {
+    const response = await authenticatedRequest('/auth/shared-inbox/link/request/', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    return response;
+  },
+
+  async confirmSharedInboxLink(token: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/auth/shared-inbox/link/confirm/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(extractErrorMessage(data, response.status) || 'Unable to confirm account link.');
+    }
   },
 
   /**
@@ -843,7 +887,7 @@ export const authApi = {
     }
   },
 
-  async consumeMagicLink(token: string): Promise<TokenResponse> {
+  async consumeMagicLink(token: string): Promise<LoginResponse> {
     const response = await fetch(`${API_BASE_URL}/auth/magic-link/consume/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -860,12 +904,12 @@ export const authApi = {
     return data;
   },
 
-  async consumeCampaignAccess(token: string): Promise<TokenResponse> {
+  async consumeCampaignAccess(token: string, next?: string | null): Promise<LoginResponse> {
     const response = await fetch(`${API_BASE_URL}/auth/campaign-access/consume/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token, next }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {

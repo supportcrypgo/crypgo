@@ -304,6 +304,90 @@ class CampaignAccessToken(models.Model):
         return True
 
 
+class SharedInboxGroup(models.Model):
+    """Verified association between distinct accounts delivered to one inbox."""
+
+    inbox_email = models.EmailField(unique=True)
+    users = models.ManyToManyField(CustomUser, related_name='shared_inbox_groups')
+    created_at = models.DateTimeField(auto_now_add=True)
+    verified_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'shared_inbox_groups'
+
+
+class SharedInboxLinkToken(models.Model):
+    """Single-use email verification for linking a second existing account."""
+
+    initiator = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='shared_inbox_link_initiated',
+    )
+    target = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='shared_inbox_link_received',
+    )
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'shared_inbox_link_tokens'
+
+    @classmethod
+    def generate_token(cls, initiator, target):
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+        token = cls.objects.create(
+            initiator=initiator,
+            target=target,
+            token_hash=token_hash,
+            expires_at=timezone.now() + timedelta(minutes=15),
+        )
+        return token, raw_token
+
+
+class AccountSelectionChallenge(models.Model):
+    """Short-lived one-use challenge issued after shared-inbox authentication."""
+
+    class Purpose(models.TextChoices):
+        LOGIN = 'login', 'Login'
+        MAGIC_LINK = 'magic_link', 'Magic link'
+        CAMPAIGN_ACCESS = 'campaign_access', 'Campaign access'
+        PASSWORD_RESET = 'password_reset', 'Password reset'
+        DELETE_ACCOUNT = 'delete_account', 'Delete account'
+
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    purpose = models.CharField(max_length=32, choices=Purpose.choices)
+    users = models.ManyToManyField(CustomUser, related_name='account_selection_challenges')
+    context = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'account_selection_challenges'
+
+    @classmethod
+    def generate_challenge(cls, users, purpose, context=None, lifetime_minutes=5):
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+        challenge = cls.objects.create(
+            token_hash=token_hash,
+            purpose=purpose,
+            context=context or {},
+            expires_at=timezone.now() + timedelta(minutes=lifetime_minutes),
+        )
+        challenge.users.set(users)
+        return challenge, raw_token
+
+    def is_valid(self):
+        return self.used_at is None and timezone.now() < self.expires_at
+
+
 class UserHistoricalSnapshot(models.Model):
     """
     Persistent snapshot of user portfolio position.

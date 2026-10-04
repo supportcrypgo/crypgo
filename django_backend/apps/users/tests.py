@@ -17,7 +17,7 @@ from .management.commands.seed_named_user_history import build_transaction_addre
 from decimal import Decimal
 from unittest.mock import patch
 
-from .models import CampaignAccessToken, CustomUser, DeletionHistory, PasswordResetToken, Transaction, UserActivityLog, WalletAddress, WalletAsset
+from .models import AccountSelectionChallenge, CampaignAccessToken, CustomUser, DeletionHistory, PasswordResetToken, SharedInboxGroup, SharedInboxLinkToken, Transaction, UserActivityLog, WalletAddress, WalletAsset
 from .serializers import LoginSerializer
 
 
@@ -126,6 +126,144 @@ class LoginActivityAuditTests(TestCase):
         response = self.client.post('/api/auth/refresh/')
 
         self.assertEqual(response.status_code, 401)
+
+
+class SharedInboxLoginTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.first = CustomUser.objects.create_user(
+            username='shared-first',
+            email='sirmattfrewer@gmail.com',
+            password='SharedPassword123!',
+            first_name='Matt',
+            last_name='Frewer',
+            date_of_birth='1980-01-02',
+            country='New Zealand',
+            city='Auckland',
+        )
+        self.second = CustomUser.objects.create_user(
+            username='shared-second',
+            email='sirmattfrewer+1@gmail.com',
+            password='SharedPassword123!',
+        )
+        self.group = SharedInboxGroup.objects.create(inbox_email=self.first.email)
+        self.group.users.add(self.first, self.second)
+
+    def test_shared_login_requires_account_selection_before_issuing_tokens(self):
+        response = self.client.post(
+            '/api/auth/login/',
+            {'email': self.first.email, 'password': 'SharedPassword123!'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(payload['requires_account_selection'])
+        self.assertNotIn('access_token', payload)
+        self.assertNotIn('refresh_token', response.cookies)
+        self.assertEqual(len(payload['accounts']), 2)
+        self.assertEqual({account['label'] for account in payload['accounts']}, {'Matt Frewer'})
+        self.assertEqual({account['email_hint'] for account in payload['accounts']}, {'sirmattfrewer@gmail.com'})
+
+    def test_linked_account_profile_uses_canonical_identity_and_email(self):
+        self.client.force_authenticate(user=self.second)
+
+        response = self.client.get('/api/users/me/')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['email'], 'sirmattfrewer@gmail.com')
+        self.assertEqual(response.json()['first_name'], 'Matt')
+        self.assertEqual(response.json()['last_name'], 'Frewer')
+        self.assertEqual(response.json()['date_of_birth'], '1980-01-02')
+        self.assertEqual(response.json()['country'], 'New Zealand')
+        self.assertEqual(response.json()['city'], 'Auckland')
+
+        update = self.client.put('/api/users/me/', {'city': 'Wellington'}, format='json')
+
+        self.assertEqual(update.status_code, 200, update.content)
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.city, 'Wellington')
+
+    def test_selection_authenticates_only_the_chosen_linked_account(self):
+        login = self.client.post(
+            '/api/auth/login/',
+            {'email': self.first.email, 'password': 'SharedPassword123!'},
+            format='json',
+        )
+        challenge = login.json()['selection_token']
+
+        selected = self.client.post(
+            '/api/auth/login/select-account/',
+            {'selection_token': challenge, 'account_id': self.second.pk},
+            format='json',
+        )
+
+        self.assertEqual(selected.status_code, 200, selected.content)
+        self.assertEqual(selected.json()['user']['id'], self.second.pk)
+        self.assertEqual(str(AccessToken(selected.json()['access_token'])['user_id']), str(self.second.pk))
+
+    def test_selection_cannot_choose_an_account_outside_challenge(self):
+        outsider = CustomUser.objects.create_user(
+            username='shared-outsider',
+            email='outsider@example.com',
+            password='SharedPassword123!',
+        )
+        login = self.client.post(
+            '/api/auth/login/',
+            {'email': self.first.email, 'password': 'SharedPassword123!'},
+            format='json',
+        )
+
+        selected = self.client.post(
+            '/api/auth/login/select-account/',
+            {'selection_token': login.json()['selection_token'], 'account_id': outsider.pk},
+            format='json',
+        )
+
+        self.assertEqual(selected.status_code, 403)
+        self.assertFalse(selected.cookies)
+
+    @patch('apps.users.views.send_mail', return_value=1)
+    def test_link_request_requires_both_account_passwords_and_confirm_is_one_time(self, send_mail_mock):
+        self.group.delete()
+        self.first.first_name = 'Matt'
+        self.first.last_name = 'Frewer'
+        self.first.date_of_birth = '1980-01-02'
+        self.first.country = 'New Zealand'
+        self.first.city = 'Auckland'
+        self.first.save()
+        self.client.force_authenticate(user=self.first)
+        request_response = self.client.post(
+            '/api/auth/shared-inbox/link/request/',
+            {'email': self.second.email, 'password': 'SharedPassword123!'},
+            format='json',
+        )
+        self.assertEqual(request_response.status_code, 200, request_response.content)
+        link = SharedInboxLinkToken.objects.get(initiator=self.first, target=self.second)
+        message = send_mail_mock.call_args.kwargs['message']
+        raw_token = message.split('token=', 1)[1].split()[0]
+
+        self.client.force_authenticate(user=None)
+        confirm_response = self.client.post(
+            '/api/auth/shared-inbox/link/confirm/',
+            {'token': raw_token},
+            format='json',
+        )
+        self.assertEqual(confirm_response.status_code, 200, confirm_response.content)
+        self.assertSetEqual(set(link.initiator.shared_inbox_groups.get().users.values_list('pk', flat=True)), {self.first.pk, self.second.pk})
+        self.second.refresh_from_db()
+        self.assertEqual(self.second.first_name, 'Matt')
+        self.assertEqual(self.second.last_name, 'Frewer')
+        self.assertEqual(str(self.second.date_of_birth), '1980-01-02')
+        self.assertEqual(self.second.country, 'New Zealand')
+        self.assertEqual(self.second.city, 'Auckland')
+
+        replay_response = self.client.post(
+            '/api/auth/shared-inbox/link/confirm/',
+            {'token': raw_token},
+            format='json',
+        )
+        self.assertEqual(replay_response.status_code, 400)
 
 
 class DeleteAccountTests(TestCase):
