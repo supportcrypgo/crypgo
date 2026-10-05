@@ -1,4 +1,5 @@
 """Render email templates with lead placeholders"""
+import html
 import re
 import logging
 
@@ -39,7 +40,13 @@ class TemplateRenderer:
 
         try:
             # Try Django template engine first (handles filters, blocks, etc)
-            template = Template(html_content)
+            template_source = re.sub(
+                r'{%.*?%}',
+                lambda match: html.unescape(match.group(0)),
+                html_content,
+                flags=re.DOTALL,
+            )
+            template = Template(template_source)
             context = Context(context_data)
             rendered = template.render(context)
             return mark_safe(rendered)

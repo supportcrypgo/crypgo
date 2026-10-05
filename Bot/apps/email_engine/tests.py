@@ -268,7 +268,7 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
                 subprocess.CompletedProcess(
                     args=['generate_user_report.py'],
                     returncode=0,
-                    stdout=base64.b64encode(b'%PDF-report').decode('ascii'),
+                    stdout=base64.b64encode(b'%PDF-report').decode('ascii') + '\n',
                     stderr='',
                 ),
                 subprocess.CompletedProcess(
@@ -396,7 +396,7 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         sender.send_with_tracking.assert_not_called()
         recipient.refresh_from_db()
         self.assertEqual(recipient.status, 'failed')
-        self.assertIn('companion account report', recipient.error_message)
+        self.assertIn('account report', recipient.error_message)
 
     def test_report_subprocess_failure_logs_exit_code_and_stderr(self):
         completed = subprocess.CompletedProcess(
@@ -409,13 +409,30 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             'apps.core.management.commands.send_campaign.subprocess.run',
             return_value=completed,
         ) as run_report, self.assertLogs('email_bot', level='ERROR') as logs:
-            attachments = Command()._build_recipient_pdf_attachment(
-                CampaignLead(recipient_email='failed-report@example.com', pk=3)
-            )
+            with self.assertRaisesRegex(RuntimeError, 'Could not generate account report'):
+                Command()._build_recipient_pdf_attachment(
+                    CampaignLead(recipient_email='failed-report@example.com', pk=3)
+                )
 
-        self.assertEqual(attachments, [])
         self.assertEqual(run_report.call_args.kwargs['timeout'], 30)
         self.assertTrue(any('exit=2' in message and 'report generation failed' in message for message in logs.output))
+
+    def test_invalid_pdf_subprocess_output_fails_closed(self):
+        completed = subprocess.CompletedProcess(
+            args=['generate_user_report.py'],
+            returncode=0,
+            stdout='not-base64!',
+            stderr='',
+        )
+
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            return_value=completed,
+        ), self.assertLogs('email_bot', level='ERROR'):
+            with self.assertRaisesRegex(RuntimeError, 'Unexpected error generating account report'):
+                Command()._build_recipient_pdf_attachment(
+                    CampaignLead(recipient_email='invalid-report@example.com', pk=4)
+                )
 
     def test_report_subprocess_timeout_is_bounded_and_logged(self):
         timeout_error = subprocess.TimeoutExpired(
@@ -429,9 +446,9 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             'apps.core.management.commands.send_campaign.subprocess.run',
             side_effect=timeout_error,
         ) as run_report, self.assertLogs('email_bot', level='ERROR') as logs:
-            attachments = Command()._build_recipient_pdf_attachment(recipient)
+            with self.assertRaisesRegex(RuntimeError, 'Account report generation timed out'):
+                Command()._build_recipient_pdf_attachment(recipient)
 
-        self.assertEqual(attachments, [])
         self.assertEqual(run_report.call_args.kwargs['timeout'], 30)
         self.assertTrue(any('timed out' in message and 'database query timed out' in message for message in logs.output))
 
@@ -940,7 +957,7 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             html_content=(
                 '<p>Hi {{ first_name }}</p>'
                 '<p>{{ report_attachment_name }}</p>'
-                '{% if report_attachment_count > 1 %}<p>Two statements attached</p>{% endif %}'
+                '{% if has_multiple_report_attachments %}<p>Two statements attached</p>{% endif %}'
             ),
             is_active=True,
             include_account_report_attachment=True,

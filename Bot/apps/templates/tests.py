@@ -31,6 +31,16 @@ class EmailTemplateModelTest(TestCase):
 
 
 class TemplateRendererGreetingTest(TestCase):
+    def test_render_unescapes_html_entities_inside_django_tags(self):
+        rendered = TemplateRenderer.render(
+            '<p>{% if report_attachment_count &gt; 1 %}multiple{% else %}single{% endif %}</p>',
+            {'report_attachment_count': 2},
+        )
+
+        self.assertIn('multiple', rendered)
+        self.assertNotIn('single', rendered)
+        self.assertNotIn('{%', rendered)
+
     def test_template_preview_keeps_hidden_preheader_text(self):
         preheader = 'We are sorry to see you go'
         template = EmailTemplate.objects.create(

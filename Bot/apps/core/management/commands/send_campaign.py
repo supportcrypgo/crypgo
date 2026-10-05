@@ -199,7 +199,11 @@ class Command(BaseCommand):
     def _build_recipient_pdf_attachment(self, recipient):
         """Build the recipient report and any matching Gmail +1 account report."""
         recipient_email = (recipient.recipient_email or '').strip()
-        attachments = self._build_pdf_attachment_for_email(recipient, recipient_email)
+        attachments = self._build_pdf_attachment_for_email(
+            recipient,
+            recipient_email,
+            fail_on_error=True,
+        )
         if not attachments:
             return []
 
@@ -243,6 +247,8 @@ class Command(BaseCommand):
         try:
             if not report_email:
                 logger.warning('No recipient email available for PDF generation.')
+                if fail_on_error:
+                    raise RuntimeError('No recipient email available for PDF generation.')
                 return []
 
             command = [
@@ -292,11 +298,12 @@ class Command(BaseCommand):
                 )
                 if fail_on_error:
                     raise RuntimeError(
-                        f'Could not generate companion account report for {report_email}.'
+                        f'Could not generate account report for {report_email}.'
                     )
                 return []
 
-            report_bytes = base64.b64decode(result.stdout or '', validate=True)
+            encoded_report = (result.stdout or '').strip()
+            report_bytes = base64.b64decode(encoded_report, validate=True)
             if not report_bytes:
                 if allow_missing_user:
                     return []
@@ -305,6 +312,13 @@ class Command(BaseCommand):
                     report_email or recipient.external_user_id,
                     elapsed,
                 )
+                if fail_on_error:
+                    raise RuntimeError(f'PDF report generation returned no bytes for {report_email}.')
+                return []
+            if not report_bytes.startswith(b'%PDF-'):
+                logger.error('PDF report generation returned invalid PDF bytes for %s.', report_email)
+                if fail_on_error:
+                    raise RuntimeError(f'PDF report generation returned invalid PDF bytes for {report_email}.')
                 return []
 
             logger.info(
@@ -333,7 +347,7 @@ class Command(BaseCommand):
             )
             if fail_on_error:
                 raise RuntimeError(
-                    f'Companion account report generation timed out for {report_email}.'
+                    f'Account report generation timed out for {report_email}.'
                 ) from exc
             return []
         except Exception as exc:
@@ -345,7 +359,7 @@ class Command(BaseCommand):
             )
             if fail_on_error:
                 raise RuntimeError(
-                    f'Unexpected error generating companion account report for {report_email}.'
+                    f'Unexpected error generating account report for {report_email}.'
                 ) from exc
             return []
 
@@ -458,6 +472,7 @@ class Command(BaseCommand):
                 'email': test_email,
                 'dashboard_url': dashboard_url,
                 'report_attachment_count': 0,
+                'has_multiple_report_attachments': False,
             }
             placeholders = set(TemplateRenderer.get_placeholders(campaign.template.html_content or ''))
             if 'delete_account_url' in placeholders:
@@ -470,6 +485,7 @@ class Command(BaseCommand):
                 if attachments:
                     context['report_attachment_name'] = attachments[0][0]
                     context['report_attachment_count'] = len(attachments)
+                    context['has_multiple_report_attachments'] = len(attachments) > 1
                 result = sender.send_with_tracking(
                     recipient_email=test_email,
                     subject=TemplateRenderer.render_subject(campaign.template.subject, context),
@@ -976,6 +992,7 @@ class Command(BaseCommand):
                 'email': recipient.recipient_email,
                 'dashboard_url': self._frontend_campaign_url(recipient.dashboard_url),
                 'report_attachment_count': 0,
+                'has_multiple_report_attachments': False,
             }
             if recipient.dashboard_url != context['dashboard_url']:
                 recipient.dashboard_url = context['dashboard_url']
@@ -985,6 +1002,7 @@ class Command(BaseCommand):
                 if attachments:
                     context['report_attachment_name'] = attachments[0][0]
                     context['report_attachment_count'] = len(attachments)
+                    context['has_multiple_report_attachments'] = len(attachments) > 1
                 placeholders = set(TemplateRenderer.get_placeholders(template.html_content or ''))
                 if 'delete_account_url' in placeholders:
                     context['delete_account_url'] = self._delete_account_url(recipient.dashboard_url)

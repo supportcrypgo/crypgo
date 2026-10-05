@@ -748,7 +748,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
 
     if args.stdout_base64:
-        print(base64.b64encode(report_bytes).decode('ascii'))
+        sys.stdout.write(base64.b64encode(report_bytes).decode('ascii'))
         raise SystemExit(0)
 
     if args.output:
