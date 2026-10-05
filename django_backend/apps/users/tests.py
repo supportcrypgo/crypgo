@@ -168,20 +168,25 @@ class SharedInboxLoginTests(TestCase):
     def test_gmail_plus_alias_login_shows_chooser_without_a_linked_group(self):
         self.group.delete()
 
-        response = self.client.post(
-            '/api/auth/login/',
-            {'email': self.second.email, 'password': 'SharedPassword123!'},
-            format='json',
-        )
+        for email in (self.first.email, self.second.email):
+            with self.subTest(email=email):
+                response = self.client.post(
+                    '/api/auth/login/',
+                    {'email': email, 'password': 'SharedPassword123!'},
+                    format='json',
+                )
 
-        self.assertEqual(response.status_code, 200, response.content)
-        payload = response.json()
-        self.assertTrue(payload['requires_account_selection'])
-        self.assertEqual({account['id'] for account in payload['accounts']}, {self.first.pk, self.second.pk})
-        self.assertEqual(
-            {account['email_hint'] for account in payload['accounts']},
-            {'sirmattfrewer@gmail.com'},
-        )
+                self.assertEqual(response.status_code, 200, response.content)
+                payload = response.json()
+                self.assertTrue(payload['requires_account_selection'])
+                self.assertEqual(
+                    {account['id'] for account in payload['accounts']},
+                    {self.first.pk, self.second.pk},
+                )
+                self.assertEqual(
+                    {account['email_hint'] for account in payload['accounts']},
+                    {'sirmattfrewer@gmail.com'},
+                )
 
     def test_gmail_plus_alias_login_skips_chooser_when_only_one_password_matches(self):
         self.group.delete()
