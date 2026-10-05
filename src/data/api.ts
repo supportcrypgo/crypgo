@@ -782,11 +782,10 @@ export const authApi = {
   },
 
   async requestSharedInboxLink(email: string, password: string): Promise<void> {
-    const response = await authenticatedRequest('/auth/shared-inbox/link/request/', {
+    await authenticatedRequest('/auth/shared-inbox/link/request/', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    return response;
   },
 
   async confirmSharedInboxLink(token: string): Promise<void> {

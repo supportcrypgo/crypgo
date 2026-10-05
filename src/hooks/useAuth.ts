@@ -132,7 +132,7 @@ export function useAuth() {
       isLoading: false,
       isAuthenticated: false,
       userId: null,
-      login: async () => undefined,
+      login: async () => null,
       selectLoginAccount: async () => undefined,
       register: async () => undefined,
       logout: async () => undefined,
