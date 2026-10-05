@@ -757,9 +757,13 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         intro_position = html_body.index(
             'Attached to the email address receiving this message are your official account statements'
         )
+        notice_position = html_body.index(
+            'This notice applies to your 2 Crypgo accounts, both of which are scheduled for closure in 7 days.'
+        )
         self.assertNotIn(report_attachment[0], html_body)
         self.assertNotIn(plus_one_report_attachment[0], html_body)
         self.assertLess(headline_position, intro_position)
+        self.assertLess(notice_position, intro_position)
         self.assertEqual(call['attachments'], [report_attachment, plus_one_report_attachment])
         self.assertIn('background-color: transparent', html_body)
 
