@@ -706,6 +706,11 @@ if __name__ == "__main__":
     parser.add_argument('--output', help='Optional output file path. Defaults to a generated file next to this script.')
     parser.add_argument('--stdout', action='store_true', help='Write the generated PDF bytes to stdout instead of an output file.')
     parser.add_argument('--stdout-base64', action='store_true', help='Write base64-encoded PDF bytes to stdout for text-mode subprocess capture.')
+    parser.add_argument(
+        '--allow-missing-user',
+        action='store_true',
+        help='Exit successfully without output when the requested email has no account.',
+    )
     parser.add_argument('--refresh-market-prices', action='store_true', help='Fetch and atomically cache live market prices, then exit.')
     parser.add_argument('--cache-path', help='Absolute path for the shared campaign market-price snapshot.')
     args = parser.parse_args()
@@ -727,6 +732,8 @@ if __name__ == "__main__":
     user = CustomUser.objects.filter(email__iexact=args.email).first()
 
     if not user:
+        if args.allow_missing_user:
+            raise SystemExit(0)
         raise SystemExit(f'User {args.email} not found!')
 
     if args.stdout or args.stdout_base64:

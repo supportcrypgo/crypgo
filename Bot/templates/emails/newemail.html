@@ -169,7 +169,7 @@
                                  <!-- TEXT ON LEFT -->
                                  <td style="vertical-align:top; padding:0 0 12px;">
                                    <div style="font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:16px; font-weight:400; line-height:26px; color:#000000;">
-                                     <p style="margin:0 0 8px;">Attached to the email address receiving this message is your official account statement along with the following options</p>
+                                     <p style="margin:0 0 8px;">{% if report_attachment_count > 1 %}Attached to the email address receiving this message are your official account statements{% else %}Attached to the email address receiving this message is your official account statement{% endif %} along with the following options</p>
                                      <p style="margin:0 0 4px;"><span style="color:#000000; font-weight:700;">&#10003;</span> <a href="{{ delete_account_url }}" style="color:#000000; text-decoration:underline;">Close your account permanently</a></p>
                                      <p style="margin:0 0 4px;"><span style="color:#000000; font-weight:700;">&#10003;</span> <a href="{{ password_reset_url }}" style="color:#000000; text-decoration:underline;">Reset your password</a></p>
                                      <p style="margin:0 0 14px;"><span style="color:#000000; font-weight:700;">&#10003;</span> Complete a withdrawal</p>

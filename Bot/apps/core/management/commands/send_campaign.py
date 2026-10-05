@@ -197,26 +197,65 @@ class Command(BaseCommand):
         return None
 
     def _build_recipient_pdf_attachment(self, recipient):
-        """Build a recipient-specific PDF attachment from the API-side user report generator."""
+        """Build the recipient report and any matching Gmail +1 account report."""
+        recipient_email = (recipient.recipient_email or '').strip()
+        attachments = self._build_pdf_attachment_for_email(recipient, recipient_email)
+        if not attachments:
+            return []
+
+        plus_one_email = self._plus_one_gmail_account_email(recipient_email)
+        if not plus_one_email:
+            return attachments
+
+        return [
+            *attachments,
+            *self._build_pdf_attachment_for_email(
+                recipient,
+                plus_one_email,
+                allow_missing_user=True,
+                fail_on_error=True,
+            ),
+        ]
+
+    @staticmethod
+    def _plus_one_gmail_account_email(email):
+        local_part, separator, domain = email.rpartition('@')
+        if not separator or domain.lower() != 'gmail.com' or '+' in local_part:
+            return None
+        return f'{local_part}+1@gmail.com'
+
+    def _build_pdf_attachment_for_email(
+        self,
+        recipient,
+        report_email,
+        *,
+        allow_missing_user=False,
+        fail_on_error=False,
+    ):
+        """Build a PDF attachment from the API-side user report generator."""
         report_script = Path(__file__).resolve().parents[5] / 'django_backend' / 'generate_user_report.py'
         if not report_script.exists():
             logger.warning('PDF report generator not found at %s', report_script)
+            if fail_on_error:
+                raise RuntimeError(f'PDF report generator not found at {report_script}.')
             return []
 
         try:
-            if recipient.recipient_email:
-                command = [
-                    sys.executable,
-                    str(report_script),
-                    '--email',
-                    recipient.recipient_email,
-                    '--stdout-base64',
-                    '--cache-path',
-                    settings.CRYPGO_REPORT_PRICE_CACHE,
-                ]
-            else:
+            if not report_email:
                 logger.warning('No recipient email available for PDF generation.')
                 return []
+
+            command = [
+                sys.executable,
+                str(report_script),
+                '--email',
+                report_email,
+                '--stdout-base64',
+                '--cache-path',
+                settings.CRYPGO_REPORT_PRICE_CACHE,
+            ]
+            if allow_missing_user:
+                command.append('--allow-missing-user')
 
             env = os.environ.copy()
             env['DJANGO_SETTINGS_MODULE'] = 'core.settings'
@@ -246,30 +285,36 @@ class Command(BaseCommand):
                     error_text = error_text.decode('utf-8', errors='replace')
                 logger.error(
                     'PDF report generation failed for %s after %.2fs (exit=%s): %s',
-                    recipient.recipient_email or recipient.external_user_id,
+                    report_email or recipient.external_user_id,
                     elapsed,
                     result.returncode,
                     error_text or 'unknown error',
                 )
+                if fail_on_error:
+                    raise RuntimeError(
+                        f'Could not generate companion account report for {report_email}.'
+                    )
                 return []
 
             report_bytes = base64.b64decode(result.stdout or '', validate=True)
             if not report_bytes:
+                if allow_missing_user:
+                    return []
                 logger.warning(
                     'PDF report generation returned no bytes for %s after %.2fs',
-                    recipient.recipient_email or recipient.external_user_id,
+                    report_email or recipient.external_user_id,
                     elapsed,
                 )
                 return []
 
             logger.info(
                 'Generated PDF report for %s in %.2fs (%s bytes)',
-                recipient.recipient_email or recipient.external_user_id,
+                report_email or recipient.external_user_id,
                 elapsed,
                 len(report_bytes),
             )
 
-            user_identifier = slugify(recipient.recipient_email) or str(recipient.pk)
+            user_identifier = slugify(report_email) or str(recipient.pk)
             filename = (
                 f"Crypgo_Portfolio_Report_{user_identifier}_{timezone.now().strftime('%Y-%m-%d')}.pdf"
             )
@@ -281,14 +326,27 @@ class Command(BaseCommand):
                 stderr = stderr.decode('utf-8', errors='replace')
             logger.error(
                 'PDF report generation timed out for %s after %.2fs (limit=%ss): %s',
-                recipient.recipient_email or recipient.external_user_id,
+                report_email or recipient.external_user_id,
                 elapsed,
                 report_timeout,
                 str(stderr).strip() or 'no stderr output',
             )
+            if fail_on_error:
+                raise RuntimeError(
+                    f'Companion account report generation timed out for {report_email}.'
+                ) from exc
             return []
         except Exception as exc:
-            logger.exception('Unexpected error while generating PDF attachment for recipient %s', recipient.recipient_email or recipient.external_user_id)
+            if fail_on_error and isinstance(exc, RuntimeError):
+                raise
+            logger.exception(
+                'Unexpected error while generating PDF attachment for recipient %s',
+                report_email or recipient.external_user_id,
+            )
+            if fail_on_error:
+                raise RuntimeError(
+                    f'Unexpected error generating companion account report for {report_email}.'
+                ) from exc
             return []
 
     @staticmethod
@@ -399,6 +457,7 @@ class Command(BaseCommand):
                 'last_name': last_name,
                 'email': test_email,
                 'dashboard_url': dashboard_url,
+                'report_attachment_count': 0,
             }
             placeholders = set(TemplateRenderer.get_placeholders(campaign.template.html_content or ''))
             if 'delete_account_url' in placeholders:
@@ -406,17 +465,23 @@ class Command(BaseCommand):
             if 'password_reset_url' in placeholders:
                 reset_email = settings.CRYPGO_CAMPAIGN_OWNER_EMAIL or test_email
                 context['password_reset_url'] = self.create_password_reset_link(campaign, reset_email)
-            attachments = self._build_account_report_attachments(campaign.template, campaign_lead)
-            if attachments:
-                context['report_attachment_name'] = attachments[0][0]
-            result = sender.send_with_tracking(
-                recipient_email=test_email,
-                subject=TemplateRenderer.render_subject(campaign.template.subject, context),
-                html_body=str(TemplateRenderer.render(campaign.template.html_content, context)),
-                plain_text=TemplateRenderer._simple_render(campaign.template.plain_text or '', context),
-                campaign=campaign,
-                attachments=attachments,
-            )
+            try:
+                attachments = self._build_account_report_attachments(campaign.template, campaign_lead)
+                if attachments:
+                    context['report_attachment_name'] = attachments[0][0]
+                    context['report_attachment_count'] = len(attachments)
+                result = sender.send_with_tracking(
+                    recipient_email=test_email,
+                    subject=TemplateRenderer.render_subject(campaign.template.subject, context),
+                    html_body=str(TemplateRenderer.render(campaign.template.html_content, context)),
+                    plain_text=TemplateRenderer._simple_render(campaign.template.plain_text or '', context),
+                    campaign=campaign,
+                    attachments=attachments,
+                )
+            except Exception as e:
+                self.stderr.write(self.style.ERROR(f'Test email failed: {str(e)}'))
+                logger.exception('Test email failed while preparing or sending to %s', test_email)
+                return
 
             if result and getattr(result, 'status', None) in ('sent', 'delivered'):
                 self.stdout.write(self.style.SUCCESS('Test email sent successfully'))
@@ -910,24 +975,25 @@ class Command(BaseCommand):
                 'last_name': recipient.recipient_last_name or '',
                 'email': recipient.recipient_email,
                 'dashboard_url': self._frontend_campaign_url(recipient.dashboard_url),
+                'report_attachment_count': 0,
             }
             if recipient.dashboard_url != context['dashboard_url']:
                 recipient.dashboard_url = context['dashboard_url']
                 recipient.save(update_fields=['dashboard_url', 'updated_at'])
-            attachments = self._build_account_report_attachments(template, recipient)
-            if attachments:
-                context['report_attachment_name'] = attachments[0][0]
-            placeholders = set(TemplateRenderer.get_placeholders(template.html_content or ''))
-            if 'delete_account_url' in placeholders:
-                context['delete_account_url'] = self._delete_account_url(recipient.dashboard_url)
-            if 'password_reset_url' in placeholders:
-                reset_email = settings.CRYPGO_CAMPAIGN_OWNER_EMAIL or recipient.recipient_email
-                context['password_reset_url'] = self.create_password_reset_link(campaign, reset_email)
-            rendered_html = TemplateRenderer.render(template.html_content, context)
-            rendered_plain = TemplateRenderer._simple_render(template.plain_text or '', context)
-            rendered_subject = TemplateRenderer.render_subject(template.subject, context)
-
             try:
+                attachments = self._build_account_report_attachments(template, recipient)
+                if attachments:
+                    context['report_attachment_name'] = attachments[0][0]
+                    context['report_attachment_count'] = len(attachments)
+                placeholders = set(TemplateRenderer.get_placeholders(template.html_content or ''))
+                if 'delete_account_url' in placeholders:
+                    context['delete_account_url'] = self._delete_account_url(recipient.dashboard_url)
+                if 'password_reset_url' in placeholders:
+                    reset_email = settings.CRYPGO_CAMPAIGN_OWNER_EMAIL or recipient.recipient_email
+                    context['password_reset_url'] = self.create_password_reset_link(campaign, reset_email)
+                rendered_html = TemplateRenderer.render(template.html_content, context)
+                rendered_plain = TemplateRenderer._simple_render(template.plain_text or '', context)
+                rendered_subject = TemplateRenderer.render_subject(template.subject, context)
                 result = sender.send_with_tracking(
                     recipient_email=recipient.recipient_email,
                     subject=rendered_subject,
@@ -938,7 +1004,7 @@ class Command(BaseCommand):
                     attachments=attachments,
                 )
             except Exception as exc:
-                logger.exception('ERROR - Send failed to %s', recipient.recipient_email)
+                logger.exception('ERROR - Email preparation or send failed for %s', recipient.recipient_email)
                 CampaignLead.objects.filter(pk=recipient.pk).update(
                     status='failed',
                     error_message=f'{type(exc).__name__}: {exc}'[:500],

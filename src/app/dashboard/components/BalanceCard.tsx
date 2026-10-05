@@ -85,7 +85,7 @@ function AnimatedCurrency({ value, isDesktop }: { value: number; isDesktop: bool
   return (
     <>
       <span className="tabular-nums">{whole}</span>
-      <span className={isDesktop ? 'text-[0.5em] align-baseline ml-[0.05em] tabular-nums' : 'text-[1em] align-baseline ml-0 tabular-nums'}>
+      <span className={isDesktop ? 'text-[1em] align-baseline ml-[0.05em] tabular-nums' : 'text-[1em] align-baseline ml-0 tabular-nums'}>
         .{cents}
       </span>
     </>
@@ -122,7 +122,7 @@ export default function BalanceCard({ totalBalance, prices, isLoading, isDesktop
   const balanceDigits = maskBalance ? (
     <>
       <span>{balanceWhole}</span>
-      <span className={isDesktop ? 'text-[0.5em] align-baseline ml-[0.05em] tabular-nums' : 'text-[1em] align-baseline ml-0 tabular-nums'}>
+      <span className={isDesktop ? 'text-[1em] align-baseline ml-[0.05em] tabular-nums' : 'text-[1em] align-baseline ml-0 tabular-nums'}>
         .{balanceCents}
       </span>
     </>

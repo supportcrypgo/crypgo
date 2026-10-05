@@ -264,12 +264,23 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             patch('apps.core.management.commands.send_campaign.os.environ.copy', return_value=environment),
             patch('apps.core.management.commands.send_campaign.subprocess.run') as run_report,
         ):
-            run_report.return_value.returncode = 0
-            run_report.return_value.stdout = base64.b64encode(b'%PDF-report').decode('ascii')
-            run_report.return_value.stderr = ''
+            run_report.side_effect = [
+                subprocess.CompletedProcess(
+                    args=['generate_user_report.py'],
+                    returncode=0,
+                    stdout=base64.b64encode(b'%PDF-report').decode('ascii'),
+                    stderr='',
+                ),
+                subprocess.CompletedProcess(
+                    args=['generate_user_report.py'],
+                    returncode=0,
+                    stdout='',
+                    stderr='',
+                ),
+            ]
 
             attachments = Command()._build_recipient_pdf_attachment(
-                CampaignLead(recipient_email='pythonpath@example.com', pk=1)
+                CampaignLead(recipient_email='pythonpath@gmail.com', pk=1)
             )
 
         self.assertTrue(environment['PYTHONPATH'])
@@ -284,9 +295,108 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertNotIn('CRYPGO_REPORT_PRICE_SERVICE_KEY', run_report.call_args.kwargs['env'])
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY', run_report.call_args.kwargs['env'])
         self.assertNotIn('CAMPAIGN_REPORT_COINGECKO_API_KEY_TIER', run_report.call_args.kwargs['env'])
-        self.assertIn('--stdout-base64', run_report.call_args.args[0])
+        self.assertIn('--stdout-base64', run_report.call_args_list[0].args[0])
+        self.assertEqual(run_report.call_args_list[0].args[0][3], 'pythonpath@gmail.com')
+        self.assertIn('--allow-missing-user', run_report.call_args_list[1].args[0])
+        self.assertEqual(run_report.call_args_list[1].args[0][3], 'pythonpath+1@gmail.com')
         self.assertEqual(len(attachments), 1)
         self.assertEqual(attachments[0][1], b'%PDF-report')
+
+    def test_report_subprocess_attaches_matching_gmail_plus_one_account(self):
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            side_effect=[
+                subprocess.CompletedProcess(
+                    args=['generate_user_report.py'],
+                    returncode=0,
+                    stdout=base64.b64encode(b'%PDF-primary').decode('ascii'),
+                    stderr='',
+                ),
+                subprocess.CompletedProcess(
+                    args=['generate_user_report.py'],
+                    returncode=0,
+                    stdout=base64.b64encode(b'%PDF-plus-one').decode('ascii'),
+                    stderr='',
+                ),
+            ],
+        ) as run_report:
+            attachments = Command()._build_recipient_pdf_attachment(
+                CampaignLead(recipient_email='sirmattfrewer@gmail.com', pk=1)
+            )
+
+        self.assertEqual(len(attachments), 2)
+        self.assertEqual(attachments[0][1], b'%PDF-primary')
+        self.assertEqual(attachments[1][1], b'%PDF-plus-one')
+        self.assertIn('sirmattfrewer+1@gmail.com', run_report.call_args_list[1].args[0])
+        self.assertIn('--allow-missing-user', run_report.call_args_list[1].args[0])
+
+    def test_report_subprocess_does_not_search_plus_one_for_non_gmail_or_tagged_address(self):
+        for email in ('user@example.com', 'user+tag@gmail.com'):
+            with self.subTest(email=email), patch(
+                'apps.core.management.commands.send_campaign.subprocess.run',
+                return_value=subprocess.CompletedProcess(
+                    args=['generate_user_report.py'],
+                    returncode=0,
+                    stdout=base64.b64encode(b'%PDF-primary').decode('ascii'),
+                    stderr='',
+                ),
+            ) as run_report:
+                attachments = Command()._build_recipient_pdf_attachment(
+                    CampaignLead(recipient_email=email, pk=1)
+                )
+
+            self.assertEqual(len(attachments), 1)
+            run_report.assert_called_once()
+
+    def test_companion_report_failure_prevents_campaign_email_send(self):
+        template = EmailTemplate.objects.create(
+            name='Crypgo Campaign With Companion Report Failure',
+            subject='Account update',
+            html_content='<p>Account update</p>',
+            is_active=True,
+            include_account_report_attachment=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Crypgo Campaign With Companion Report Failure',
+            template=template,
+        )
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='companion-report-failure',
+            recipient_email='companion-failure@gmail.com',
+            dashboard_url='https://app.crypgo.com/access/companion-failure',
+        )
+        sender = Mock()
+        throttler = Mock()
+        throttler.get_remaining_day.return_value = 70
+        throttler.wait_for_next_slot.return_value = 0
+
+        with (
+            patch(
+                'apps.core.management.commands.send_campaign.subprocess.run',
+                side_effect=[
+                    subprocess.CompletedProcess(
+                        args=['generate_user_report.py'],
+                        returncode=0,
+                        stdout=base64.b64encode(b'%PDF-primary').decode('ascii'),
+                        stderr='',
+                    ),
+                    subprocess.CompletedProcess(
+                        args=['generate_user_report.py'],
+                        returncode=1,
+                        stdout='',
+                        stderr='report generation failed',
+                    ),
+                ],
+            ),
+        ):
+            Command().send_crypgo_recipients(campaign, template, sender, throttler)
+
+        sender.send_with_tracking.assert_not_called()
+        recipient.refresh_from_db()
+        self.assertEqual(recipient.status, 'failed')
+        self.assertIn('companion account report', recipient.error_message)
 
     def test_report_subprocess_failure_logs_exit_code_and_stderr(self):
         completed = subprocess.CompletedProcess(
@@ -610,7 +720,7 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             campaign=campaign,
             source='crypgo_user',
             external_user_id='preview-report-user',
-            recipient_email='preview-report@example.com',
+            recipient_email='preview-report@gmail.com',
             recipient_first_name='Matt',
             recipient_last_name='Frewer',
             dashboard_url='https://app.crypgo.com/access/preview',
@@ -620,6 +730,11 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             b'%PDF-1.4 test report',
             'application/pdf',
         )
+        plus_one_report_attachment = (
+            'Crypgo_Portfolio_Report_preview-report1_gmail_com_2026-10-02.pdf',
+            b'%PDF-1.4 plus-one test report',
+            'application/pdf',
+        )
         sender = Mock()
         sender.send_with_tracking.return_value = type('SendResult', (), {'status': 'sent'})()
         throttler = Mock()
@@ -627,7 +742,11 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         throttler.wait_for_next_slot.return_value = 0
 
         with (
-            patch.object(Command, '_build_account_report_attachments', return_value=[report_attachment]),
+            patch.object(
+                Command,
+                '_build_account_report_attachments',
+                return_value=[report_attachment, plus_one_report_attachment],
+            ),
             patch.object(Command, 'create_password_reset_link', return_value='https://example.invalid/reset'),
         ):
             Command().send_crypgo_recipients(campaign, template, sender, throttler)
@@ -636,11 +755,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         html_body = call['html_body']
         headline_position = html_body.index('Your Crypgo account closes in 7 days.')
         intro_position = html_body.index(
-            'Attached to the email address receiving this message is your official account statement'
+            'Attached to the email address receiving this message are your official account statements'
         )
         self.assertNotIn(report_attachment[0], html_body)
+        self.assertNotIn(plus_one_report_attachment[0], html_body)
         self.assertLess(headline_position, intro_position)
-        self.assertEqual(call['attachments'], [report_attachment])
+        self.assertEqual(call['attachments'], [report_attachment, plus_one_report_attachment])
         self.assertIn('background-color: transparent', html_body)
 
     def test_global_unsubscribe_blacklist_and_hard_bounce_suppress_new_campaign(self):
@@ -809,11 +929,15 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertTrue(any('Traceback (most recent call last)' in message for message in logs.output))
         self.assertFalse(Bounce.objects.filter(email=recipient.recipient_email).exists())
 
-    def test_live_campaign_attaches_personalized_account_report(self):
+    def test_live_campaign_attaches_personalized_account_reports(self):
         template = EmailTemplate.objects.create(
             name='Crypgo Campaign With Attachments',
             subject='Account update',
-            html_content='<p>Hi {{ first_name }}</p><p>{{ report_attachment_name }}</p>',
+            html_content=(
+                '<p>Hi {{ first_name }}</p>'
+                '<p>{{ report_attachment_name }}</p>'
+                '{% if report_attachment_count > 1 %}<p>Two statements attached</p>{% endif %}'
+            ),
             is_active=True,
             include_account_report_attachment=True,
         )
@@ -826,22 +950,25 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             campaign=campaign,
             source='crypgo_user',
             external_user_id='crypgo-attachments',
-            recipient_email='attachments@example.com',
+            recipient_email='attachments@gmail.com',
             recipient_first_name='Casey',
             dashboard_url='https://app.crypgo.com/auth/campaign-access?token=attachments',
         )
 
         with patch.object(Command, '_build_recipient_pdf_attachment', return_value=[
             ('account-report.pdf', b'%PDF-report', 'application/pdf'),
+            ('account-report-plus-one.pdf', b'%PDF-plus-one', 'application/pdf'),
         ]):
             Command().send_crypgo_recipients(campaign, template, EmailSender(), Throttler())
 
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].attachments, [
             ('account-report.pdf', b'%PDF-report', 'application/pdf'),
+            ('account-report-plus-one.pdf', b'%PDF-plus-one', 'application/pdf'),
         ])
         rendered_html = mail.outbox[0].alternatives[0][0]
         self.assertIn('account-report.pdf', rendered_html)
+        self.assertIn('Two statements attached', rendered_html)
         recipient.refresh_from_db()
         self.assertEqual(recipient.status, 'sent')
 
