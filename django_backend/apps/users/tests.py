@@ -165,6 +165,39 @@ class SharedInboxLoginTests(TestCase):
         self.assertEqual({account['label'] for account in payload['accounts']}, {'Matt Frewer'})
         self.assertEqual({account['email_hint'] for account in payload['accounts']}, {'sirmattfrewer@gmail.com'})
 
+    def test_gmail_plus_alias_login_shows_chooser_without_a_linked_group(self):
+        self.group.delete()
+
+        response = self.client.post(
+            '/api/auth/login/',
+            {'email': self.second.email, 'password': 'SharedPassword123!'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(payload['requires_account_selection'])
+        self.assertEqual({account['id'] for account in payload['accounts']}, {self.first.pk, self.second.pk})
+        self.assertEqual(
+            {account['email_hint'] for account in payload['accounts']},
+            {'sirmattfrewer@gmail.com'},
+        )
+
+    def test_gmail_plus_alias_login_skips_chooser_when_only_one_password_matches(self):
+        self.group.delete()
+        self.second.set_password('DifferentPassword123!')
+        self.second.save(update_fields=['password'])
+
+        response = self.client.post(
+            '/api/auth/login/',
+            {'email': self.first.email, 'password': 'SharedPassword123!'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertNotIn('requires_account_selection', response.json())
+        self.assertEqual(response.json()['user']['id'], self.first.pk)
+
     def test_linked_account_profile_uses_canonical_identity_and_email(self):
         self.client.force_authenticate(user=self.second)
 

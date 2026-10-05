@@ -285,8 +285,23 @@ class LoginView(APIView):
         shared_group = SharedInboxGroup.objects.filter(
             models.Q(inbox_email__iexact=email) | models.Q(users__email__iexact=email)
         ).distinct().first()
-        if shared_group:
-            candidates = list(shared_group.users.filter(is_active=True).order_by('pk'))
+        gmail_inbox = normalize_gmail_inbox(email)
+        if shared_group or gmail_inbox:
+            if shared_group:
+                candidates_by_id = {
+                    candidate.pk: candidate
+                    for candidate in shared_group.users.filter(is_active=True)
+                }
+            else:
+                candidates_by_id = {}
+            if gmail_inbox:
+                local_part = gmail_inbox.rsplit('@', 1)[0]
+                gmail_candidates = CustomUser.objects.filter(is_active=True).filter(
+                    models.Q(email__iexact=gmail_inbox)
+                    | models.Q(email__istartswith=f'{local_part}+', email__iendswith='@gmail.com')
+                )
+                candidates_by_id.update({candidate.pk: candidate for candidate in gmail_candidates})
+            candidates = sorted(candidates_by_id.values(), key=lambda candidate: candidate.pk)
             matching_users = [candidate for candidate in candidates if candidate.check_password(password)]
             if not matching_users:
                 return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -299,7 +314,7 @@ class LoginView(APIView):
                     'requires_account_selection': True,
                     'selection_token': raw_challenge,
                     'accounts': [
-                        build_account_choice(candidate, index, shared_group)
+                        build_account_choice(candidate, index, shared_group, gmail_inbox)
                         for index, candidate in enumerate(matching_users)
                     ],
                     'expires_at': challenge.expires_at,
@@ -314,13 +329,27 @@ class LoginView(APIView):
         return issue_auth_response(user, request, 'password')
 
 
-def build_account_choice(user: CustomUser, index: int, group: SharedInboxGroup) -> dict[str, Any]:
-    profile_user = group.users.filter(email__iexact=group.inbox_email).first() or user
+def normalize_gmail_inbox(email: str) -> str | None:
+    local_part, separator, domain = email.rpartition('@')
+    if not separator or domain != 'gmail.com':
+        return None
+    return f'{local_part.split("+", 1)[0]}@gmail.com'
+
+
+def build_account_choice(
+    user: CustomUser,
+    index: int,
+    group: SharedInboxGroup | None = None,
+    gmail_inbox: str | None = None,
+) -> dict[str, Any]:
+    profile_user = user
+    if group:
+        profile_user = group.users.filter(email__iexact=group.inbox_email).first() or user
     name = ' '.join(part for part in (profile_user.first_name.strip(), profile_user.last_name.strip()) if part)
     return {
         'id': user.pk,
         'label': name or f'Account {index + 1}',
-        'email_hint': group.inbox_email,
+        'email_hint': group.inbox_email if group else gmail_inbox or user.email,
     }
 
 
