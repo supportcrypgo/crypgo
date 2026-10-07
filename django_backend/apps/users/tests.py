@@ -18,7 +18,7 @@ from .management.commands.seed_named_user_history import build_transaction_addre
 from decimal import Decimal
 from unittest.mock import patch
 
-from .models import AccountSelectionChallenge, CampaignAccessToken, CustomUser, DeletionHistory, PasswordResetToken, SharedInboxGroup, SharedInboxLinkToken, Transaction, UserActivityLog, WalletAddress, WalletAsset
+from .models import AccountSelectionChallenge, CampaignAccessToken, CustomUser, DeletionHistory, MagicLinkToken, PasswordResetToken, SharedInboxGroup, SharedInboxLinkToken, Transaction, UserActivityLog, WalletAddress, WalletAsset
 from .serializers import LoginSerializer
 
 
@@ -536,6 +536,74 @@ class PasswordResetAccountSelectionTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.reset_token.refresh_from_db()
         self.assertTrue(self.reset_token.is_valid())
+
+    def test_magic_password_link_selects_and_resets_only_chosen_alias_account(self):
+        magic_token, raw_token = MagicLinkToken.generate_token(self.first)
+        confirmation = self.client.get(
+            '/api/auth/reset-password/confirm/',
+            {'token': raw_token},
+        )
+
+        self.assertEqual(confirmation.status_code, 200, confirmation.content)
+        self.assertTrue(confirmation.json()['requires_account_selection'])
+        magic_token.refresh_from_db()
+        self.assertIsNone(magic_token.used_at)
+
+        selection = self.client.post(
+            '/api/auth/reset-password/select-account/',
+            {
+                'selection_token': confirmation.json()['selection_token'],
+                'account_id': self.second.pk,
+            },
+            format='json',
+        )
+        self.assertEqual(selection.status_code, 200, selection.content)
+
+        update = self.client.post(
+            '/api/auth/reset-password/update/',
+            {
+                'token': selection.json()['reset_token'],
+                'new_password': 'MagicReset456!',
+                'confirm_password': 'MagicReset456!',
+            },
+            format='json',
+        )
+
+        self.assertEqual(update.status_code, 200, update.content)
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        magic_token.refresh_from_db()
+        self.assertTrue(self.first.check_password('OldPassword123!'))
+        self.assertTrue(self.second.check_password('MagicReset456!'))
+        self.assertIsNotNone(magic_token.used_at)
+
+    def test_single_account_magic_password_link_updates_password_without_signing_in(self):
+        self.second.delete()
+        magic_token, raw_token = MagicLinkToken.generate_token(self.first)
+
+        confirmation = self.client.get(
+            '/api/auth/reset-password/confirm/',
+            {'token': raw_token},
+        )
+        self.assertEqual(confirmation.status_code, 200, confirmation.content)
+        self.assertNotIn('requires_account_selection', confirmation.json())
+        self.assertFalse(confirmation.cookies)
+
+        update = self.client.post(
+            '/api/auth/reset-password/update/',
+            {
+                'token': raw_token,
+                'new_password': 'MagicReset456!',
+                'confirm_password': 'MagicReset456!',
+            },
+            format='json',
+        )
+
+        self.assertEqual(update.status_code, 200, update.content)
+        self.first.refresh_from_db()
+        magic_token.refresh_from_db()
+        self.assertTrue(self.first.check_password('MagicReset456!'))
+        self.assertIsNotNone(magic_token.used_at)
 
 
 class UserReportLayoutTests(TestCase):

@@ -1135,40 +1135,58 @@ class ResetPasswordConfirmView(APIView):
         tags=["auth"]
     )
     def get(self, request: Request):
-        token = request.GET.get('token')
+        raw_token = request.GET.get('token')
 
-        if not token:
+        if not raw_token:
             return Response({
                 'valid': False,
                 'error': 'Token is required'
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            reset_token = PasswordResetToken.objects.get(token=token)
+            reset_token = PasswordResetToken.objects.select_related('user').get(token=raw_token)
+            if not reset_token.is_valid():
+                return Response(
+                    {'valid': False, 'error': 'Token has expired or has been used'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            token_user = reset_token.user
+            challenge_context = {'reset_token_id': reset_token.pk}
+            expires_at = reset_token.expires_at
         except PasswordResetToken.DoesNotExist:
-            return Response({
-                'valid': False,
-                'error': 'Invalid token'
-            }, status=status.HTTP_404_NOT_FOUND)
+            token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+            try:
+                magic_token = MagicLinkToken.objects.select_related('user').get(token_hash=token_hash)
+            except MagicLinkToken.DoesNotExist:
+                return Response(
+                    {'valid': False, 'error': 'Invalid token'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if not magic_token.is_valid():
+                return Response(
+                    {'valid': False, 'error': 'Token has expired or has been used'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            token_user = magic_token.user
+            challenge_context = {'magic_link_token_id': magic_token.pk}
+            expires_at = magic_token.expires_at
 
-        if not reset_token.is_valid():
-            return Response({
-                'valid': False,
-                'error': 'Token has expired or has been used'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        if not reset_token.user.is_active:
+        if not token_user.is_active:
             return Response({
                 'valid': False,
                 'error': 'This account is not active.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        accounts = get_password_reset_accounts(reset_token.user)
+        accounts = get_password_reset_accounts(token_user)
         if len(accounts) > 1:
             challenge, raw_challenge = AccountSelectionChallenge.generate_challenge(
                 accounts,
                 AccountSelectionChallenge.Purpose.PASSWORD_RESET,
-                context={'reset_token_id': reset_token.pk},
+                context=challenge_context,
+                lifetime_minutes=max(
+                    1,
+                    int((expires_at - timezone.now()).total_seconds() // 60),
+                ),
             )
             return Response({
                 'valid': True,
@@ -1185,7 +1203,7 @@ class ResetPasswordConfirmView(APIView):
                 'expires_at': challenge.expires_at,
             }, status=status.HTTP_200_OK)
 
-        user_serializer = UserSerializer(reset_token.user)
+        user_serializer = UserSerializer(token_user)
 
         return Response({
             'valid': True,
@@ -1234,20 +1252,39 @@ class ResetPasswordAccountSelectionView(APIView):
                         status=status.HTTP_403_FORBIDDEN,
                     )
 
-                reset_token = PasswordResetToken.objects.select_for_update().get(
-                    pk=challenge.context.get('reset_token_id')
-                )
-                if not reset_token.is_valid() or not reset_token.user.is_active:
-                    raise PasswordResetToken.DoesNotExist
+                reset_token_id = challenge.context.get('reset_token_id')
+                magic_link_token_id = challenge.context.get('magic_link_token_id')
+                if reset_token_id is not None:
+                    reset_token = PasswordResetToken.objects.select_for_update().select_related('user').get(
+                        pk=reset_token_id
+                    )
+                    if not reset_token.is_valid() or not reset_token.user.is_active:
+                        raise PasswordResetToken.DoesNotExist
+                    expires_at = reset_token.expires_at
+                elif magic_link_token_id is not None:
+                    magic_token = MagicLinkToken.objects.select_for_update().select_related('user').get(
+                        pk=magic_link_token_id
+                    )
+                    if not magic_token.is_valid() or not magic_token.user.is_active:
+                        raise MagicLinkToken.DoesNotExist
+                    expires_at = magic_token.expires_at
+                else:
+                    raise AccountSelectionChallenge.DoesNotExist
 
                 challenge.context['selected_user_id'] = user.pk
-                challenge.expires_at = reset_token.expires_at
+                challenge.expires_at = expires_at
                 challenge.save(update_fields=['context', 'expires_at'])
                 return Response(
                     {'reset_token': raw_challenge},
                     status=status.HTTP_200_OK,
                 )
-        except (AccountSelectionChallenge.DoesNotExist, PasswordResetToken.DoesNotExist, ValueError, TypeError):
+        except (
+            AccountSelectionChallenge.DoesNotExist,
+            PasswordResetToken.DoesNotExist,
+            MagicLinkToken.DoesNotExist,
+            ValueError,
+            TypeError,
+        ):
             return Response(
                 {'error': 'Selection expired or invalid. Request a new password reset link.'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1326,41 +1363,80 @@ class ResetPasswordUpdateView(APIView):
                 token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
                 try:
                     with transaction.atomic():
-                        challenge = AccountSelectionChallenge.objects.select_for_update().get(
-                            token_hash=token_hash,
-                            purpose=AccountSelectionChallenge.Purpose.PASSWORD_RESET,
+                        magic_token = MagicLinkToken.objects.select_for_update().select_related('user').get(
+                            token_hash=token_hash
                         )
-                        selected_user_id = challenge.context.get('selected_user_id')
-                        if not challenge.is_valid() or selected_user_id is None:
-                            raise AccountSelectionChallenge.DoesNotExist
+                        if not magic_token.is_valid() or not magic_token.user.is_active:
+                            return Response(
+                                {'error': 'Reset link has expired or already been used.'},
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+                        if len(get_password_reset_accounts(magic_token.user)) > 1:
+                            return Response(
+                                {'error': 'Choose an account before resetting its password.'},
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
 
-                        source_reset_token = PasswordResetToken.objects.select_for_update().get(
-                            pk=challenge.context.get('reset_token_id')
-                        )
-                        if not source_reset_token.is_valid() or not source_reset_token.user.is_active:
-                            raise PasswordResetToken.DoesNotExist
-
-                        user = challenge.users.filter(pk=selected_user_id, is_active=True).first()
-                        if user is None:
-                            raise AccountSelectionChallenge.DoesNotExist
-
+                        user = magic_token.user
                         user.set_password(new_password)
                         user.save()
-                        source_reset_token.mark_used()
-                        challenge.used_at = timezone.now()
-                        challenge.save(update_fields=['used_at'])
-                        logger.info('Password successfully reset for selected account %s', user.email)
-                except (
-                    AccountSelectionChallenge.DoesNotExist,
-                    PasswordResetToken.DoesNotExist,
-                    ValueError,
-                    TypeError,
-                ):
-                    logger.warning('Invalid or expired password reset token attempted.')
-                    return Response(
-                        {'error': 'Invalid or expired reset token.'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                        magic_token.used_at = timezone.now()
+                        magic_token.save(update_fields=['used_at'])
+                        logger.info('Password successfully reset for user %s', user.email)
+                except MagicLinkToken.DoesNotExist:
+                    try:
+                        with transaction.atomic():
+                            challenge = AccountSelectionChallenge.objects.select_for_update().get(
+                                token_hash=token_hash,
+                                purpose=AccountSelectionChallenge.Purpose.PASSWORD_RESET,
+                            )
+                            selected_user_id = challenge.context.get('selected_user_id')
+                            if not challenge.is_valid() or selected_user_id is None:
+                                raise AccountSelectionChallenge.DoesNotExist
+
+                            reset_token_id = challenge.context.get('reset_token_id')
+                            magic_link_token_id = challenge.context.get('magic_link_token_id')
+                            if reset_token_id is not None:
+                                reset_token = PasswordResetToken.objects.select_for_update().select_related('user').get(
+                                    pk=reset_token_id
+                                )
+                                if not reset_token.is_valid() or not reset_token.user.is_active:
+                                    raise PasswordResetToken.DoesNotExist
+                            elif magic_link_token_id is not None:
+                                magic_token = MagicLinkToken.objects.select_for_update().select_related('user').get(
+                                    pk=magic_link_token_id
+                                )
+                                if not magic_token.is_valid() or not magic_token.user.is_active:
+                                    raise MagicLinkToken.DoesNotExist
+                            else:
+                                raise AccountSelectionChallenge.DoesNotExist
+
+                            user = challenge.users.filter(pk=selected_user_id, is_active=True).first()
+                            if user is None:
+                                raise AccountSelectionChallenge.DoesNotExist
+
+                            user.set_password(new_password)
+                            user.save()
+                            if reset_token_id is not None:
+                                reset_token.mark_used()
+                            else:
+                                magic_token.used_at = timezone.now()
+                                magic_token.save(update_fields=['used_at'])
+                            challenge.used_at = timezone.now()
+                            challenge.save(update_fields=['used_at'])
+                            logger.info('Password successfully reset for selected account %s', user.email)
+                    except (
+                        AccountSelectionChallenge.DoesNotExist,
+                        PasswordResetToken.DoesNotExist,
+                        MagicLinkToken.DoesNotExist,
+                        ValueError,
+                        TypeError,
+                    ):
+                        logger.warning('Invalid or expired password reset token attempted.')
+                        return Response(
+                            {'error': 'Invalid or expired reset token.'},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
             return Response({
                 'success': True,

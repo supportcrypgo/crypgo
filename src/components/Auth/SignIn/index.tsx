@@ -37,13 +37,31 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
       return;
     }
 
+    let cancelled = false;
     setTokenValid(null);
-    authApi.consumeMagicLink(magicLinkToken)
-      .then(() => setTokenValid(true))
+    setAccountSelection(null);
+    setSelectedAccountId(null);
+    setSelectedResetToken(null);
+    setFormError('');
+    authApi.confirmResetToken(magicLinkToken)
+      .then((confirmation) => {
+        if (cancelled) return;
+        if ('requires_account_selection' in confirmation) {
+          setAccountSelection(confirmation);
+          setSelectedAccountId(confirmation.accounts[0]?.id ?? null);
+        } else {
+          setTokenValid(true);
+        }
+      })
       .catch((error: unknown) => {
+        if (cancelled) return;
         setTokenValid(false);
         setFormError(error instanceof Error ? error.message : 'This password-change link is invalid or already used.');
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [magicLinkToken]);
 
   useEffect(() => {
@@ -112,7 +130,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
     setLoading(true);
     setFormError('');
     try {
-      if (passwordResetToken) {
+      if (passwordResetToken || magicLinkToken) {
         const selection = await authApi.selectPasswordResetAccount(
           accountSelection.selection_token,
           selectedAccountId,
@@ -121,6 +139,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
         setAccountSelection(null);
         setSelectedAccountId(null);
         setResetTokenValid(true);
+        setTokenValid(true);
         setNewPassword('');
         setConfirmPassword('');
         return;
@@ -133,7 +152,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to select this account.';
       setFormError(message);
-      if (!passwordResetToken) {
+      if (!passwordResetToken && !magicLinkToken) {
         setAccountSelection(null);
         setSelectedAccountId(null);
       }
@@ -174,7 +193,9 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
       }
       setLoading(true);
       try {
-        await authApi.resetPassword(magicLinkToken, newPassword, confirmPassword);
+        await authApi.resetPassword(selectedResetToken ?? magicLinkToken, newPassword, confirmPassword);
+        setSelectedResetToken(null);
+        setTokenValid(null);
         onPasswordChanged?.();
       } catch (err) {
         setFormError(err instanceof Error ? err.message : 'Unable to update your password.');
