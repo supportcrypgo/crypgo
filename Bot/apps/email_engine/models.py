@@ -17,6 +17,7 @@ class EmailLog(models.Model):
     recipient_email = models.EmailField()
     subject = models.CharField(max_length=500)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    sender_email = models.EmailField(blank=True, default='')
     
     # Tracking
     message_id = models.CharField(max_length=500, blank=True, null=True, db_index=True)

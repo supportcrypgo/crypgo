@@ -130,6 +130,24 @@ python manage.py send_campaign --dry-run
 2. Generate an App Password
 3. Update `.env` with credentials
 
+Campaigns can use two Gmail SMTP accounts in order: the primary account sends
+up to 70 campaign emails per day, then the secondary account sends up to 70
+more (140 total per campaign per day). The existing 40-per-hour cap and
+90-second spacing remain in effect. Set both app passwords in PythonAnywhere's
+environment configuration (or local `Bot/.env`); do not commit or share them:
+
+```dotenv
+EMAIL_HOST_USER=support.crypgo@gmail.com
+EMAIL_HOST_PASSWORD=<support-app-password>
+CAMPAIGN_SECONDARY_EMAIL=news.crypgo@gmail.com
+CAMPAIGN_SECONDARY_EMAIL_PASSWORD=<news-app-password>
+```
+
+Apply the Bot database migration with `python manage.py migrate` before
+resuming campaigns. Campaign email logs record which sender account was used.
+Password-reset emails sent by the Django API remain fixed to
+`support.crypgo@gmail.com`.
+
 ### SendGrid
 1. Create API key in SendGrid dashboard
 2. Update `EMAIL_HOST` to `smtp.sendgrid.net`

@@ -125,8 +125,7 @@ def send_reset_password_email(user, reset_token):
     html_message = render_to_string('emails/reset_password.html', context)
     plain_message = strip_tags(html_message)
 
-    configured_from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'support.crypgo@gmail.com'
-    from_email = f"{getattr(settings, 'EMAIL_FROM_NAME', 'Crypgo')} <{configured_from_email}>"
+    from_email = 'Crypgo <support.crypgo@gmail.com>'
 
     try:
         send_mail(

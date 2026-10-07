@@ -103,6 +103,11 @@ if USE_GMAIL_API:
     GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
     GMAIL_REFRESH_TOKEN = os.getenv('GMAIL_REFRESH_TOKEN')
     EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com') or 'support.crypgo@gmail.com'
+    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+    EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True'
+    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
     DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com') or 'support.crypgo@gmail.com'
     EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
     EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
@@ -121,6 +126,23 @@ else:
     ) or 'support.crypgo@gmail.com'
     EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
     EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
+
+# Campaigns use separate SMTP credentials per sending account. The primary
+# account reuses the existing SMTP configuration; keep the secondary password
+# in deployment environment variables, never in source control.
+CAMPAIGN_EMAIL_ACCOUNTS = (
+    {
+        'email': 'support.crypgo@gmail.com',
+        'password': EMAIL_HOST_PASSWORD,
+    },
+    {
+        'email': os.getenv(
+            'CAMPAIGN_SECONDARY_EMAIL',
+            'news.crypgo@gmail.com',
+        ),
+        'password': os.getenv('CAMPAIGN_SECONDARY_EMAIL_PASSWORD', ''),
+    },
+)
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -422,4 +444,3 @@ UNFOLD = {
 
 # Default primary key
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-

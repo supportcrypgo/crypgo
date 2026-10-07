@@ -59,6 +59,34 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertIn('List-Unsubscribe', sent_message.extra_headers)
         self.assertIn('Message-ID', sent_message.extra_headers)
 
+    @override_settings(USE_GMAIL_API=False)
+    def test_campaign_sender_uses_selected_smtp_credentials_and_logs_account(self):
+        with (
+            patch('apps.email_engine.sender.USE_GMAIL_API', False),
+            patch(
+                'django.core.mail.backends.smtp.EmailBackend.send_messages',
+                return_value=1,
+            ) as send_messages,
+        ):
+            result = self.sender.send_with_tracking(
+                recipient_email='news-recipient@example.com',
+                subject='Campaign from secondary',
+                html_body='<p>Test</p>',
+                campaign=self.campaign,
+                sender_account={
+                    'email': 'news.crypgo@gmail.com',
+                    'password': 'news-test-password',
+                },
+            )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.sender_email, 'news.crypgo@gmail.com')
+        message = send_messages.call_args.args[0][0]
+        backend = message.connection
+        self.assertEqual(backend.username, 'news.crypgo@gmail.com')
+        self.assertEqual(backend.password, 'news-test-password')
+        self.assertEqual(message.from_email, 'Crypgo <news.crypgo@gmail.com>')
+
     def test_sender_falls_back_to_there_for_unusable_local_part(self):
         start_len = len(mail.outbox)
 
@@ -182,7 +210,7 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(throttler.get_remaining_hour(self.campaign), 0)
         self.assertFalse(throttler.can_send_campaign(self.campaign))
 
-    def test_throttler_leaves_one_send_after_69_sends_in_a_day(self):
+    def test_throttler_leaves_one_send_after_139_sends_in_a_day(self):
         sent_at = timezone.now() - timedelta(hours=2)
         EmailLog.objects.bulk_create([
             EmailLog(
@@ -193,14 +221,14 @@ class EmailSenderDeliverabilityTest(TestCase):
                 status='sent',
                 sent_at=sent_at,
             )
-            for idx in range(69)
+            for idx in range(139)
         ])
 
         throttler = Throttler()
 
         self.assertEqual(throttler.get_remaining_day(self.campaign), 1)
 
-    def test_throttler_blocks_after_70_sends_in_a_day(self):
+    def test_throttler_blocks_after_140_sends_in_a_day(self):
         sent_at = timezone.now() - timedelta(hours=2)
         EmailLog.objects.bulk_create([
             EmailLog(
@@ -211,13 +239,116 @@ class EmailSenderDeliverabilityTest(TestCase):
                 status='sent',
                 sent_at=sent_at,
             )
-            for idx in range(70)
+            for idx in range(140)
         ])
 
         throttler = Throttler()
 
         self.assertEqual(throttler.get_remaining_day(self.campaign), 0)
         self.assertFalse(throttler.can_send_campaign(self.campaign))
+
+    def test_throttler_switches_to_second_sender_after_70_sends(self):
+        sent_at = timezone.now() - timedelta(hours=2)
+        EmailLog.objects.bulk_create([
+            EmailLog(
+                campaign=self.campaign,
+                recipient_email=f'support-{idx}@example.com',
+                subject='Test',
+                tracking_id=f'support-throttle-test-{idx}',
+                status='sent',
+                sender_email='support.crypgo@gmail.com',
+                sent_at=sent_at,
+            )
+            for idx in range(70)
+        ])
+        sender_accounts = (
+            {'email': 'support.crypgo@gmail.com', 'password': 'support-test-password'},
+            {'email': 'news.crypgo@gmail.com', 'password': 'news-test-password'},
+        )
+
+        selected = Throttler().get_next_campaign_sender(self.campaign, sender_accounts)
+
+        self.assertEqual(selected['email'], 'news.crypgo@gmail.com')
+
+    @override_settings(
+        CAMPAIGN_EMAIL_ACCOUNTS=(
+            {'email': 'support.crypgo@gmail.com', 'password': 'test-support-password'},
+            {'email': 'news.crypgo@gmail.com', 'password': 'test-news-password'},
+        ),
+    )
+    def test_campaign_delivery_switches_to_secondary_smtp_account_at_primary_cap(self):
+        template = EmailTemplate.objects.create(
+            name='Secondary Sender Campaign Template',
+            subject='Account update',
+            html_content='<p>Account update</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Secondary Sender Campaign',
+            template=template,
+            status='running',
+        )
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='secondary-sender-user',
+            recipient_email='secondary-recipient@example.com',
+            dashboard_url='https://app.crypgo.com/access/secondary-sender',
+        )
+        sent_at = timezone.now() - timedelta(hours=2)
+        EmailLog.objects.bulk_create([
+            EmailLog(
+                campaign=campaign,
+                recipient_email=f'primary-{idx}@example.com',
+                subject='Earlier campaign mail',
+                tracking_id=f'primary-sender-cap-{idx}',
+                status='sent',
+                sender_email='support.crypgo@gmail.com',
+                sent_at=sent_at,
+            )
+            for idx in range(70)
+        ])
+
+        with patch(
+            'django.core.mail.backends.smtp.EmailBackend.send_messages',
+            return_value=1,
+        ) as send_messages:
+            Command().send_crypgo_recipients(
+                campaign,
+                template,
+                EmailSender(),
+                Throttler(),
+            )
+
+        message = send_messages.call_args.args[0][0]
+        delivery_log = EmailLog.objects.get(recipient_email=recipient.recipient_email)
+        recipient.refresh_from_db()
+        self.assertEqual(message.from_email, 'Crypgo <news.crypgo@gmail.com>')
+        self.assertEqual(message.connection.username, 'news.crypgo@gmail.com')
+        self.assertEqual(delivery_log.sender_email, 'news.crypgo@gmail.com')
+        self.assertEqual(recipient.status, 'sent')
+
+    def test_throttler_counts_legacy_unattributed_sends_against_primary_only(self):
+        sent_at = timezone.now() - timedelta(hours=2)
+        EmailLog.objects.bulk_create([
+            EmailLog(
+                campaign=self.campaign,
+                recipient_email=f'legacy-{idx}@example.com',
+                subject='Test',
+                tracking_id=f'legacy-throttle-test-{idx}',
+                status='sent',
+                sent_at=sent_at,
+            )
+            for idx in range(70)
+        ])
+        sender_accounts = (
+            {'email': 'support.crypgo@gmail.com', 'password': 'support-test-password'},
+            {'email': 'news.crypgo@gmail.com', 'password': 'news-test-password'},
+        )
+
+        selected = Throttler().get_next_campaign_sender(self.campaign, sender_accounts)
+
+        self.assertEqual(selected['email'], 'news.crypgo@gmail.com')
 
     def test_throttler_history_is_campaign_scoped(self):
         other_campaign = Campaign.objects.create(name='Other Throttle Campaign', subject='Test')
@@ -229,16 +360,20 @@ class EmailSenderDeliverabilityTest(TestCase):
                 tracking_id=f'other-campaign-throttle-{idx}',
                 status='sent',
             )
-            for idx in range(70)
+            for idx in range(140)
         ])
 
-        self.assertEqual(Throttler().get_remaining_day(self.campaign), 70)
+        self.assertEqual(Throttler().get_remaining_day(self.campaign), 140)
 
 
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
     DEFAULT_FROM_EMAIL='support.crypgo@gmail.com',
     SITE_URL='http://testserver',
+    CAMPAIGN_EMAIL_ACCOUNTS=(
+        {'email': 'support.crypgo@gmail.com', 'password': 'test-support-password'},
+        {'email': 'news.crypgo@gmail.com', 'password': 'test-news-password'},
+    ),
 )
 class CrypgoCampaignRecipientDeliveryTest(TestCase):
     def setUp(self):
@@ -369,8 +504,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         )
         sender = Mock()
         throttler = Mock()
-        throttler.get_remaining_day.return_value = 70
+        throttler.get_remaining_day.return_value = 140
         throttler.wait_for_next_slot.return_value = 0
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
 
         with (
             patch(
@@ -605,8 +744,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
 
         sender.send_with_tracking.side_effect = send_email
         throttler = Mock()
-        throttler.get_remaining_day.return_value = 70
+        throttler.get_remaining_day.return_value = 140
         throttler.wait_for_next_slot.return_value = 0
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
 
         with (
             patch.object(
@@ -665,8 +808,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         sender = Mock()
         sender.send_with_tracking.return_value = type('SendResult', (), {'status': 'sent'})()
         throttler = Mock()
-        throttler.get_remaining_day.return_value = 70
+        throttler.get_remaining_day.return_value = 140
         throttler.wait_for_next_slot.return_value = 0
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
 
         with patch.object(Command, '_build_account_report_attachments', return_value=[]):
             Command().send_crypgo_recipients(campaign_b, template, sender, throttler)
@@ -707,8 +854,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         sender = Mock()
         sender.send_with_tracking.return_value = email_log
         throttler = Mock()
-        throttler.get_remaining_day.return_value = 70
+        throttler.get_remaining_day.return_value = 140
         throttler.wait_for_next_slot.return_value = 0
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
         command = Command()
 
         with patch.object(Command, '_build_account_report_attachments', return_value=[]):
@@ -755,8 +906,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         sender = Mock()
         sender.send_with_tracking.return_value = type('SendResult', (), {'status': 'sent'})()
         throttler = Mock()
-        throttler.get_remaining_day.return_value = 70
+        throttler.get_remaining_day.return_value = 140
         throttler.wait_for_next_slot.return_value = 0
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
 
         with (
             patch.object(
@@ -789,7 +944,11 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertNotIn('>Continue at</a>', html_body)
         self.assertIn('Your secure login details:', html_body)
         self.assertIn('Email: preview-report@gmail.com', html_body)
-        self.assertIn('Password:<br>Make a withdrawal payable to Matt Frewer</p>', html_body)
+        self.assertIn(
+            'Temporary default password provided for initial access: Password123!',
+            html_body,
+        )
+        self.assertIn('Make a withdrawal payable to Matt Frewer</p>', html_body)
         self.assertIn(
             'Additional%20details%20are%20needed%20regarding%20an%20account%20action',
             html_body,
@@ -828,8 +987,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         Bounce.objects.create(email='HARD-BOUNCE@example.com', bounce_type='hard')
         sender = Mock()
         throttler = Mock()
-        throttler.get_remaining_day.return_value = 70
+        throttler.get_remaining_day.return_value = 140
         throttler.wait_for_next_slot.return_value = 0
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
 
         Command().send_crypgo_recipients(campaign, template, sender, throttler)
 
@@ -864,8 +1027,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         command._active_run_id = run.pk
         sender = Mock()
         throttler = Mock()
-        throttler.get_remaining_day.return_value = 70
+        throttler.get_remaining_day.return_value = 140
         throttler.wait_for_next_slot.return_value = 2
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
 
         with patch(
             'apps.core.management.commands.send_campaign.time.sleep',

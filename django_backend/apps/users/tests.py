@@ -436,6 +436,21 @@ class PasswordResetAccountSelectionTests(TestCase):
         )
         self.reset_token = PasswordResetToken.generate_token(self.first)
 
+    @override_settings(
+        DEFAULT_FROM_EMAIL='news.crypgo@gmail.com',
+        EMAIL_FROM_NAME='Unexpected sender',
+        FRONTEND_URL='https://app.example.com',
+    )
+    @patch('apps.users.services.send_mail', return_value=1)
+    def test_password_reset_email_always_uses_support_sender(self, send_mail_mock):
+        from .services import send_reset_password_email
+
+        self.assertTrue(send_reset_password_email(self.first, self.reset_token))
+        self.assertEqual(
+            send_mail_mock.call_args.kwargs['from_email'],
+            'Crypgo <support.crypgo@gmail.com>',
+        )
+
     def test_reset_confirmation_requires_account_choice_for_gmail_aliases(self):
         response = self.client.get(
             '/api/auth/reset-password/confirm/',

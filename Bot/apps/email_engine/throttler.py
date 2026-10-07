@@ -18,7 +18,8 @@ class Throttler:
 
     CAMPAIGN_SECONDS_BETWEEN_EMAILS = 90
     CAMPAIGN_MAX_PER_HOUR = 40
-    CAMPAIGN_MAX_PER_DAY = 70
+    CAMPAIGN_MAX_PER_DAY = 140
+    CAMPAIGN_MAX_PER_SENDER_PER_DAY = 70
 
     def __init__(self, per_second=None, per_hour=None, per_day=None):
         self.per_second = per_second or self.DEFAULT_PER_SECOND
@@ -134,6 +135,34 @@ class Throttler:
         today = timezone.now().date()
         sent_today = self.get_campaign_email_queryset(campaign).filter(sent_at__date=today).count()
         return max(0, self.CAMPAIGN_MAX_PER_DAY - sent_today)
+
+    def get_remaining_sender_day(self, campaign, sender_email, *, include_unattributed=False):
+        """Get how many sends remain for this campaign sender today."""
+        from django.db.models import Q
+
+        today = timezone.now().date()
+        sender_logs = Q(sender_email__iexact=sender_email)
+        if include_unattributed:
+            sender_logs |= Q(sender_email='')
+        sent_today = self.get_campaign_email_queryset(campaign).filter(
+            sent_at__date=today,
+        ).filter(sender_logs).count()
+        return max(0, self.CAMPAIGN_MAX_PER_SENDER_PER_DAY - sent_today)
+
+    def get_next_campaign_sender(self, campaign, sender_accounts):
+        """Choose the first configured campaign sender that still has daily capacity."""
+        for index, account in enumerate(sender_accounts):
+            if self.get_remaining_sender_day(
+                campaign,
+                account['email'],
+                include_unattributed=index == 0,
+            ) > 0:
+                if not account.get('password'):
+                    raise ValueError(
+                        f"SMTP password is not configured for campaign sender {account['email']}."
+                    )
+                return account
+        return None
 
     def wait_for_next_slot(self, campaign):
         """Return the number of seconds to wait before the next campaign send."""

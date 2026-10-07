@@ -250,7 +250,7 @@ class EmailSender:
     def send_with_tracking(self, recipient_email, subject, html_body,
                            plain_text=None, campaign=None,
                            context=None, track_links=True,
-                           attachments=None):
+                           attachments=None, sender_account=None):
         """Send a standalone email with full tracking"""
         tracking_id = str(uuid.uuid4())
 
@@ -271,11 +271,32 @@ class EmailSender:
                 )
 
             from_email = self._resolve_from_email()
+            connection = None
+            sender_email = ''
+            if sender_account:
+                sender_email = sender_account['email']
+                display_name = getattr(settings, 'EMAIL_FROM_NAME', None) or 'Crypgo'
+                from_email = f'{display_name} <{sender_email}>'
+                if (
+                    USE_GMAIL_API
+                    or sender_email.lower() != settings.EMAIL_HOST_USER.lower()
+                ):
+                    from django.core.mail.backends.smtp import EmailBackend
+
+                    connection = EmailBackend(
+                        host=settings.EMAIL_HOST,
+                        port=settings.EMAIL_PORT,
+                        username=sender_email,
+                        password=sender_account['password'],
+                        use_tls=settings.EMAIL_USE_TLS,
+                        use_ssl=settings.EMAIL_USE_SSL,
+                        timeout=getattr(settings, 'EMAIL_TIMEOUT', None),
+                    )
             # Generate plain text fallback if none provided
             if not plain_text and html_body:
                 plain_text = re.sub(r'<[^>]+>', '', html_body).strip()
             headers = self._build_headers(recipient_email, tracking_id)
-            if USE_GMAIL_API:
+            if USE_GMAIL_API and not sender_account:
                 delivery_attempted = True
                 gmail_sender.send(
                     from_email=from_email,
@@ -293,6 +314,7 @@ class EmailSender:
                     from_email=from_email,
                     to=[recipient_email],
                     headers=headers,
+                    connection=connection,
                 )
                 if html_body:
                     msg.attach_alternative(html_body, "text/html")
@@ -307,6 +329,7 @@ class EmailSender:
                 recipient_email=recipient_email, subject=subject,
                 status='sent', tracking_id=tracking_id,
                 message_id=headers.get('Message-ID'),
+                sender_email=sender_email,
             )
 
         except Exception as e:
@@ -322,6 +345,7 @@ class EmailSender:
                 status='failed', tracking_id=tracking_id,
                 message_id=headers.get('Message-ID') if 'headers' in locals() else None,
                 error_message=str(e),
+                sender_email=sender_email if 'sender_email' in locals() else '',
             )
 
             internal_application_error = isinstance(
@@ -409,7 +433,7 @@ class EmailSender:
 
     def _log_attempt(self, campaign=None, recipient_email='',
                      subject='', status='pending', tracking_id=None,
-                     message_id=None, error_message=None):
+                     message_id=None, error_message=None, sender_email=''):
         """Create an EmailLog entry"""
         import logging
         try:
@@ -421,6 +445,7 @@ class EmailSender:
                 tracking_id=tracking_id or str(uuid.uuid4()),
                 message_id=message_id or '',
                 error_message=error_message or '',
+                sender_email=sender_email,
                 sent_at=timezone.now(),
             )
             return email_log

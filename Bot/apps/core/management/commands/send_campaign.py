@@ -514,6 +514,19 @@ class Command(BaseCommand):
         from apps.email_engine.sender import EmailSender
         from apps.email_engine.throttler import Throttler
 
+        sender_accounts = settings.CAMPAIGN_EMAIL_ACCOUNTS
+        if not sender_accounts or any(
+            not account.get('email') or not account.get('password')
+            for account in sender_accounts
+        ):
+            logger.error('Campaign SMTP accounts are incomplete; refusing to start campaign %s.', campaign.pk)
+            self.stderr.write(self.style.ERROR(
+                'Campaign SMTP accounts are incomplete. Configure both campaign sender addresses '
+                'and app passwords before sending.'
+            ))
+            self._worker_stop_status = 'failed'
+            return
+
         sender = EmailSender()
         throttler = Throttler()
 
@@ -653,7 +666,7 @@ class Command(BaseCommand):
             f'  Batch size: {batch_size}\n'
             f'  A/B Testing: {"Enabled" if use_ab_testing else "Disabled"}\n'
             f'  Documents: {campaign.current_document_id} to {max_document_id}\n'
-            f'  Rate: 1 email every 90 seconds (40/hour, 70/day)'
+            f'  Rate: 1 email every 90 seconds (40/hour, 70 per sender, 140/day)'
         )
 
         total_sent = 0
@@ -938,7 +951,23 @@ class Command(BaseCommand):
                 continue
 
             if throttler.get_remaining_day(campaign) <= 0:
-                logger.warning('Campaign %s reached its daily cap. Pausing.', campaign.pk)
+                logger.warning('Campaign %s reached its daily cap of 140 sends. Pausing.', campaign.pk)
+                campaign.status = 'paused'
+                campaign.is_paused = True
+                Campaign.objects.filter(pk=campaign.pk).update(
+                    status='paused', is_paused=True, updated_at=timezone.now(),
+                )
+                self._worker_stop_status = 'paused'
+                return
+            sender_account = throttler.get_next_campaign_sender(
+                campaign,
+                settings.CAMPAIGN_EMAIL_ACCOUNTS,
+            )
+            if sender_account is None:
+                logger.warning(
+                    'Campaign %s has no remaining capacity across configured senders. Pausing.',
+                    campaign.pk,
+                )
                 campaign.status = 'paused'
                 campaign.is_paused = True
                 Campaign.objects.filter(pk=campaign.pk).update(
@@ -1020,6 +1049,7 @@ class Command(BaseCommand):
                     campaign=campaign,
                     track_links=True,
                     attachments=attachments,
+                    sender_account=sender_account,
                 )
             except Exception as exc:
                 logger.exception('ERROR - Email preparation or send failed for %s', recipient.recipient_email)
