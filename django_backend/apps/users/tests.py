@@ -7,6 +7,7 @@ import os
 import tempfile
 from typing import Any, cast
 
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -345,6 +346,7 @@ class DeleteAccountTests(TestCase):
 @override_settings(BOT_SERVICE_KEY='campaign-test-key', FRONTEND_URL='https://app.example.com')
 class CampaignPasswordResetLinkTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.user = CustomUser.objects.create_user(
             username='campaign-reset-user',
@@ -416,6 +418,124 @@ class CampaignPasswordResetLinkTests(TestCase):
             format='json',
         )
         self.assertEqual(reused.status_code, 400)
+
+
+class PasswordResetAccountSelectionTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.first = CustomUser.objects.create_user(
+            username='reset-base-account',
+            email='reset.shared@gmail.com',
+            password='OldPassword123!',
+        )
+        self.second = CustomUser.objects.create_user(
+            username='reset-alias-account',
+            email='reset.shared+1@gmail.com',
+            password='OldPassword123!',
+        )
+        self.reset_token = PasswordResetToken.generate_token(self.first)
+
+    def test_reset_confirmation_requires_account_choice_for_gmail_aliases(self):
+        response = self.client.get(
+            '/api/auth/reset-password/confirm/',
+            {'token': self.reset_token.token},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(payload['valid'])
+        self.assertTrue(payload['requires_account_selection'])
+        self.assertEqual(
+            {account['id'] for account in payload['accounts']},
+            {self.first.pk, self.second.pk},
+        )
+        self.assertEqual(
+            {account['email_hint'] for account in payload['accounts']},
+            {self.first.email, self.second.email},
+        )
+        self.assertTrue(self.reset_token.is_valid())
+
+    def test_selected_account_alone_is_reset_and_selection_is_one_time(self):
+        confirmation = self.client.get(
+            '/api/auth/reset-password/confirm/',
+            {'token': self.reset_token.token},
+        )
+        selection = self.client.post(
+            '/api/auth/reset-password/select-account/',
+            {
+                'selection_token': confirmation.json()['selection_token'],
+                'account_id': self.second.pk,
+            },
+            format='json',
+        )
+
+        self.assertEqual(selection.status_code, 200, selection.content)
+        self.reset_token.refresh_from_db()
+        self.assertTrue(self.reset_token.is_valid())
+
+        bypass = self.client.post(
+            '/api/auth/reset-password/update/',
+            {
+                'token': self.reset_token.token,
+                'new_password': 'BypassPassword789!',
+                'confirm_password': 'BypassPassword789!',
+            },
+            format='json',
+        )
+        self.assertEqual(bypass.status_code, 400)
+
+        update = self.client.post(
+            '/api/auth/reset-password/update/',
+            {
+                'token': selection.json()['reset_token'],
+                'new_password': 'NewPassword456!',
+                'confirm_password': 'NewPassword456!',
+            },
+            format='json',
+        )
+
+        self.assertEqual(update.status_code, 200, update.content)
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        self.reset_token.refresh_from_db()
+        self.assertTrue(self.first.check_password('OldPassword123!'))
+        self.assertTrue(self.second.check_password('NewPassword456!'))
+        self.assertFalse(self.reset_token.is_valid())
+
+        reused_selection = self.client.post(
+            '/api/auth/reset-password/select-account/',
+            {
+                'selection_token': confirmation.json()['selection_token'],
+                'account_id': self.first.pk,
+            },
+            format='json',
+        )
+        self.assertEqual(reused_selection.status_code, 400)
+
+    def test_reset_challenge_cannot_select_an_unrelated_account(self):
+        outsider = CustomUser.objects.create_user(
+            username='reset-outsider',
+            email='reset-outsider@example.com',
+            password='OldPassword123!',
+        )
+        confirmation = self.client.get(
+            '/api/auth/reset-password/confirm/',
+            {'token': self.reset_token.token},
+        )
+
+        response = self.client.post(
+            '/api/auth/reset-password/select-account/',
+            {
+                'selection_token': confirmation.json()['selection_token'],
+                'account_id': outsider.pk,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.reset_token.refresh_from_db()
+        self.assertTrue(self.reset_token.is_valid())
 
 
 class UserReportLayoutTests(TestCase):

@@ -93,6 +93,15 @@ class ResetPasswordConfirmSerializer(serializers.Serializer):
     )
 
 
+class ResetPasswordAccountSelectionSerializer(serializers.Serializer):
+    selection_token = serializers.CharField(
+        help_text="The short-lived selection token returned by reset-token confirmation."
+    )
+    account_id = serializers.IntegerField(
+        help_text="The account whose password should be reset."
+    )
+
+
 class ResetPasswordUpdateSerializer(serializers.Serializer):
     token = serializers.CharField(
         help_text="The password reset token received via email."

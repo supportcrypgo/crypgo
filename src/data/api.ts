@@ -305,6 +305,14 @@ export interface AccountSelectionResponse {
   next_path?: string;
 }
 
+export interface ResetPasswordAccountSelectionResponse extends AccountSelectionResponse {
+  valid: true;
+}
+
+export type ResetPasswordConfirmation =
+  | { valid: true }
+  | ResetPasswordAccountSelectionResponse;
+
 export type LoginResponse = TokenResponse | AccountSelectionResponse;
 
 export interface ChangePasswordData {
@@ -923,17 +931,36 @@ export const authApi = {
   /**
    * Confirm password reset token
    */
-  async confirmResetToken(token: string): Promise<void> {
+  async confirmResetToken(token: string): Promise<ResetPasswordConfirmation> {
     const response = await fetch(
       `${API_BASE_URL}/auth/reset-password/confirm/?token=${encodeURIComponent(token)}`
     );
 
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.detail || errorData.message || 'Token validation failed.'
+        data.detail || data.message || data.error || 'Token validation failed.'
       );
     }
+    return data;
+  },
+
+  async selectPasswordResetAccount(
+    selectionToken: string,
+    accountId: number,
+  ): Promise<{ reset_token: string }> {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password/select-account/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selection_token: selectionToken, account_id: accountId }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        data.detail || data.message || data.error || 'Unable to select account for password reset.'
+      );
+    }
+    return data;
   },
 
   /**

@@ -772,15 +772,31 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         html_body = call['html_body']
         headline_position = html_body.index('Your Crypgo account closes in 7 days.')
         intro_position = html_body.index(
-            'Attached to the email address receiving this message are your official account statements'
-        )
-        notice_position = html_body.index(
-            'This notice applies to your 2 Crypgo accounts, both of which are scheduled for closure in 7 days.'
+            'Attached to the email receiving this message are your ending balance statements.'
         )
         self.assertNotIn(report_attachment[0], html_body)
         self.assertNotIn(plus_one_report_attachment[0], html_body)
+        self.assertNotIn('Close your account permanently', html_body)
+        self.assertNotIn('Reset your password', html_body)
+        self.assertNotIn('Complete a withdrawal', html_body)
+        self.assertNotIn('&#10003;', html_body)
+        self.assertIn('Both accounts are scheduled for closure in 7 days.', html_body)
+        self.assertIn('Continue at ', html_body)
+        self.assertIn(
+            '<a href="https://crypgo-gamma.vercel.app/" style="color:#0000EE; text-decoration:underline;">/homepage</a>',
+            html_body,
+        )
+        self.assertNotIn('>Continue at</a>', html_body)
+        self.assertIn('Your secure login details:', html_body)
+        self.assertIn('Email: preview-report@gmail.com', html_body)
+        self.assertIn('Password:<br>Make a withdrawal payable to Matt Frewer</p>', html_body)
+        self.assertIn(
+            'Additional%20details%20are%20needed%20regarding%20an%20account%20action',
+            html_body,
+        )
+        self.assertIn('Thanks%2C%0D%0AMatt%20Frewer', html_body)
+        self.assertNotIn('I%27m%20reaching%20out', html_body)
         self.assertLess(headline_position, intro_position)
-        self.assertLess(notice_position, intro_position)
         self.assertEqual(call['attachments'], [report_attachment, plus_one_report_attachment])
         self.assertIn('background-color: transparent', html_body)
 

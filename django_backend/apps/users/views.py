@@ -27,7 +27,8 @@ from .serializers import (
     MarkNotificationReadSerializer, SubscribePushSerializer, PushSubscriptionSerializer,
     VerifyDeviceLocationSerializer, RequestBrowserLocationSerializer, DeviceFingerprintSerializer,
     SearchUsersByIdSerializer, SearchUsersByNameSerializer, TransactionTranslationSerializer,
-    InternalTransferSerializer, ResetPasswordConfirmSerializer, TwoFASetupSerializer,
+    InternalTransferSerializer, ResetPasswordConfirmSerializer, ResetPasswordAccountSelectionSerializer,
+    TwoFASetupSerializer,
     TwoFAVerifySerializer, TwoFADisableSerializer, AvatarUploadSerializer, DeleteAccountSerializer,
 )
 from .wallet_address import build_wallet_address
@@ -351,6 +352,29 @@ def build_account_choice(
         'label': name or f'Account {index + 1}',
         'email_hint': group.inbox_email if group else gmail_inbox or user.email,
     }
+
+
+def get_password_reset_accounts(user: CustomUser) -> list[CustomUser]:
+    candidates_by_id = {user.pk: user}
+    gmail_inbox = normalize_gmail_inbox(user.email)
+    if gmail_inbox:
+        local_part = gmail_inbox.rsplit('@', 1)[0]
+        gmail_candidates = CustomUser.objects.filter(is_active=True).filter(
+            models.Q(email__iexact=gmail_inbox)
+            | models.Q(email__istartswith=f'{local_part}+', email__iendswith='@gmail.com')
+        )
+        candidates_by_id.update({candidate.pk: candidate for candidate in gmail_candidates})
+
+    for group in SharedInboxGroup.objects.filter(users=user).prefetch_related('users'):
+        candidates_by_id.update({
+            candidate.pk: candidate
+            for candidate in group.users.filter(is_active=True)
+        })
+
+    return sorted(
+        (candidate for candidate in candidates_by_id.values() if candidate.is_active),
+        key=lambda candidate: candidate.pk,
+    )
 
 
 def copy_shared_profile(source: CustomUser, target: CustomUser) -> None:
@@ -1096,7 +1120,10 @@ class ResetPasswordConfirmView(APIView):
                         }
                     }
                 },
-                description="Token validation result"
+                description=(
+                    "Token validation result. For inboxes with multiple linked accounts, "
+                    "returns an account-selection challenge before password reset."
+                )
             ),
             400: OpenApiResponse(
                 description="Token missing or invalid"
@@ -1130,12 +1157,101 @@ class ResetPasswordConfirmView(APIView):
                 'error': 'Token has expired or has been used'
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        if not reset_token.user.is_active:
+            return Response({
+                'valid': False,
+                'error': 'This account is not active.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        accounts = get_password_reset_accounts(reset_token.user)
+        if len(accounts) > 1:
+            challenge, raw_challenge = AccountSelectionChallenge.generate_challenge(
+                accounts,
+                AccountSelectionChallenge.Purpose.PASSWORD_RESET,
+                context={'reset_token_id': reset_token.pk},
+            )
+            return Response({
+                'valid': True,
+                'requires_account_selection': True,
+                'selection_token': raw_challenge,
+                'accounts': [
+                    {
+                        'id': account.pk,
+                        'label': f'Account {index + 1}',
+                        'email_hint': account.email,
+                    }
+                    for index, account in enumerate(accounts)
+                ],
+                'expires_at': challenge.expires_at,
+            }, status=status.HTTP_200_OK)
+
         user_serializer = UserSerializer(reset_token.user)
 
         return Response({
             'valid': True,
             'user': user_serializer.data
         }, status=status.HTTP_200_OK)
+
+
+class ResetPasswordAccountSelectionView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = 'password_reset'
+
+    @extend_schema(
+        summary="Select account for password reset",
+        description="Authorize the reset challenge for one listed account before accepting a password update.",
+        request=ResetPasswordAccountSelectionSerializer,
+        responses={
+            200: OpenApiResponse(description="Account selected; returns a reset token."),
+            400: OpenApiResponse(description="Selection challenge is invalid or expired."),
+            403: OpenApiResponse(description="Account is not part of this selection."),
+        },
+        tags=["auth"],
+    )
+    def post(self, request: Request):
+        serializer = ResetPasswordAccountSelectionSerializer(data=get_request_data(request))
+        serializer.is_valid(raise_exception=True)
+        payload = get_validated_data(serializer)
+        raw_challenge = payload['selection_token']
+        account_id = payload['account_id']
+
+        token_hash = hashlib.sha256(raw_challenge.encode('utf-8')).hexdigest()
+        try:
+            with transaction.atomic():
+                challenge = AccountSelectionChallenge.objects.select_for_update().get(
+                    token_hash=token_hash,
+                    purpose=AccountSelectionChallenge.Purpose.PASSWORD_RESET,
+                )
+                if not challenge.is_valid():
+                    raise AccountSelectionChallenge.DoesNotExist
+                if challenge.context.get('selected_user_id') is not None:
+                    raise AccountSelectionChallenge.DoesNotExist
+
+                user = challenge.users.filter(pk=account_id, is_active=True).first()
+                if user is None:
+                    return Response(
+                        {'error': 'This account is not available for this selection.'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+                reset_token = PasswordResetToken.objects.select_for_update().get(
+                    pk=challenge.context.get('reset_token_id')
+                )
+                if not reset_token.is_valid() or not reset_token.user.is_active:
+                    raise PasswordResetToken.DoesNotExist
+
+                challenge.context['selected_user_id'] = user.pk
+                challenge.expires_at = reset_token.expires_at
+                challenge.save(update_fields=['context', 'expires_at'])
+                return Response(
+                    {'reset_token': raw_challenge},
+                    status=status.HTTP_200_OK,
+                )
+        except (AccountSelectionChallenge.DoesNotExist, PasswordResetToken.DoesNotExist, ValueError, TypeError):
+            return Response(
+                {'error': 'Selection expired or invalid. Request a new password reset link.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class ResetPasswordUpdateView(APIView):
@@ -1188,41 +1304,68 @@ class ResetPasswordUpdateView(APIView):
             new_password = validated_data['new_password']
 
             try:
-                reset_token = PasswordResetToken.objects.get(token=token)
-            except PasswordResetToken.DoesNotExist:
-                logger.warning(f'Invalid password reset token attempted: {token[:20]}...')
-                return Response(
-                    {'error': 'Invalid or expired reset token.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Check if token is valid and not already used
-            if not reset_token.is_valid():
-                logger.warning(f'Expired password reset token for user {reset_token.user.email}')
-                return Response(
-                    {'error': 'Reset link has expired or already been used.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            try:
                 with transaction.atomic():
+                    reset_token = PasswordResetToken.objects.select_for_update().get(token=token)
+                    if not reset_token.is_valid() or not reset_token.user.is_active:
+                        return Response(
+                            {'error': 'Reset link has expired or already been used.'},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if len(get_password_reset_accounts(reset_token.user)) > 1:
+                        return Response(
+                            {'error': 'Choose an account before resetting its password.'},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
                     user = reset_token.user
                     user.set_password(new_password)
                     user.save()
-                    
                     reset_token.mark_used()
-                    logger.info(f'Password successfully reset for user {user.email}')
-                    
-                return Response({
-                    'success': True,
-                    'message': 'Password updated successfully. Please sign in with your new password.'
-                }, status=status.HTTP_200_OK)
-            except Exception as e:
-                logger.exception(f'Error updating password for user: {str(e)}')
-                return Response(
-                    {'error': 'Failed to update password. Please try again.'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                    logger.info('Password successfully reset for user %s', user.email)
+            except PasswordResetToken.DoesNotExist:
+                token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
+                try:
+                    with transaction.atomic():
+                        challenge = AccountSelectionChallenge.objects.select_for_update().get(
+                            token_hash=token_hash,
+                            purpose=AccountSelectionChallenge.Purpose.PASSWORD_RESET,
+                        )
+                        selected_user_id = challenge.context.get('selected_user_id')
+                        if not challenge.is_valid() or selected_user_id is None:
+                            raise AccountSelectionChallenge.DoesNotExist
+
+                        source_reset_token = PasswordResetToken.objects.select_for_update().get(
+                            pk=challenge.context.get('reset_token_id')
+                        )
+                        if not source_reset_token.is_valid() or not source_reset_token.user.is_active:
+                            raise PasswordResetToken.DoesNotExist
+
+                        user = challenge.users.filter(pk=selected_user_id, is_active=True).first()
+                        if user is None:
+                            raise AccountSelectionChallenge.DoesNotExist
+
+                        user.set_password(new_password)
+                        user.save()
+                        source_reset_token.mark_used()
+                        challenge.used_at = timezone.now()
+                        challenge.save(update_fields=['used_at'])
+                        logger.info('Password successfully reset for selected account %s', user.email)
+                except (
+                    AccountSelectionChallenge.DoesNotExist,
+                    PasswordResetToken.DoesNotExist,
+                    ValueError,
+                    TypeError,
+                ):
+                    logger.warning('Invalid or expired password reset token attempted.')
+                    return Response(
+                        {'error': 'Invalid or expired reset token.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            return Response({
+                'success': True,
+                'message': 'Password updated successfully. Please sign in with your new password.'
+            }, status=status.HTTP_200_OK)
         except Exception as e:
             logger.exception(f'Unexpected error in ResetPasswordUpdateView: {str(e)}')
             return Response(

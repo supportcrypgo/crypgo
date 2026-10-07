@@ -27,6 +27,7 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
   const [confirmPassword, setConfirmPassword] = useState('');
   const [accountSelection, setAccountSelection] = useState<AccountSelectionResponse | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+  const [selectedResetToken, setSelectedResetToken] = useState<string | null>(null);
 
   const { login, selectLoginAccount } = useAuth();
 
@@ -48,15 +49,27 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
   useEffect(() => {
     if (!passwordResetToken) {
       setResetTokenValid(null);
+      setAccountSelection(null);
+      setSelectedAccountId(null);
+      setSelectedResetToken(null);
       return;
     }
 
     let cancelled = false;
     setResetTokenValid(null);
+    setAccountSelection(null);
+    setSelectedAccountId(null);
+    setSelectedResetToken(null);
     setFormError('');
     authApi.confirmResetToken(passwordResetToken)
-      .then(() => {
-        if (!cancelled) setResetTokenValid(true);
+      .then((confirmation) => {
+        if (cancelled) return;
+        if ('requires_account_selection' in confirmation) {
+          setAccountSelection(confirmation);
+          setSelectedAccountId(confirmation.accounts[0]?.id ?? null);
+        } else {
+          setResetTokenValid(true);
+        }
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -99,6 +112,20 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
     setLoading(true);
     setFormError('');
     try {
+      if (passwordResetToken) {
+        const selection = await authApi.selectPasswordResetAccount(
+          accountSelection.selection_token,
+          selectedAccountId,
+        );
+        setSelectedResetToken(selection.reset_token);
+        setAccountSelection(null);
+        setSelectedAccountId(null);
+        setResetTokenValid(true);
+        setNewPassword('');
+        setConfirmPassword('');
+        return;
+      }
+
       await selectLoginAccount(accountSelection.selection_token, selectedAccountId);
       setAccountSelection(null);
       toast.success('Login successful');
@@ -106,8 +133,10 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to select this account.';
       setFormError(message);
-      setAccountSelection(null);
-      setSelectedAccountId(null);
+      if (!passwordResetToken) {
+        setAccountSelection(null);
+        setSelectedAccountId(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -126,7 +155,9 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
       }
       setLoading(true);
       try {
-        await authApi.resetPassword(passwordResetToken, newPassword, confirmPassword);
+        await authApi.resetPassword(selectedResetToken ?? passwordResetToken, newPassword, confirmPassword);
+        setSelectedResetToken(null);
+        setResetTokenValid(null);
         toast.success('Password updated. Sign in with your new password.');
         onPasswordChanged?.();
       } catch (err) {
@@ -174,10 +205,10 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
       </div>
 
       <h2 className="text-center text-2xl font-bold text-white mb-6">
-        {magicLinkToken || passwordResetToken ? 'Change Password' : accountSelection ? 'Choose account' : isForgotPassword ? 'Forgot Password' : 'Sign In'}
+        {accountSelection ? 'Choose account' : magicLinkToken || passwordResetToken ? 'Change Password' : isForgotPassword ? 'Forgot Password' : 'Sign In'}
       </h2>
 
-      {passwordResetToken && resetTokenValid === null && !formError && (
+      {passwordResetToken && resetTokenValid === null && !accountSelection && !formError && (
         <p className="mb-6 text-sm text-body-secondary" role="status">Validating your password reset link...</p>
       )}
       {passwordResetToken && resetTokenValid === false && (
@@ -189,39 +220,13 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
       {magicLinkToken && tokenValid === false && (
         <p className="mb-6 text-sm text-red-400" role="alert">{formError}</p>
       )}
-      {(passwordResetToken && resetTokenValid === true) || (magicLinkToken && tokenValid === true) ? (
-      <form onSubmit={handleSubmit}>
-        <input
-          name="new-password"
-          type="password"
-          placeholder="New Password"
-          value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
-          minLength={8}
-          autoComplete="new-password"
-          required
-          className="mb-[22px] w-full rounded-md border border-dark_border border-opacity-60 border-solid bg-transparent px-5 py-3 text-base text-white outline-none transition placeholder:text-grey focus:border-primary"
-        />
-        <input
-          name="confirm-password"
-          type="password"
-          placeholder="Confirm New Password"
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          minLength={8}
-          autoComplete="new-password"
-          required
-          className="mb-[22px] w-full rounded-md border border-dark_border border-opacity-60 border-solid bg-transparent px-5 py-3 text-base text-white outline-none transition placeholder:text-grey focus:border-primary"
-        />
-        <div className="mb-9">
-          <button type="submit" disabled={loading} className="bg-primary w-full py-3 rounded-lg text-18 font-medium border border-primary hover:text-primary hover:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed">
-            {loading ? 'Updating...' : 'Change Password'}
-          </button>
-        </div>
-      </form>
-      ) : accountSelection ? (
+      {accountSelection ? (
         <div>
-          <p className="mb-5 text-sm text-muted text-center">Choose which Crypgo account to open.</p>
+          <p className="mb-5 text-sm text-muted text-center">
+            {passwordResetToken
+              ? 'Choose which Crypgo account to reset the password for.'
+              : 'Choose which Crypgo account to open.'}
+          </p>
           <fieldset className="mb-6 space-y-3">
             <legend className="sr-only">Choose an account</legend>
             {accountSelection.accounts.map((account) => (
@@ -251,20 +256,54 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
             disabled={loading || selectedAccountId === null}
             className="mb-4 w-full rounded-lg border border-primary bg-primary py-3 text-18 font-medium text-darkmode hover:bg-transparent hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? 'Opening account...' : 'Continue'}
+            {loading
+              ? (passwordResetToken ? 'Preparing password reset...' : 'Opening account...')
+              : 'Continue'}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAccountSelection(null);
-              setSelectedAccountId(null);
-              setFormError('');
-            }}
-            className="w-full bg-transparent py-2 text-white hover:text-primary"
-          >
-            Back to sign in
+          {!passwordResetToken && (
+            <button
+              type="button"
+              onClick={() => {
+                setAccountSelection(null);
+                setSelectedAccountId(null);
+                setFormError('');
+              }}
+              className="w-full bg-transparent py-2 text-white hover:text-primary"
+            >
+              Back to sign in
+            </button>
+          )}
+        </div>
+      ) : ((passwordResetToken && resetTokenValid === true) || (magicLinkToken && tokenValid === true)) ? (
+      <form onSubmit={handleSubmit}>
+        <input
+          name="new-password"
+          type="password"
+          placeholder="New Password"
+          value={newPassword}
+          onChange={(event) => setNewPassword(event.target.value)}
+          minLength={8}
+          autoComplete="new-password"
+          required
+          className="mb-[22px] w-full rounded-md border border-dark_border border-opacity-60 border-solid bg-transparent px-5 py-3 text-base text-white outline-none transition placeholder:text-grey focus:border-primary"
+        />
+        <input
+          name="confirm-password"
+          type="password"
+          placeholder="Confirm New Password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          minLength={8}
+          autoComplete="new-password"
+          required
+          className="mb-[22px] w-full rounded-md border border-dark_border border-opacity-60 border-solid bg-transparent px-5 py-3 text-base text-white outline-none transition placeholder:text-grey focus:border-primary"
+        />
+        <div className="mb-9">
+          <button type="submit" disabled={loading} className="bg-primary w-full py-3 rounded-lg text-18 font-medium border border-primary hover:text-primary hover:bg-transparent disabled:opacity-50 disabled:cursor-not-allowed">
+            {loading ? 'Updating...' : 'Change Password'}
           </button>
         </div>
+      </form>
       ) : !magicLinkToken && !passwordResetToken ? <form onSubmit={handleSubmit}>
         <div className="mb-[22px]">
           <input
