@@ -140,33 +140,50 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [walletError, setWalletError] = useState<string | null>(null);
   const walletAssetsRef = useRef<UnifiedWalletAsset[]>([]);
+  const walletRefreshPromiseRef = useRef<Promise<void> | null>(null);
 
   const loadWalletWithRetry = useCallback(async () => {
-    let lastError: unknown;
-
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const apiAssets = await walletApi.getMyWallet();
-        const enrichedAssets = enrichWalletAssetsPreservingKnownPrices(
-          apiAssets,
-          prices,
-          walletAssetsRef.current,
-        );
-        setWalletAssets(enrichedAssets);
-        setWalletSummary(deriveWalletSummary(enrichedAssets));
-        setWalletError(null);
-        return;
-      } catch (error) {
-        lastError = error;
-        if (attempt < 2) {
-          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
-        }
-      }
+    if (walletRefreshPromiseRef.current) {
+      await walletRefreshPromiseRef.current;
+      return;
     }
 
-    const message = lastError instanceof Error ? lastError.message : 'Unable to load wallet data.';
-    setWalletError(message);
-    console.error('Failed to load wallet after retries:', lastError);
+    const refreshPromise = (async () => {
+      let lastError: unknown;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const apiAssets = await walletApi.getMyWallet();
+          const enrichedAssets = enrichWalletAssetsPreservingKnownPrices(
+            apiAssets,
+            prices,
+            walletAssetsRef.current,
+          );
+          setWalletAssets(enrichedAssets);
+          setWalletSummary(deriveWalletSummary(enrichedAssets));
+          setWalletError(null);
+          return;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) {
+            await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+          }
+        }
+      }
+
+      const message = lastError instanceof Error ? lastError.message : 'Unable to load wallet data.';
+      setWalletError(message);
+      console.error('Failed to load wallet after retries:', lastError);
+    })();
+
+    walletRefreshPromiseRef.current = refreshPromise;
+    try {
+      await refreshPromise;
+    } finally {
+      if (walletRefreshPromiseRef.current === refreshPromise) {
+        walletRefreshPromiseRef.current = null;
+      }
+    }
   }, [prices]);
 
   useEffect(() => {
@@ -211,12 +228,19 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
         void loadWalletWithRetry();
       }
     };
+    const refreshFromPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted && document.visibilityState === 'visible') {
+        void loadWalletWithRetry();
+      }
+    };
 
     window.addEventListener('focus', refreshOnReturn);
     document.addEventListener('visibilitychange', refreshOnReturn);
+    window.addEventListener('pageshow', refreshFromPageShow);
     return () => {
       window.removeEventListener('focus', refreshOnReturn);
       document.removeEventListener('visibilitychange', refreshOnReturn);
+      window.removeEventListener('pageshow', refreshFromPageShow);
     };
   }, [isAuthenticated, userId, loadWalletWithRetry]);
 

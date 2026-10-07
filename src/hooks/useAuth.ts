@@ -1,7 +1,7 @@
 
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback, createElement } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef, createElement } from 'react';
 import { UnifiedUser } from '@/types/unified';
 import { AccountSelectionResponse, authApi, profileApi } from '@/data/api';
 import { usePathname } from 'next/navigation';
@@ -27,6 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UnifiedUser | null>(null);
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
+  const hasCheckedInitialSession = useRef(false);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -40,11 +41,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (hasCheckedInitialSession.current) return;
+
     if (pathname?.startsWith('/auth/campaign-access')) {
+      hasCheckedInitialSession.current = true;
       setLoading(false);
       return;
     }
-    refreshUser();
+
+    hasCheckedInitialSession.current = true;
+    void refreshUser();
   }, [pathname, refreshUser]);
 
   const login = async (email: string, password: string) => {
