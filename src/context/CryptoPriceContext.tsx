@@ -3,7 +3,6 @@
 import { createContext, useContext, useMemo } from 'react';
 import { useCryptoPrices } from '@/hooks/useCryptoPrices';
 import { Prices } from '@/app/dashboard/components/types';
-import { useAuth } from '@/hooks/useAuth';
 
 interface CryptoPriceContextValue {
   prices: Prices | null;
@@ -14,9 +13,7 @@ interface CryptoPriceContextValue {
 const CryptoPriceContext = createContext<CryptoPriceContextValue | null>(null);
 
 export function CryptoPriceProvider({ children }: { children: React.ReactNode }) {
-  const { isLoading: authLoading } = useAuth();
-  // Use the CoinGecko-backed HTTP route as the single source of truth.
-  const http = useCryptoPrices(!authLoading);
+  const http = useCryptoPrices();
 
   const value = useMemo<CryptoPriceContextValue>(
     () => ({

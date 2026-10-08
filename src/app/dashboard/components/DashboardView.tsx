@@ -23,6 +23,7 @@ import MarketOverviewCard from './MarketOverviewCard';
 import SecurityStatusCard from './SecurityStatusCard';
 import LatestNewsCard from './LatestNewsCard';
 import BottomNav from './BottomNav';
+import { useDashboardReturnCaution } from '@/components/Auth/DashboardReturnCautionGate';
 
 interface DashboardViewProps {
   userId?: string;
@@ -31,6 +32,7 @@ interface DashboardViewProps {
 
 export default function DashboardView({ userId }: DashboardViewProps) {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const isReturnCautionOpen = useDashboardReturnCaution();
   const { walletAssets: unifiedWalletAssets, walletSummary: unifiedWalletSummary, walletError: unifiedWalletError, isLoading: unifiedLoading, userId: authenticatedUserId } = useUnified();
   const balanceCacheUserId = userId || authenticatedUserId || undefined;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -157,6 +159,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
             performanceMetrics={performanceMetrics}
             availableBalance={currentWalletSummary.availableBalance}
             walletError={walletErrorMessage}
+            maskBalance={isReturnCautionOpen}
           />
 
           <section className="space-y-3">
@@ -203,6 +206,7 @@ export default function DashboardView({ userId }: DashboardViewProps) {
                 performanceMetrics={performanceMetrics}
                 availableBalance={currentWalletSummary.availableBalance}
                 walletError={walletErrorMessage}
+                maskBalance={isReturnCautionOpen}
               />
 
               <Watchlist assets={watchlistAssets} isLoading={isLoading} />

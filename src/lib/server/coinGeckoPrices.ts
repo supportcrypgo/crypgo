@@ -124,6 +124,18 @@ async function fetchBitcoinHistoricalChanges(
   return {};
 }
 
+export async function fetchCoinGeckoBitcoinHistoricalChanges(): Promise<{
+  usd_7d_change?: number;
+  usd_30d_change?: number;
+}> {
+  const apiKeys = getCoinGeckoApiKeys();
+  if (apiKeys.length === 0) {
+    throw new Error('CoinGecko API keys are not configured');
+  }
+
+  return fetchBitcoinHistoricalChanges(apiKeys, getCoinGeckoPlan());
+}
+
 export async function fetchCoinGeckoPrices(options: { includeHistoricalChanges?: boolean } = {}) {
   const apiKeys = getCoinGeckoApiKeys();
   if (apiKeys.length === 0) {

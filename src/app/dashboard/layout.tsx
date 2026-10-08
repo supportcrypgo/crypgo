@@ -17,10 +17,9 @@ export default function DashboardLayout({
 }) {
   return (
     <DashboardAuthGuard>
-      <>
-        <DashboardReturnCautionGate />
+      <DashboardReturnCautionGate>
         {children}
-      </>
+      </DashboardReturnCautionGate>
     </DashboardAuthGuard>
   );
 }

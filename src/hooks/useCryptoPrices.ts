@@ -82,6 +82,31 @@ export function useCryptoPrices(enabled = true) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchHistoricalChanges = useCallback(async () => {
+    try {
+      const response = await fetch('/api/crypto/prices/history', { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch historical prices (${response.status})`);
+      }
+
+      const changes = await response.json() as {
+        usd_7d_change?: number;
+        usd_30d_change?: number;
+      };
+      setPrices((currentPrices) => {
+        if (!currentPrices?.bitcoin) {
+          return currentPrices;
+        }
+        return {
+          ...currentPrices,
+          bitcoin: { ...currentPrices.bitcoin, ...changes },
+        };
+      });
+    } catch (historyError) {
+      console.warn('Historical crypto performance data could not be refreshed:', historyError);
+    }
+  }, []);
+
   const fetchPrices = useCallback(async () => {
     if (!enabled) {
       setIsLoading(true);
@@ -119,6 +144,7 @@ export function useCryptoPrices(enabled = true) {
           timestamp: Date.now(),
         }));
         setIsLoading(false);
+        void fetchHistoricalChanges();
         return;
       } catch (err) {
         lastError = err;
@@ -134,7 +160,7 @@ export function useCryptoPrices(enabled = true) {
     } finally {
       setIsLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, fetchHistoricalChanges]);
 
   useEffect(() => {
     fetchPrices();

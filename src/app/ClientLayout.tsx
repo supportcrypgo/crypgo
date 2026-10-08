@@ -25,16 +25,16 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <AuthProvider>
-      {isAdminShell ? (
-        children
-      ) : isDashboardShell || isCampaignAccessRoute ? (
+      {isAdminShell ? children : (
         <CryptoPriceProvider>
-          <UnifiedProvider>
-            {publicContent}
-          </UnifiedProvider>
+          {isDashboardShell || isCampaignAccessRoute ? (
+            <UnifiedProvider>
+              {publicContent}
+            </UnifiedProvider>
+          ) : (
+            publicContent
+          )}
         </CryptoPriceProvider>
-      ) : (
-        publicContent
       )}
       {!isAdminShell && <ScrollToTop />}
     </AuthProvider>

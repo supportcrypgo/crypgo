@@ -29,7 +29,7 @@ export async function GET() {
   }
 
   try {
-    const data = await fetchCoinGeckoPrices({ includeHistoricalChanges: true });
+    const data = await fetchCoinGeckoPrices();
     setCache(data);
     return NextResponse.json(data);
   } catch (error) {
