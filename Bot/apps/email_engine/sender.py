@@ -16,6 +16,7 @@ from .models import EmailLog, Bounce, Tracking
 from .retry import RetryHandler
 from .throttler import Throttler
 from .gmail_sender import gmail_sender
+from .provider_errors import is_gmail_sender_limit_error
 
 logger = logging.getLogger(__name__)
 
@@ -23,18 +24,7 @@ USE_GMAIL_API = getattr(settings, 'USE_GMAIL_API', False)
 
 
 def is_gmail_quota_error(error: Exception | str) -> bool:
-    message = str(error).lower()
-    return any(marker in message for marker in (
-        'quota',
-        'rate limit',
-        'daily limit',
-        'sending limit',
-        'limit exceeded',
-        'daily user sending limit',
-        'user-rate limit exceeded',
-        'too many recipients',
-        'message blocked',
-    ))
+    return is_gmail_sender_limit_error(error)
 
 
 class EmailSender:
@@ -334,7 +324,8 @@ class EmailSender:
 
         except Exception as e:
             logger.exception("Send failed to %s: %s", recipient_email, str(e))
-            if campaign and is_gmail_quota_error(e):
+            sender_limit_error = is_gmail_sender_limit_error(e)
+            if campaign and sender_limit_error and not sender_account:
                 type(campaign).objects.filter(pk=campaign.pk).update(
                     status='paused',
                     is_paused=True,
@@ -352,7 +343,12 @@ class EmailSender:
                 e,
                 (TypeError, ValueError, AttributeError, KeyError, ImportError),
             )
-            if email_log and delivery_attempted and not internal_application_error:
+            if (
+                email_log
+                and delivery_attempted
+                and not internal_application_error
+                and not sender_limit_error
+            ):
                 BounceHandler().process_failed_email(email_log.pk)
 
             return email_log

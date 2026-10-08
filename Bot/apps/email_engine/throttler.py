@@ -5,6 +5,10 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
+from .provider_errors import (
+    is_ambiguous_gmail_block_error,
+    is_gmail_sender_limit_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +162,74 @@ class Throttler:
         ).filter(sender_logs).count()
         return max(0, self.CAMPAIGN_MAX_PER_SENDER_PER_DAY - sent_today)
 
-    def get_next_campaign_sender(self, campaign, sender_accounts):
-        """Choose the first configured campaign sender that still has daily capacity."""
+    def get_blocked_campaign_senders(self, campaign):
+        """Return senders with explicit or repeated Gmail blocks in the last 24 hours."""
+        from apps.email_engine.models import EmailLog
+
+        cutoff = timezone.now() - timedelta(hours=24)
+        failed_logs = EmailLog.objects.filter(
+            campaign=campaign,
+            status='failed',
+            sent_at__gte=cutoff,
+        ).exclude(sender_email='')
+        blocked = {
+            log.sender_email.lower()
+            for log in failed_logs.only('sender_email', 'error_message')
+            if is_gmail_sender_limit_error(log.error_message)
+        }
+        ambiguous_logs = list(
+            failed_logs.only('sender_email', 'recipient_email', 'error_message')
+        )
+        blocked.update(
+            sender_email.lower()
+            for sender_email in {
+                log.sender_email for log in ambiguous_logs
+                if is_ambiguous_gmail_block_error(log.error_message)
+            }
+            if len({
+                log.recipient_email.strip().lower()
+                for log in ambiguous_logs
+                if log.sender_email.lower() == sender_email.lower()
+                and is_ambiguous_gmail_block_error(log.error_message)
+            }) >= 3
+        )
+        return blocked
+
+    def is_campaign_sender_blocked(self, campaign, sender_email):
+        return sender_email.lower() in self.get_blocked_campaign_senders(campaign)
+
+    def get_blocked_sender_recipient_emails(self, campaign, sender_email):
+        """Return previously failed recipients safe to retry after a sender block."""
+        from apps.email_engine.models import EmailLog
+
+        if not self.is_campaign_sender_blocked(campaign, sender_email):
+            return set()
+        cutoff = timezone.now() - timedelta(hours=24)
+        failed_logs = EmailLog.objects.filter(
+            campaign=campaign,
+            sender_email__iexact=sender_email,
+            status='failed',
+            sent_at__gte=cutoff,
+        ).only('recipient_email', 'error_message')
+        return {
+            log.recipient_email
+            for log in failed_logs
+            if (
+                is_gmail_sender_limit_error(log.error_message)
+                or is_ambiguous_gmail_block_error(log.error_message)
+            )
+        }
+
+    def get_next_campaign_sender(self, campaign, sender_accounts, *, excluded_senders=None):
+        """Choose a daily-eligible sender not blocked by Gmail during the last 24 hours."""
+        excluded = {
+            email.lower()
+            for email in (excluded_senders or set())
+        }
+        excluded.update(self.get_blocked_campaign_senders(campaign))
         for index, account in enumerate(sender_accounts):
+            if account['email'].lower() in excluded:
+                continue
             if self.get_remaining_sender_day(
                 campaign,
                 account['email'],

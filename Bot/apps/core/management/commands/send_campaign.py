@@ -19,6 +19,7 @@ from django.db.models.functions import Lower, Trim
 from django.conf import settings
 from apps.campaigns.models import Campaign, CampaignRun
 from apps.campaigns.worker import claim_campaign_run, finish_campaign_run
+from apps.email_engine.provider_errors import is_gmail_sender_limit_error
 
 logger = logging.getLogger('email_bot')
 
@@ -962,15 +963,16 @@ class Command(BaseCommand):
         campaign.total_leads = campaign_recipient_count(campaign)
         Campaign.objects.filter(pk=campaign.pk).update(total_leads=campaign.total_leads)
 
-        recipients = CampaignLead.objects.filter(
+        recipients = list(CampaignLead.objects.filter(
             campaign=campaign,
             source='crypgo_user',
             status__in=('pending', 'queued', 'failed'),
-        ).order_by('id')
+        ).order_by('id'))
 
-        if template.include_account_report_attachment and recipients.exists():
+        if template.include_account_report_attachment and recipients:
             self._refresh_report_market_prices()
 
+        processed_recipient_ids = set()
         for recipient in recipients:
             if not self._worker_active(campaign.pk):
                 logger.info('Campaign %s worker stopping before next recipient.', campaign.pk)
@@ -982,6 +984,7 @@ class Command(BaseCommand):
                 continue
             if recipient.status not in ('pending', 'queued', 'failed'):
                 continue
+            processed_recipient_ids.add(recipient.pk)
 
             if throttler.get_remaining_day(campaign) <= 0:
                 logger.warning('Campaign %s reached its daily cap of 140 sends. Pausing.', campaign.pk)
@@ -1093,16 +1096,95 @@ class Command(BaseCommand):
                 rendered_html = TemplateRenderer.render(template.html_content, context)
                 rendered_plain = TemplateRenderer._simple_render(template.plain_text or '', context)
                 rendered_subject = TemplateRenderer.render_subject(template.subject, context)
-                result = sender.send_with_tracking(
-                    recipient_email=recipient.recipient_email,
-                    subject=rendered_subject,
-                    html_body=str(rendered_html),
-                    plain_text=rendered_plain,
-                    campaign=campaign,
-                    track_links=True,
-                    attachments=attachments,
-                    sender_account=sender_account,
-                )
+                blocked_senders = set()
+                while True:
+                    result = sender.send_with_tracking(
+                        recipient_email=recipient.recipient_email,
+                        subject=rendered_subject,
+                        html_body=str(rendered_html),
+                        plain_text=rendered_plain,
+                        campaign=campaign,
+                        track_links=True,
+                        attachments=attachments,
+                        sender_account=sender_account,
+                    )
+                    provider_error = getattr(result, 'error_message', '') or ''
+                    sender_is_blocked = throttler.is_campaign_sender_blocked(
+                        campaign,
+                        sender_account['email'],
+                    ) is True
+                    if (
+                        not is_gmail_sender_limit_error(provider_error)
+                        and not sender_is_blocked
+                    ):
+                        break
+
+                    blocked_senders.add(sender_account['email'].lower())
+                    blocked_recipient_emails = throttler.get_blocked_sender_recipient_emails(
+                        campaign,
+                        sender_account['email'],
+                    )
+                    if isinstance(blocked_recipient_emails, set) and blocked_recipient_emails:
+                        retry_leads = CampaignLead.objects.filter(
+                            campaign=campaign,
+                            source='crypgo_user',
+                            status='failed',
+                            recipient_email__in=blocked_recipient_emails,
+                        ).exclude(pk=recipient.pk)
+                        for retry_lead in retry_leads:
+                            if retry_lead.pk in processed_recipient_ids:
+                                CampaignLead.objects.filter(pk=retry_lead.pk).update(
+                                    status='pending',
+                                    error_message=(
+                                        'Retrying through another sender after Gmail '
+                                        f'blocked {sender_account["email"]}.'
+                                    ),
+                                    updated_at=timezone.now(),
+                                )
+                                recipients.append(
+                                    CampaignLead.objects.get(pk=retry_lead.pk)
+                                )
+                    logger.warning(
+                        'Gmail sender %s hit a sending limit for campaign %s; '
+                        'trying another sender. Provider response: %s',
+                        sender_account['email'],
+                        campaign.pk,
+                        provider_error,
+                    )
+                    sender_account = throttler.get_next_campaign_sender(
+                        campaign,
+                        settings.CAMPAIGN_EMAIL_ACCOUNTS,
+                        excluded_senders=blocked_senders,
+                    )
+                    if sender_account is None:
+                        CampaignLead.objects.filter(pk=recipient.pk).update(
+                            status='failed',
+                            error_message=(
+                                f'Gmail sender limit reached; no other eligible sender. '
+                                f'Last response: {provider_error}'
+                            )[:500],
+                            updated_at=timezone.now(),
+                        )
+                        Campaign.objects.filter(pk=campaign.pk).update(
+                            status='paused',
+                            is_paused=True,
+                            updated_at=timezone.now(),
+                        )
+                        campaign.status = 'paused'
+                        campaign.is_paused = True
+                        self._worker_stop_status = 'paused'
+                        logger.error(
+                            'Campaign %s paused: every configured sender is blocked or at its daily cap.',
+                            campaign.pk,
+                        )
+                        return
+                    wait_time = throttler.wait_for_next_slot(campaign)
+                    while wait_time > 0:
+                        sleep_interval = min(wait_time, 1)
+                        time.sleep(sleep_interval)
+                        if not self._worker_active(campaign.pk):
+                            return
+                        wait_time -= sleep_interval
             except Exception as exc:
                 logger.exception('ERROR - Email preparation or send failed for %s', recipient.recipient_email)
                 CampaignLead.objects.filter(pk=recipient.pk).update(

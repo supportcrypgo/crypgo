@@ -1,4 +1,5 @@
 from datetime import datetime, time as dt_time, timedelta
+from smtplib import SMTPDataError
 from pathlib import Path
 import subprocess
 import base64
@@ -173,6 +174,49 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(email_log.status, 'failed')
         self.assertFalse(Bounce.objects.filter(email='internal-error@example.com').exists())
         self.assertFalse(BlacklistedLead.objects.filter(email='internal-error@example.com').exists())
+
+    def test_sender_limit_classifier_does_not_treat_recipient_message_block_as_account_limit(self):
+        from apps.email_engine.provider_errors import is_gmail_sender_limit_error
+
+        self.assertTrue(
+            is_gmail_sender_limit_error(
+                "SMTPDataError: (550, b'5.4.5 Daily sending quota exceeded')"
+            )
+        )
+        self.assertFalse(
+            is_gmail_sender_limit_error(
+                'Message blocked. Your message to user@gmail.com has been blocked.'
+            )
+        )
+        self.assertFalse(
+            is_gmail_sender_limit_error(
+                "SMTPDataError: (550, b'5.1.1 The email account that you tried to reach does not exist')"
+            )
+        )
+
+    def test_explicit_sender_quota_error_is_logged_without_pausing_or_bouncing(self):
+        with patch(
+            'apps.email_engine.sender.EmailMultiAlternatives.send',
+            side_effect=SMTPDataError(550, b'5.4.5 Daily sending quota exceeded'),
+        ):
+            email_log = self.sender.send_with_tracking(
+                recipient_email='quota-recipient@example.com',
+                subject='Campaign message',
+                html_body='<p>Campaign message</p>',
+                campaign=self.campaign,
+                sender_account={
+                    'email': 'news.crypgo@gmail.com',
+                    'password': 'news-test-password',
+                },
+            )
+
+        self.assertIsNotNone(email_log)
+        self.assertEqual(email_log.status, 'failed')
+        self.assertEqual(email_log.sender_email, 'news.crypgo@gmail.com')
+        self.assertIn('Daily sending quota exceeded', email_log.error_message)
+        self.campaign.refresh_from_db()
+        self.assertEqual(self.campaign.status, 'draft')
+        self.assertFalse(Bounce.objects.filter(email='quota-recipient@example.com').exists())
 
     def test_throttler_paces_campaign_sends_at_about_2_33_per_minute(self):
         EmailLog.objects.create(
@@ -428,6 +472,238 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         )
         self.market_snapshot_patcher.start()
         self.addCleanup(self.market_snapshot_patcher.stop)
+
+    def test_campaign_retries_explicit_gmail_sender_limit_once_with_secondary(self):
+        template = EmailTemplate.objects.create(
+            name='Automatic Sender Failover',
+            subject='Account update',
+            html_content='<p>Account update</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Automatic Sender Failover',
+            template=template,
+            status='running',
+        )
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='automatic-failover-user',
+            recipient_email='failover@example.com',
+            dashboard_url='https://app.crypgo.com/access/failover',
+        )
+
+        def send_with_account(**kwargs):
+            sender_email = kwargs['sender_account']['email']
+            if sender_email == 'support.crypgo@gmail.com':
+                return EmailLog.objects.create(
+                    campaign=campaign,
+                    recipient_email=recipient.recipient_email,
+                    subject=kwargs['subject'],
+                    tracking_id='primary-sender-limit-failure',
+                    sender_email=sender_email,
+                    status='failed',
+                    error_message='550 5.4.5 Daily sending quota exceeded',
+                )
+            return EmailLog.objects.create(
+                campaign=campaign,
+                recipient_email=recipient.recipient_email,
+                subject=kwargs['subject'],
+                tracking_id='secondary-sender-success',
+                sender_email=sender_email,
+                status='sent',
+            )
+
+        sender = Mock()
+        sender.send_with_tracking.side_effect = send_with_account
+        command = Command()
+
+        with patch.object(Command, '_build_account_report_attachments', return_value=[]):
+            command.send_crypgo_recipients(
+                campaign,
+                template,
+                sender,
+                Throttler(),
+            )
+
+        self.assertEqual(sender.send_with_tracking.call_count, 2)
+        attempted_senders = [
+            call.kwargs['sender_account']['email']
+            for call in sender.send_with_tracking.call_args_list
+        ]
+        self.assertEqual(
+            attempted_senders,
+            ['support.crypgo@gmail.com', 'news.crypgo@gmail.com'],
+        )
+        recipient.refresh_from_db()
+        campaign.refresh_from_db()
+        self.assertEqual(recipient.status, 'sent')
+        self.assertFalse(campaign.is_paused)
+        self.assertEqual(
+            EmailLog.objects.filter(
+                campaign=campaign,
+                recipient_email=recipient.recipient_email,
+                status='failed',
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            EmailLog.objects.filter(
+                campaign=campaign,
+                recipient_email=recipient.recipient_email,
+                status='sent',
+                sender_email='news.crypgo@gmail.com',
+            ).count(),
+            1,
+        )
+
+    def test_single_generic_message_block_does_not_trigger_sender_failover(self):
+        template = EmailTemplate.objects.create(
+            name='Recipient Block Is Not Sender Limit',
+            subject='Account update',
+            html_content='<p>Account update</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Recipient Block Is Not Sender Limit',
+            template=template,
+            status='running',
+        )
+        recipient = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='recipient-specific-block',
+            recipient_email='blocked-recipient@example.com',
+            dashboard_url='https://app.crypgo.com/access/blocked-recipient',
+        )
+        sender = Mock()
+        sender.send_with_tracking.return_value = EmailLog.objects.create(
+            campaign=campaign,
+            recipient_email=recipient.recipient_email,
+            subject='Account update',
+            tracking_id='recipient-specific-message-block',
+            sender_email='support.crypgo@gmail.com',
+            status='failed',
+            error_message=(
+                'Message blocked. Your message to blocked-recipient@example.com '
+                'has been blocked.'
+            ),
+        )
+
+        with patch.object(Command, '_build_account_report_attachments', return_value=[]):
+            Command().send_crypgo_recipients(
+                campaign,
+                template,
+                sender,
+                Throttler(),
+            )
+
+        sender.send_with_tracking.assert_called_once()
+        recipient.refresh_from_db()
+        self.assertEqual(recipient.status, 'failed')
+
+    def test_repeated_generic_gmail_blocks_switch_sender_and_retry_prior_leads(self):
+        template = EmailTemplate.objects.create(
+            name='Repeated Gmail Block Failover',
+            subject='Account update',
+            html_content='<p>Account update</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Repeated Gmail Block Failover',
+            template=template,
+            status='running',
+        )
+        recipients = [
+            CampaignLead.objects.create(
+                campaign=campaign,
+                source='crypgo_user',
+                external_user_id=f'repeated-block-{index}',
+                recipient_email=f'repeated-block-{index}@example.com',
+                dashboard_url=f'https://app.crypgo.com/access/repeated-block-{index}',
+            )
+            for index in range(3)
+        ]
+        attempts = []
+
+        def send_with_account(**kwargs):
+            attempts.append((
+                kwargs['recipient_email'],
+                kwargs['sender_account']['email'],
+            ))
+            blocked = kwargs['sender_account']['email'] == 'support.crypgo@gmail.com'
+            return EmailLog.objects.create(
+                campaign=campaign,
+                recipient_email=kwargs['recipient_email'],
+                subject=kwargs['subject'],
+                tracking_id=f'repeated-block-log-{len(attempts)}',
+                sender_email=kwargs['sender_account']['email'],
+                status='failed' if blocked else 'sent',
+                error_message=(
+                    'Message blocked. Recipient message has been blocked.'
+                    if blocked else ''
+                ),
+            )
+
+        sender = Mock()
+        sender.send_with_tracking.side_effect = send_with_account
+
+        with patch.object(Command, '_build_account_report_attachments', return_value=[]):
+            Command().send_crypgo_recipients(
+                campaign,
+                template,
+                sender,
+                Throttler(),
+            )
+
+        self.assertEqual(len(attempts), 6)
+        self.assertEqual(
+            [email for _, email in attempts[:3]],
+            ['support.crypgo@gmail.com'] * 3,
+        )
+        self.assertEqual(
+            [email for _, email in attempts[3:]],
+            ['news.crypgo@gmail.com'] * 3,
+        )
+        self.assertEqual(
+            {email for email, _ in attempts[3:]},
+            {recipient.recipient_email for recipient in recipients},
+        )
+        for recipient in recipients:
+            recipient.refresh_from_db()
+            self.assertEqual(recipient.status, 'sent')
+
+    def test_repeated_generic_gmail_blocks_are_scoped_to_that_sender_and_campaign(self):
+        campaign = Campaign.objects.create(name='Repeated Generic Gmail Blocks')
+        other_campaign = Campaign.objects.create(name='Different Campaign')
+        for index in range(3):
+            EmailLog.objects.create(
+                campaign=campaign,
+                recipient_email=f'blocked-{index}@example.com',
+                subject='Campaign',
+                tracking_id=f'repeated-message-block-{index}',
+                sender_email='support.crypgo@gmail.com',
+                status='failed',
+                error_message='Message blocked: recipient message has been blocked.',
+            )
+        EmailLog.objects.create(
+            campaign=other_campaign,
+            recipient_email='other@example.com',
+            subject='Other campaign',
+            tracking_id='other-campaign-message-block',
+            sender_email='news.crypgo@gmail.com',
+            status='failed',
+            error_message='Message blocked: recipient message has been blocked.',
+        )
+
+        throttler = Throttler()
+
+        self.assertTrue(
+            throttler.is_campaign_sender_blocked(campaign, 'support.crypgo@gmail.com')
+        )
+        self.assertFalse(
+            throttler.is_campaign_sender_blocked(campaign, 'news.crypgo@gmail.com')
+        )
 
     def test_reconciliation_preserves_delivered_inbox_and_marks_alias_duplicate(self):
         from apps.campaigns.recipient_utils import reconcile_campaign_recipients
