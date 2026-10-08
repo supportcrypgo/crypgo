@@ -294,63 +294,61 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
 
       setIsLoadingData(true);
       try {
-        // Fetch profiles only for authenticated admin users.
-        if (isAuthenticated && user?.role === 'admin') {
-          try {
-            const apiProfiles = await adminApi.getUsers();
-            setProfiles(apiProfiles);
-          } catch {
+        const profileRequest = (async () => {
+          if (isAuthenticated && user?.role === 'admin') {
+            try {
+              setProfiles(await adminApi.getUsers());
+            } catch {
+              setProfiles(shouldUseFixtures() ? getAllUsers() : []);
+            }
+          } else {
             setProfiles(shouldUseFixtures() ? getAllUsers() : []);
           }
-        } else {
-          setProfiles(shouldUseFixtures() ? getAllUsers() : []);
-        }
+        })();
 
-        // If authenticated user, fetch their data
+        const dataRequests = [profileRequest];
         if (isAuthenticated && userId) {
-          const [walletResult, transactionsResult] = await Promise.allSettled([
-            walletApi.getMyWallet(),
-            walletApi.getTransactions(),
-          ]);
+          const walletRequest = (async () => {
+            try {
+              const apiAssets = await walletApi.getMyWallet();
+              const enrichedAssets = enrichWalletAssetsPreservingKnownPrices(
+                apiAssets,
+                prices,
+                walletAssetsRef.current,
+              );
+              setWalletAssets(enrichedAssets);
+              setWalletSummary(deriveWalletSummary(enrichedAssets));
+              setWalletError(null);
+            } catch (error) {
+              console.error('Initial wallet fetch failed:', error);
+              if (shouldUseFixtures()) {
+                const seedWalletAssets = getWalletForUser(userId);
+                const enrichedAssets = enrichWalletAssetsWithLivePrices(seedWalletAssets, prices);
+                setWalletAssets(enrichedAssets);
+                setWalletSummary(deriveWalletSummary(enrichedAssets));
+                setWalletError(null);
+              } else {
+                await loadWalletWithRetry();
+              }
+            }
+          })();
+          const transactionsRequest = (async () => {
+            try {
+              setTransactions(await walletApi.getTransactions());
+            } catch (error) {
+              console.error('Initial transaction fetch failed:', error);
+              if (shouldUseFixtures()) {
+                setTransactions(getTransactionsForUser(userId));
+              }
+            }
+          })();
 
-          if (walletResult.status === 'fulfilled') {
-            const seedWalletAssets = walletResult.value as UnifiedWalletAsset[];
-            const enrichedAssets = enrichWalletAssetsPreservingKnownPrices(
-              seedWalletAssets,
-              prices,
-              walletAssetsRef.current,
-            );
-            setWalletAssets(enrichedAssets);
-            setWalletSummary(deriveWalletSummary(enrichedAssets));
-            setWalletError(null);
-          } else if (shouldUseFixtures()) {
-            const seedWalletAssets = getWalletForUser(userId);
-            const enrichedAssets = enrichWalletAssetsWithLivePrices(seedWalletAssets, prices);
-            setWalletAssets(enrichedAssets);
-            setWalletSummary(deriveWalletSummary(enrichedAssets));
-            setWalletError(null);
-          } else {
-            await loadWalletWithRetry();
-          }
-
-          if (transactionsResult.status === 'fulfilled') {
-            setTransactions(transactionsResult.value);
-          } else if (shouldUseFixtures()) {
-            setTransactions(getTransactionsForUser(userId));
-          }
+          dataRequests.push(walletRequest, transactionsRequest);
         }
+
+        await Promise.all(dataRequests);
       } catch (error) {
         console.error('Initial data fetch failed:', error);
-        if (isAuthenticated && userId) {
-          if (shouldUseFixtures()) {
-            const seedWalletAssets = getWalletForUser(userId);
-            const enrichedAssets = enrichWalletAssetsWithLivePrices(seedWalletAssets, prices);
-            const summary = deriveWalletSummary(enrichedAssets);
-            setWalletAssets(enrichedAssets);
-            setWalletSummary(summary);
-            setTransactions(getTransactionsForUser(userId));
-          }
-        }
       } finally {
         setIsLoadingData(false);
       }
