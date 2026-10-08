@@ -768,6 +768,9 @@ export const authApi = {
     if (data?.access_token && typeof window !== 'undefined') {
       localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, data.access_token);
     }
+    if (data?.user) {
+      data.user = normalizeUser(data.user);
+    }
 
     return data;
   },
@@ -785,6 +788,9 @@ export const authApi = {
     }
     if (data.access_token && typeof window !== 'undefined') {
       localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, data.access_token);
+    }
+    if (data.user) {
+      data.user = normalizeUser(data.user);
     }
     return data;
   },
