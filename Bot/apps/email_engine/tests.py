@@ -174,25 +174,25 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertFalse(Bounce.objects.filter(email='internal-error@example.com').exists())
         self.assertFalse(BlacklistedLead.objects.filter(email='internal-error@example.com').exists())
 
-    def test_throttler_waits_around_90_seconds_between_campaign_sends(self):
+    def test_throttler_paces_campaign_sends_at_about_2_33_per_minute(self):
         EmailLog.objects.create(
             campaign=self.campaign,
             recipient_email='first@example.com',
             subject='Test',
             tracking_id='throttle-wait-test-1',
             status='sent',
-            sent_at=timezone.now() - timedelta(seconds=30),
+            sent_at=timezone.now() - timedelta(seconds=10),
         )
 
         throttler = Throttler()
         wait_time = throttler.wait_for_next_slot(self.campaign)
 
         self.assertGreater(wait_time, 0)
-        self.assertAlmostEqual(wait_time, 60, delta=5)
+        self.assertAlmostEqual(wait_time, 3600 / 140 - 10, delta=1)
         self.assertFalse(throttler.can_send_campaign(self.campaign))
 
-    def test_throttler_blocks_after_40_sends_in_a_hour(self):
-        sent_at = timezone.now() - timedelta(minutes=10)
+    def test_throttler_allows_140_sends_per_rolling_hour(self):
+        sent_at = timezone.now() - timedelta(minutes=40)
         EmailLog.objects.bulk_create([
             EmailLog(
                 campaign=self.campaign,
@@ -202,7 +202,51 @@ class EmailSenderDeliverabilityTest(TestCase):
                 status='sent',
                 sent_at=sent_at,
             )
-            for idx in range(40)
+            for idx in range(139)
+        ])
+
+        throttler = Throttler()
+
+        self.assertEqual(throttler.get_remaining_hour(self.campaign), 1)
+        self.assertTrue(throttler.can_send_campaign(self.campaign))
+
+    def test_throttler_blocks_after_70_sends_in_rolling_30_minutes(self):
+        sent_at = timezone.now() - timedelta(minutes=20)
+        EmailLog.objects.bulk_create([
+            EmailLog(
+                campaign=self.campaign,
+                recipient_email=f'half-hour-{idx}@example.com',
+                subject='Test',
+                tracking_id=f'half-hour-throttle-test-{idx}',
+                status='sent',
+                sent_at=sent_at,
+            )
+            for idx in range(70)
+        ])
+
+        throttler = Throttler()
+
+        self.assertEqual(throttler.get_remaining_half_hour(self.campaign), 0)
+        self.assertEqual(throttler.get_remaining_hour(self.campaign), 70)
+        self.assertAlmostEqual(
+            throttler.wait_for_next_slot(self.campaign),
+            10 * 60,
+            delta=2,
+        )
+        self.assertFalse(throttler.can_send_campaign(self.campaign))
+
+    def test_throttler_blocks_after_140_sends_in_rolling_hour(self):
+        sent_at = timezone.now() - timedelta(minutes=10)
+        EmailLog.objects.bulk_create([
+            EmailLog(
+                campaign=self.campaign,
+                recipient_email=f'hour-cap-{idx}@example.com',
+                subject='Test',
+                tracking_id=f'hour-cap-throttle-test-{idx}',
+                status='sent',
+                sent_at=sent_at,
+            )
+            for idx in range(140)
         ])
 
         throttler = Throttler()
@@ -384,6 +428,127 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         )
         self.market_snapshot_patcher.start()
         self.addCleanup(self.market_snapshot_patcher.stop)
+
+    def test_reconciliation_preserves_delivered_inbox_and_marks_alias_duplicate(self):
+        from apps.campaigns.recipient_utils import reconcile_campaign_recipients
+
+        campaign = Campaign.objects.create(name='Alias Reconciliation')
+        base_account = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='base-account',
+            recipient_email='person@gmail.com',
+            dashboard_url='https://app.crypgo.com/access/base',
+        )
+        alias_account = CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='tagged-account',
+            recipient_email='person+1@gmail.com',
+            dashboard_url='https://app.crypgo.com/access/tagged',
+        )
+        EmailLog.objects.create(
+            campaign=campaign,
+            recipient_email='person+1@gmail.com',
+            subject='Previous campaign email',
+            tracking_id='alias-reconciliation-delivered',
+            status='sent',
+        )
+
+        dry_run = reconcile_campaign_recipients(campaign)
+
+        self.assertEqual(dry_run['inboxes'], 1)
+        self.assertEqual(dry_run['delivered_inboxes'], 1)
+        self.assertEqual(dry_run['duplicates'], 1)
+        base_account.refresh_from_db()
+        alias_account.refresh_from_db()
+        self.assertEqual(base_account.status, 'pending')
+        self.assertEqual(alias_account.status, 'pending')
+        self.assertEqual(base_account.recipient_account_emails, [])
+
+        applied = reconcile_campaign_recipients(campaign, apply=True)
+
+        base_account.refresh_from_db()
+        alias_account.refresh_from_db()
+        self.assertEqual(applied['updated'], 2)
+        self.assertEqual(base_account.status, 'sent')
+        self.assertEqual(alias_account.status, 'duplicate')
+        self.assertEqual(
+            set(base_account.recipient_account_emails),
+            {'person@gmail.com', 'person+1@gmail.com'},
+        )
+        self.assertEqual(campaign.campaign_lead_total(), 1)
+        self.assertEqual(campaign.campaign_lead_sent(), 1)
+
+    def test_send_loop_sends_only_once_for_gmail_alias_accounts(self):
+        template = EmailTemplate.objects.create(
+            name='Gmail Alias Deduplication',
+            subject='Account update',
+            html_content='<p>Account update</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(name='Gmail Alias Deduplication', template=template)
+        leads = [
+            CampaignLead.objects.create(
+                campaign=campaign,
+                source='crypgo_user',
+                external_user_id=user_id,
+                recipient_email=email,
+                dashboard_url=f'https://app.crypgo.com/access/{user_id}',
+            )
+            for user_id, email in (
+                ('base-send', 'send-once@gmail.com'),
+                ('tagged-send', 'send-once+1@gmail.com'),
+            )
+        ]
+        sender = Mock()
+        sender.send_with_tracking.return_value = type('SendResult', (), {'status': 'sent'})()
+        throttler = Mock()
+        throttler.get_remaining_day.return_value = 140
+        throttler.wait_for_next_slot.return_value = 0
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
+
+        Command().send_crypgo_recipients(campaign, template, sender, throttler)
+
+        sender.send_with_tracking.assert_called_once()
+        leads[0].refresh_from_db()
+        leads[1].refresh_from_db()
+        self.assertEqual(leads[0].status, 'sent')
+        self.assertEqual(leads[1].status, 'duplicate')
+
+    def test_grouped_account_report_builds_pdf_for_each_stored_account_email(self):
+        recipient = CampaignLead(
+            recipient_email='reports@gmail.com',
+            recipient_account_emails=['reports@gmail.com', 'reports+2@gmail.com'],
+            pk=1,
+        )
+        completed_reports = [
+            subprocess.CompletedProcess(
+                args=['generate_user_report.py'],
+                returncode=0,
+                stdout=base64.b64encode(b'%PDF-primary').decode('ascii'),
+                stderr='',
+            ),
+            subprocess.CompletedProcess(
+                args=['generate_user_report.py'],
+                returncode=0,
+                stdout=base64.b64encode(b'%PDF-alias').decode('ascii'),
+                stderr='',
+            ),
+        ]
+
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            side_effect=completed_reports,
+        ) as run_report:
+            attachments = Command()._build_recipient_pdf_attachment(recipient)
+
+        self.assertEqual([attachment[1] for attachment in attachments], [b'%PDF-primary', b'%PDF-alias'])
+        self.assertEqual(run_report.call_args_list[0].args[0][3], 'reports@gmail.com')
+        self.assertEqual(run_report.call_args_list[1].args[0][3], 'reports+2@gmail.com')
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',

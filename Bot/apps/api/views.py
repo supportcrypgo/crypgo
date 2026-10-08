@@ -10,6 +10,7 @@ import hmac
 from apps.leads.models import BlacklistedLead
 from apps.templates.models import EmailTemplate
 from apps.campaigns.models import Campaign, CampaignLead
+from apps.campaigns.recipient_utils import campaign_recipient_count
 from apps.email_engine.models import EmailLog, Bounce, Tracking
 from apps.unsubscribes.models import UnsubscribedLead
 from apps.webhooks.models import Webhook
@@ -203,9 +204,19 @@ def sync_campaign_recipients(request, campaign_id):
         external_user_id = recipient.get('external_user_id')
         email = recipient.get('email')
         dashboard_url = recipient.get('dashboard_url')
+        account_emails = recipient.get('account_emails', [email])
         if not all(isinstance(value, str) and value for value in (external_user_id, email, dashboard_url)):
             return Response(
                 {'error': 'Each recipient requires external_user_id, email, and dashboard_url'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if (
+            not isinstance(account_emails, list)
+            or not account_emails
+            or not all(isinstance(value, str) and value.strip() for value in account_emails)
+        ):
+            return Response(
+                {'error': 'Each recipient account_emails value must be a non-empty list of emails'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         campaign_recipient, was_created = CampaignLead.objects.update_or_create(
@@ -216,6 +227,7 @@ def sync_campaign_recipients(request, campaign_id):
                 'recipient_email': email,
                 'recipient_first_name': recipient.get('first_name', ''),
                 'recipient_last_name': recipient.get('last_name', ''),
+                'recipient_account_emails': account_emails,
                 'dashboard_url': dashboard_url,
             },
         )
@@ -225,6 +237,6 @@ def sync_campaign_recipients(request, campaign_id):
             updated += 1
 
     Campaign.objects.filter(pk=campaign.pk).update(
-        total_leads=CampaignLead.objects.filter(campaign=campaign).count()
+        total_leads=campaign_recipient_count(campaign)
     )
     return Response({'created': created, 'updated': updated, 'total': created + updated})

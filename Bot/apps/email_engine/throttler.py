@@ -16,8 +16,9 @@ class Throttler:
     DEFAULT_PER_HOUR = getattr(settings, 'MAX_EMAILS_PER_HOUR', 50)
     DEFAULT_PER_DAY = getattr(settings, 'MAX_EMAILS_PER_DAY', 450)
 
-    CAMPAIGN_SECONDS_BETWEEN_EMAILS = 90
-    CAMPAIGN_MAX_PER_HOUR = 40
+    CAMPAIGN_SECONDS_BETWEEN_EMAILS = 3600 / 140
+    CAMPAIGN_MAX_PER_HALF_HOUR = 70
+    CAMPAIGN_MAX_PER_HOUR = 140
     CAMPAIGN_MAX_PER_DAY = 140
     CAMPAIGN_MAX_PER_SENDER_PER_DAY = 70
 
@@ -95,6 +96,7 @@ class Throttler:
         """Check whether a campaign can send another email right now."""
         return (
             self.get_remaining_day(campaign) > 0
+            and self.get_remaining_half_hour(campaign) > 0
             and self.get_remaining_hour(campaign) > 0
             and self.wait_for_next_slot(campaign) <= 0
         )
@@ -102,6 +104,7 @@ class Throttler:
     def get_campaign_remaining(self, campaign):
         """Return campaign-specific throttling details."""
         return {
+            'per_30_minutes': self.get_remaining_half_hour(campaign),
             'per_hour': self.get_remaining_hour(campaign),
             'per_day': self.get_remaining_day(campaign),
             'wait_time': self.wait_for_next_slot(campaign),
@@ -129,6 +132,12 @@ class Throttler:
         since = timezone.now() - timedelta(hours=1)
         sent_last_hour = self.get_campaign_email_queryset(campaign, since=since).count()
         return max(0, self.CAMPAIGN_MAX_PER_HOUR - sent_last_hour)
+
+    def get_remaining_half_hour(self, campaign):
+        """Get how many campaign sends remain in the current rolling 30 minutes."""
+        since = timezone.now() - timedelta(minutes=30)
+        sent_last_half_hour = self.get_campaign_email_queryset(campaign, since=since).count()
+        return max(0, self.CAMPAIGN_MAX_PER_HALF_HOUR - sent_last_half_hour)
 
     def get_remaining_day(self, campaign):
         """Get how many campaign sends remain for today."""
@@ -172,19 +181,26 @@ class Throttler:
             elapsed = (timezone.now() - last_sent).total_seconds()
             wait_for_gap = max(0, self.CAMPAIGN_SECONDS_BETWEEN_EMAILS - elapsed)
 
-        since = timezone.now() - timedelta(hours=1)
-        recent_logs = self.get_campaign_email_queryset(campaign, since=since).order_by('sent_at', 'created_at')
-        recent_count = recent_logs.count()
-        wait_for_hour = 0
-        if recent_count >= self.CAMPAIGN_MAX_PER_HOUR:
-            oldest_recent = recent_logs.first()
-            if oldest_recent:
-                wait_for_hour = max(
-                    0,
-                    (oldest_recent.sent_at + timedelta(hours=1) - timezone.now()).total_seconds(),
-                )
+        now = timezone.now()
+        windows = (
+            (timedelta(minutes=30), self.CAMPAIGN_MAX_PER_HALF_HOUR),
+            (timedelta(hours=1), self.CAMPAIGN_MAX_PER_HOUR),
+        )
+        wait_for_window = 0
+        for duration, limit in windows:
+            recent_logs = self.get_campaign_email_queryset(
+                campaign,
+                since=now - duration,
+            ).order_by('sent_at', 'created_at')
+            if recent_logs.count() >= limit:
+                oldest_recent = recent_logs.first()
+                if oldest_recent:
+                    wait_for_window = max(
+                        wait_for_window,
+                        (oldest_recent.sent_at + duration - now).total_seconds(),
+                    )
 
-        return max(wait_for_gap, wait_for_hour)
+        return max(wait_for_gap, wait_for_window)
 
     def _maybe_reset(self, now):
         """Reset counters if time period has passed."""

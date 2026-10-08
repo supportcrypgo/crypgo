@@ -510,7 +510,11 @@ def generate_user_report_bytes(user):
     
     # Name paragraph with label, same style as other user info fields
     user_name_para = Paragraph(f"<b>Name:</b> {full_name}", style_user_info_title)
-    user_email_para = Paragraph(f"<b>Email:</b> {user.email}", style_user_info_title)
+    report_email = user.email
+    local_part, separator, domain = report_email.rpartition('@')
+    if separator and domain.lower() == 'gmail.com' and '+' in local_part:
+        report_email = f'{local_part.split("+", 1)[0]}@{domain}'
+    user_email_para = Paragraph(f"<b>Email:</b> {report_email}", style_user_info_title)
     currency_para = Paragraph(f"<b>Currency:</b> USD", style_user_info_title)
     total_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else f'${total_usd:,.2f}'
     available_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else f'${available_usd:,.2f}'

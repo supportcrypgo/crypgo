@@ -100,13 +100,25 @@ class Campaign(models.Model):
         return 0.0
 
     def campaign_lead_total(self):
-        return self.campaign_leads.filter(source='crypgo_user').count()
+        from .recipient_utils import canonical_campaign_email
+
+        return len({
+            canonical_campaign_email(email)
+            for email in self.campaign_leads.filter(source='crypgo_user')
+            .values_list('recipient_email', flat=True)
+        })
 
     def campaign_lead_sent(self):
-        return self.campaign_leads.filter(
-            source='crypgo_user',
-            status__in=['sent', 'opened', 'clicked'],
-        ).count()
+        from .recipient_utils import canonical_campaign_email
+
+        delivered_statuses = {'sent', 'opened', 'clicked'}
+        return len({
+            canonical_campaign_email(email)
+            for email in self.campaign_leads.filter(
+                source='crypgo_user',
+                status__in=delivered_statuses,
+            ).values_list('recipient_email', flat=True)
+        })
 
 
 @receiver(pre_delete, sender=Campaign)
@@ -130,6 +142,7 @@ class CampaignLead(models.Model):
         ('pending', 'Pending'),
         ('queued', 'Queued'),
         ('sent', 'Sent'),
+        ('duplicate', 'Duplicate inbox'),
         ('opened', 'Opened'),
         ('clicked', 'Clicked'),
         ('failed', 'Failed'),
@@ -143,6 +156,7 @@ class CampaignLead(models.Model):
     recipient_email = models.EmailField(blank=True, null=True)
     recipient_first_name = models.CharField(max_length=255, blank=True, null=True)
     recipient_last_name = models.CharField(max_length=255, blank=True, null=True)
+    recipient_account_emails = models.JSONField(default=list, blank=True)
     dashboard_url = models.URLField(max_length=1000, blank=True, null=True)
     
     # Variant tracking for A/B testing

@@ -197,8 +197,32 @@ class Command(BaseCommand):
         return None
 
     def _build_recipient_pdf_attachment(self, recipient):
-        """Build the recipient report and any matching Gmail +1 account report."""
+        """Build reports for every Crypgo account sharing this campaign inbox."""
         recipient_email = (recipient.recipient_email or '').strip()
+        stored_account_emails = recipient.recipient_account_emails
+        account_emails = [
+            email.strip()
+            for email in (
+                stored_account_emails if isinstance(stored_account_emails, list) else []
+            )
+            if isinstance(email, str) and email.strip()
+        ]
+        if account_emails:
+            attachments = []
+            seen = set()
+            for index, email in enumerate(account_emails):
+                normalized = email.lower()
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                attachments.extend(self._build_pdf_attachment_for_email(
+                    recipient,
+                    email,
+                    allow_missing_user=index > 0,
+                    fail_on_error=True,
+                ))
+            return attachments
+
         attachments = self._build_pdf_attachment_for_email(
             recipient,
             recipient_email,
@@ -666,7 +690,8 @@ class Command(BaseCommand):
             f'  Batch size: {batch_size}\n'
             f'  A/B Testing: {"Enabled" if use_ab_testing else "Disabled"}\n'
             f'  Documents: {campaign.current_document_id} to {max_document_id}\n'
-            f'  Rate: 1 email every 90 seconds (40/hour, 70 per sender, 140/day)'
+            f'  Rate: up to 70 emails per 30 minutes / 140 per hour '
+            f'(about 2.33 per minute; 70 per sender and 140 per day)'
         )
 
         total_sent = 0
@@ -927,7 +952,15 @@ class Command(BaseCommand):
     def send_crypgo_recipients(self, campaign, template, sender, throttler):
         """Send campaign-scoped Crypgo recipients with their dashboard links."""
         from apps.campaigns.models import CampaignLead
+        from apps.campaigns.recipient_utils import (
+            campaign_recipient_count,
+            reconcile_campaign_recipients,
+        )
         from apps.templates.renderer import TemplateRenderer
+
+        reconcile_campaign_recipients(campaign, apply=True)
+        campaign.total_leads = campaign_recipient_count(campaign)
+        Campaign.objects.filter(pk=campaign.pk).update(total_leads=campaign.total_leads)
 
         recipients = CampaignLead.objects.filter(
             campaign=campaign,
@@ -999,7 +1032,26 @@ class Command(BaseCommand):
             if recipient.status not in ('pending', 'queued', 'failed'):
                 continue
 
-            suppression_reason = self._global_suppression_reason(recipient.recipient_email)
+            stored_account_emails = recipient.recipient_account_emails
+            account_emails = (
+                [
+                    email
+                    for email in stored_account_emails
+                    if isinstance(email, str) and email.strip()
+                ]
+                if isinstance(stored_account_emails, list)
+                else []
+            ) or [recipient.recipient_email]
+            suppression_reason = next(
+                (
+                    reason
+                    for email in account_emails
+                    if email
+                    for reason in (self._global_suppression_reason(email),)
+                    if reason
+                ),
+                None,
+            )
             if suppression_reason:
                 terminal_status = 'unsubscribed' if suppression_reason == 'unsubscribed' else 'bounced'
                 CampaignLead.objects.filter(pk=recipient.pk).update(

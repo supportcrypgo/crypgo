@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 from .models import Campaign, CampaignLead
+from .recipient_utils import campaign_recipient_count
 from .worker import launch_campaign_worker
 import requests
 
@@ -161,6 +162,13 @@ class CampaignAdmin(ModelAdmin):
                     required = ('external_user_id', 'email', 'dashboard_url')
                     if not all(isinstance(recipient.get(field), str) and recipient.get(field) for field in required):
                         return False, 'Crypgo sync returned an incomplete recipient record.'
+                    account_emails = recipient.get('account_emails', [recipient['email']])
+                    if (
+                        not isinstance(account_emails, list)
+                        or not account_emails
+                        or not all(isinstance(email, str) and email.strip() for email in account_emails)
+                    ):
+                        return False, 'Crypgo sync returned invalid account email addresses.'
                     campaign_lead, created = CampaignLead.objects.update_or_create(
                         campaign=campaign,
                         external_user_id=recipient['external_user_id'],
@@ -169,17 +177,18 @@ class CampaignAdmin(ModelAdmin):
                             'recipient_email': recipient['email'],
                             'recipient_first_name': recipient.get('first_name', ''),
                             'recipient_last_name': recipient.get('last_name', ''),
+                            'recipient_account_emails': account_emails,
                             'dashboard_url': recipient['dashboard_url'],
                         },
                     )
                     if created:
                         campaign_lead.status = 'pending'
                         campaign_lead.save(update_fields=['status', 'updated_at'])
-            campaign.total_leads = CampaignLead.objects.filter(campaign=campaign).count()
+            campaign.total_leads = campaign_recipient_count(campaign)
             campaign.save(update_fields=['total_leads', 'updated_at'])
             if not recipients:
                 return False, f'Crypgo returned no active users for campaign "{campaign.name}".'
-            return True, f'Synchronized {len(recipients)} Crypgo users.'
+            return True, f'Synchronized {len(recipients)} Crypgo inboxes.'
         except (requests.RequestException, KeyError, TypeError, ValueError) as error:
             logger.exception('Crypgo recipient sync failed for campaign %s', campaign.pk)
             return False, f'Crypgo sync failed: {error}'

@@ -622,6 +622,25 @@ class PasswordResetAccountSelectionTests(TestCase):
 
 
 class UserReportLayoutTests(TestCase):
+    def test_report_displays_base_gmail_address_for_plus_tag_account(self):
+        from generate_user_report import generate_user_report_bytes
+        import pymupdf
+
+        user = CustomUser.objects.create_user(
+            username='plus-tag-report-user',
+            email='report+tag@gmail.com',
+            password='Password123!',
+        )
+
+        document = pymupdf.open(
+            stream=generate_user_report_bytes(user),
+            filetype='pdf',
+        )
+
+        report_text = cast(str, document[0].get_text())
+        self.assertIn('Email: report@gmail.com', report_text)
+        self.assertNotIn('report+tag@gmail.com', report_text)
+
     def test_report_price_lookup_reads_snapshot_without_network(self):
         from decimal import Decimal
         from datetime import datetime, timezone as datetime_timezone
@@ -1171,6 +1190,44 @@ class CampaignAccessTokenTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_campaign_link_allows_selection_of_gmail_plus_alias_account(self):
+        alias = CustomUser.objects.create_user(
+            username='campaign-user-alias',
+            email='campaign+1@gmail.com',
+            password='Password123!',
+        )
+        self.user.email = 'campaign@gmail.com'
+        self.user.save(update_fields=['email'])
+        token, raw_token = CampaignAccessToken.generate_token(self.user, 'campaign-1')
+
+        response = self.client.post(
+            '/api/auth/campaign-access/consume/',
+            {'token': raw_token},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['requires_account_selection'])
+        self.assertEqual(
+            {account['id'] for account in payload['accounts']},
+            {self.user.pk, alias.pk},
+        )
+
+        selected = self.client.post(
+            '/api/auth/login/select-account/',
+            {
+                'selection_token': payload['selection_token'],
+                'account_id': alias.pk,
+            },
+            format='json',
+        )
+
+        token.refresh_from_db()
+        self.assertEqual(selected.status_code, 200)
+        self.assertTrue(selected.cookies.get('access_token'))
+        self.assertEqual(token.use_count, 1)
+
     def test_invalid_campaign_access_token_is_rejected(self):
         response = self.client.post(
             '/api/auth/campaign-access/consume/',
@@ -1250,3 +1307,38 @@ class CampaignRecipientExportTests(TestCase):
         self.assertEqual(len(recipients), 1)
         self.assertEqual(recipients[0]['email'], 'export@example.com')
         self.assertNotIn('admin@crypgo.com', [recipient['email'] for recipient in recipients])
+
+    def test_signed_export_groups_gmail_plus_aliases_and_keeps_account_emails(self):
+        alias = CustomUser.objects.create_user(
+            username='export-user-alias',
+            email='export+1@gmail.com',
+            password='Password123!',
+            first_name='Alias',
+            last_name='User',
+        )
+        self.user.email = 'export@gmail.com'
+        self.user.save(update_fields=['email'])
+        body = b'{}'
+        signature = hmac.new(
+            b'test-bot-service-key', body, hashlib.sha256
+        ).hexdigest()
+
+        response = self.client.post(
+            '/api/internal/campaigns/campaign-1/recipients/export/',
+            data=body,
+            content_type='application/json',
+            HTTP_X_BOT_SIGNATURE=signature,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        recipients = response.json()['recipients']
+        grouped = next(item for item in recipients if item['email'] == 'export@gmail.com')
+        self.assertEqual(grouped['external_user_id'], str(self.user.pk))
+        self.assertEqual(
+            set(grouped['account_emails']),
+            {'export@gmail.com', 'export+1@gmail.com'},
+        )
+        self.assertEqual(
+            sum(item['email'] == 'export@gmail.com' for item in recipients),
+            1,
+        )

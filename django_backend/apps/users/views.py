@@ -331,10 +331,11 @@ class LoginView(APIView):
 
 
 def normalize_gmail_inbox(email: str) -> str | None:
-    local_part, separator, domain = email.rpartition('@')
-    if not separator or domain != 'gmail.com':
+    local_part, separator, domain = email.strip().rpartition('@')
+    if not separator or domain.lower() != 'gmail.com':
         return None
-    return f'{local_part.split("+", 1)[0]}@gmail.com'
+    base_local_part = local_part.split('+', 1)[0].lower()
+    return f'{base_local_part}@gmail.com'
 
 
 def build_account_choice(
@@ -428,7 +429,21 @@ class LoginAccountSelectionView(APIView):
                     )
                     if not access_token.is_valid() or not access_token.user.is_active:
                         raise AccountSelectionChallenge.DoesNotExist
-                    if challenge.context.get('target_user_id') != user.pk:
+                    if challenge.context.get('target_user_id') != access_token.user_id:
+                        raise AccountSelectionChallenge.DoesNotExist
+                    target_gmail_inbox = challenge.context.get('target_gmail_inbox')
+                    same_gmail_inbox = (
+                        bool(target_gmail_inbox)
+                        and normalize_gmail_inbox(user.email) == target_gmail_inbox
+                    )
+                    shared_inbox_member = SharedInboxGroup.objects.filter(
+                        users=access_token.user,
+                    ).filter(users=user).exists()
+                    if (
+                        user.pk != access_token.user_id
+                        and not same_gmail_inbox
+                        and not shared_inbox_member
+                    ):
                         raise AccountSelectionChallenge.DoesNotExist
                     access_token.consume()
                 elif challenge.purpose == AccountSelectionChallenge.Purpose.MAGIC_LINK:
@@ -601,7 +616,12 @@ class MagicLinkConsumeView(APIView):
                             'requires_account_selection': True,
                             'selection_token': raw_challenge,
                             'accounts': [
-                                build_account_choice(candidate, index, group)
+                                build_account_choice(
+                                    candidate,
+                                    index,
+                                    group if candidate.pk in group_user_ids else None,
+                                    normalize_gmail_inbox(token.user.email),
+                                )
                                 for index, candidate in enumerate(linked_users)
                             ],
                             'expires_at': challenge.expires_at,
@@ -646,8 +666,29 @@ class CampaignAccessConsumeView(APIView):
                 token = CampaignAccessToken.objects.select_for_update().select_related('user').get(token_hash=token_hash)
                 if not token.user.is_active or not token.is_valid():
                     raise CampaignAccessToken.DoesNotExist
-                group = SharedInboxGroup.objects.filter(users=token.user).first()
-                linked_users = list(group.users.filter(is_active=True).order_by('pk')) if group else [token.user]
+                groups = list(
+                    SharedInboxGroup.objects.filter(users=token.user).prefetch_related('users')
+                )
+                linked_users = get_password_reset_accounts(token.user)
+                for linked_group in groups:
+                    linked_users = sorted(
+                        {candidate.pk: candidate for candidate in (
+                            *linked_users,
+                            *linked_group.users.filter(is_active=True),
+                        )}.values(),
+                        key=lambda candidate: candidate.pk,
+                    )
+                linked_users = [
+                    candidate for candidate in linked_users
+                    if not candidate.is_staff
+                    and not candidate.is_superuser
+                    and candidate.email.lower() != 'admin@crypgo.com'
+                ]
+                group_by_user_id = {
+                    candidate.pk: linked_group
+                    for linked_group in groups
+                    for candidate in linked_group.users.filter(is_active=True)
+                }
                 if len(linked_users) > 1:
                     is_delete_action = next_action == 'delete-account'
                     eligible_users = [token.user] if is_delete_action else linked_users
@@ -658,6 +699,7 @@ class CampaignAccessConsumeView(APIView):
                         context={
                             'campaign_access_token_id': token.pk,
                             'target_user_id': token.user_id,
+                            'target_gmail_inbox': normalize_gmail_inbox(token.user.email),
                             'campaign_ref': token.campaign_ref,
                             'destination': destination,
                         },
@@ -666,7 +708,12 @@ class CampaignAccessConsumeView(APIView):
                         'requires_account_selection': True,
                         'selection_token': raw_challenge,
                         'accounts': [
-                            build_account_choice(candidate, index, group)
+                            build_account_choice(
+                                candidate,
+                                index,
+                                group_by_user_id.get(candidate.pk),
+                                normalize_gmail_inbox(token.user.email),
+                            )
                             for index, candidate in enumerate(eligible_users)
                         ],
                         'expires_at': challenge.expires_at,
@@ -690,21 +737,32 @@ def export_campaign_recipients(request, campaign_ref):
     if not settings.BOT_SERVICE_KEY or not hmac.compare_digest(signature, expected):
         return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    recipients = []
-    for user in User.objects.filter(is_active=True).exclude(
+    users = User.objects.filter(is_active=True).exclude(
         email__iexact='admin@crypgo.com'
     ).exclude(
         is_staff=True
     ).exclude(
         is_superuser=True
-    ).order_by('pk'):
+    ).order_by('pk')
+    recipients_by_inbox = {}
+    for user in users:
         user = cast(CustomUser, user)
+        inbox = normalize_gmail_inbox(user.email) or user.email.strip().lower()
+        recipients_by_inbox.setdefault(inbox, []).append(user)
+
+    recipients = []
+    for inbox, inbox_users in recipients_by_inbox.items():
+        representative = next(
+            (user for user in inbox_users if user.email.strip().lower() == inbox),
+            inbox_users[0],
+        )
         recipients.append({
-            'external_user_id': str(user.pk),
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'dashboard_url': build_campaign_access_url(user, str(campaign_ref)),
+            'external_user_id': str(representative.pk),
+            'email': inbox,
+            'account_emails': [user.email for user in inbox_users],
+            'first_name': representative.first_name,
+            'last_name': representative.last_name,
+            'dashboard_url': build_campaign_access_url(representative, str(campaign_ref)),
         })
     return Response({'recipients': recipients})
 
