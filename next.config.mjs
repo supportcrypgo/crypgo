@@ -19,11 +19,11 @@ const nextConfig = {
     return [
       {
         source: "/backend-api/:path*/",
-        destination: `${process.env.CRYPGO_BACKEND_URL || "https://crypgo-api.onrender.com"}/api/:path*/`,
+        destination: `${process.env.CRYPGO_BACKEND_URL || "https://crypgo.pythonanywhere.com"}/api/:path*/`,
       },
       {
         source: "/backend-api/:path*",
-        destination: `${process.env.CRYPGO_BACKEND_URL || "https://crypgo-api.onrender.com"}/api/:path*`,
+        destination: `${process.env.CRYPGO_BACKEND_URL || "https://crypgo.pythonanywhere.com"}/api/:path*`,
       },
     ];
   },

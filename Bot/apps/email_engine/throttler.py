@@ -20,7 +20,9 @@ class Throttler:
     DEFAULT_PER_HOUR = getattr(settings, 'MAX_EMAILS_PER_HOUR', 50)
     DEFAULT_PER_DAY = getattr(settings, 'MAX_EMAILS_PER_DAY', 450)
 
-    CAMPAIGN_SECONDS_BETWEEN_EMAILS = 3600 / 140
+    CAMPAIGN_SENDS_PER_MINUTE = 3
+    CAMPAIGN_SECONDS_BETWEEN_EMAILS = 60 / CAMPAIGN_SENDS_PER_MINUTE
+    # Legacy Gmail campaign quotas are retained for historical reporting only.
     CAMPAIGN_MAX_PER_HALF_HOUR = 70
     CAMPAIGN_MAX_PER_HOUR = 140
     CAMPAIGN_MAX_PER_DAY = 140
@@ -98,12 +100,7 @@ class Throttler:
 
     def can_send_campaign(self, campaign):
         """Check whether a campaign can send another email right now."""
-        return (
-            self.get_remaining_day(campaign) > 0
-            and self.get_remaining_half_hour(campaign) > 0
-            and self.get_remaining_hour(campaign) > 0
-            and self.wait_for_next_slot(campaign) <= 0
-        )
+        return self.wait_for_next_slot(campaign) <= 0
 
     def get_campaign_remaining(self, campaign):
         """Return campaign-specific throttling details."""
@@ -221,55 +218,29 @@ class Throttler:
         }
 
     def get_next_campaign_sender(self, campaign, sender_accounts, *, excluded_senders=None):
-        """Choose a daily-eligible sender not blocked by Gmail during the last 24 hours."""
+        """Choose a configured sender not blocked by Gmail during the last 24 hours."""
         excluded = {
             email.lower()
             for email in (excluded_senders or set())
         }
         excluded.update(self.get_blocked_campaign_senders(campaign))
-        for index, account in enumerate(sender_accounts):
+        for account in sender_accounts:
             if account['email'].lower() in excluded:
                 continue
-            if self.get_remaining_sender_day(
-                campaign,
-                account['email'],
-                include_unattributed=index == 0,
-            ) > 0:
-                if not account.get('password'):
-                    raise ValueError(
-                        f"SMTP password is not configured for campaign sender {account['email']}."
-                    )
-                return account
+            if not account.get('password'):
+                raise ValueError(
+                    f"SMTP password is not configured for campaign sender {account['email']}."
+                )
+            return account
         return None
 
     def wait_for_next_slot(self, campaign):
-        """Return the number of seconds to wait before the next campaign send."""
+        """Return the pacing delay before the next campaign send."""
         last_sent = self.get_last_sent_time(campaign)
-        wait_for_gap = 0
-        if last_sent:
-            elapsed = (timezone.now() - last_sent).total_seconds()
-            wait_for_gap = max(0, self.CAMPAIGN_SECONDS_BETWEEN_EMAILS - elapsed)
-
-        now = timezone.now()
-        windows = (
-            (timedelta(minutes=30), self.CAMPAIGN_MAX_PER_HALF_HOUR),
-            (timedelta(hours=1), self.CAMPAIGN_MAX_PER_HOUR),
-        )
-        wait_for_window = 0
-        for duration, limit in windows:
-            recent_logs = self.get_campaign_email_queryset(
-                campaign,
-                since=now - duration,
-            ).order_by('sent_at', 'created_at')
-            if recent_logs.count() >= limit:
-                oldest_recent = recent_logs.first()
-                if oldest_recent:
-                    wait_for_window = max(
-                        wait_for_window,
-                        (oldest_recent.sent_at + duration - now).total_seconds(),
-                    )
-
-        return max(wait_for_gap, wait_for_window)
+        if not last_sent:
+            return 0
+        elapsed = (timezone.now() - last_sent).total_seconds()
+        return max(0, self.CAMPAIGN_SECONDS_BETWEEN_EMAILS - elapsed)
 
     def _maybe_reset(self, now):
         """Reset counters if time period has passed."""

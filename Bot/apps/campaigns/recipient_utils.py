@@ -9,9 +9,10 @@ RETRYABLE_LEAD_STATUSES = {'pending', 'queued', 'failed'}
 def canonical_campaign_email(email):
     normalized = (email or '').strip().lower()
     local_part, separator, domain = normalized.rpartition('@')
-    if separator and domain == 'gmail.com':
+    if separator and local_part and domain:
         base_local_part = local_part.split('+', 1)[0]
-        return f'{base_local_part}@gmail.com'
+        if base_local_part:
+            return f'{base_local_part}@{domain}'
     return normalized
 
 
@@ -30,7 +31,7 @@ def campaign_recipient_count(campaign):
 
 
 def reconcile_campaign_recipients(campaign, *, apply=False):
-    """Group Gmail aliases and preserve a single delivered record per inbox."""
+    """Group plus-tag aliases and preserve a single delivered record per inbox."""
     from apps.email_engine.models import EmailLog
 
     leads = list(

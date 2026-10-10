@@ -2,6 +2,7 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 import logging
+from .email_identity import delivery_email_for_user
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ def send_transaction_caution_email(user):
             subject='Please review your Crypgo regional settings',
             message=plain_message,
             from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None) or 'support.crypgo@gmail.com',
-            recipient_list=[user.email],
+            recipient_list=[delivery_email_for_user(user)],
             fail_silently=False,
             html_message=html_message,
         )
@@ -80,7 +81,7 @@ def send_magic_link_email(user, raw_token):
             subject,
             message,
             from_email,
-            [user.email],
+            [delivery_email_for_user(user)],
             fail_silently=False,
         )
         return True
@@ -132,7 +133,7 @@ def send_reset_password_email(user, reset_token):
             subject=subject,
             message=plain_message,
             from_email=from_email,
-            recipient_list=[user.email],
+            recipient_list=[delivery_email_for_user(user)],
             fail_silently=False,
             html_message=html_message,
         )

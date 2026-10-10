@@ -204,6 +204,49 @@ class SharedInboxLoginTests(TestCase):
         self.assertNotIn('requires_account_selection', response.json())
         self.assertEqual(response.json()['user']['id'], self.first.pk)
 
+    def test_non_gmail_plus_alias_login_uses_account_selection(self):
+        self.group.delete()
+        self.first.email = 'shared.account@outlook.com'
+        self.first.save(update_fields=['email'])
+        self.second.email = 'shared.account+1@outlook.com'
+        self.second.save(update_fields=['email'])
+
+        response = self.client.post(
+            '/api/auth/login/',
+            {'email': self.second.email, 'password': 'SharedPassword123!'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(payload['requires_account_selection'])
+        self.assertEqual(
+            {account['id'] for account in payload['accounts']},
+            {self.first.pk, self.second.pk},
+        )
+        self.assertEqual(
+            {account['email_hint'] for account in payload['accounts']},
+            {'shared.account@outlook.com'},
+        )
+
+    @patch('apps.users.views.send_magic_link_email', return_value=True)
+    def test_magic_link_requested_with_non_gmail_alias_goes_to_base_account(self, send_magic_link):
+        self.group.delete()
+        self.first.email = 'magic.person@outlook.com'
+        self.first.save(update_fields=['email'])
+        self.second.email = 'magic.person+1@outlook.com'
+        self.second.save(update_fields=['email'])
+
+        response = self.client.post(
+            '/api/auth/magic-link/request/',
+            {'email': self.second.email},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        send_magic_link.assert_called_once()
+        self.assertEqual(send_magic_link.call_args.args[0].pk, self.first.pk)
+
     def test_linked_account_profile_uses_canonical_identity_and_email(self):
         self.client.force_authenticate(user=self.second)
 
@@ -213,6 +256,23 @@ class SharedInboxLoginTests(TestCase):
         self.assertEqual(response.json()['email'], 'sirmattfrewer@gmail.com')
         self.assertEqual(response.json()['first_name'], 'Matt')
         self.assertEqual(response.json()['last_name'], 'Frewer')
+
+    def test_unlinked_non_gmail_alias_profile_uses_base_account_identity(self):
+        self.group.delete()
+        self.first.email = 'profile.person@outlook.com'
+        self.first.save(update_fields=['email'])
+        self.second.email = 'profile.person+1@outlook.com'
+        self.second.first_name = 'Different'
+        self.second.country = 'Canada'
+        self.second.save(update_fields=['email', 'first_name', 'country'])
+        self.client.force_authenticate(user=self.second)
+
+        response = self.client.get('/api/users/me/')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['email'], 'profile.person@outlook.com')
+        self.assertEqual(response.json()['first_name'], 'Matt')
+        self.assertEqual(response.json()['country'], 'New Zealand')
         self.assertEqual(response.json()['date_of_birth'], '1980-01-02')
         self.assertEqual(response.json()['country'], 'New Zealand')
         self.assertEqual(response.json()['city'], 'Auckland')
@@ -445,10 +505,26 @@ class PasswordResetAccountSelectionTests(TestCase):
     def test_password_reset_email_always_uses_support_sender(self, send_mail_mock):
         from .services import send_reset_password_email
 
-        self.assertTrue(send_reset_password_email(self.first, self.reset_token))
+        self.assertTrue(send_reset_password_email(self.second, self.reset_token))
         self.assertEqual(
             send_mail_mock.call_args.kwargs['from_email'],
             'Crypgo <support.crypgo@gmail.com>',
+        )
+        self.assertEqual(send_mail_mock.call_args.kwargs['recipient_list'], [self.first.email])
+
+    @patch('apps.users.services.send_mail', return_value=1)
+    def test_password_reset_email_routes_non_gmail_alias_to_canonical_inbox(self, send_mail_mock):
+        from .services import send_reset_password_email
+
+        self.first.email = 'reset.shared@outlook.com'
+        self.first.save(update_fields=['email'])
+        self.second.email = 'reset.shared+1@outlook.com'
+        self.second.save(update_fields=['email'])
+
+        self.assertTrue(send_reset_password_email(self.second, self.reset_token))
+        self.assertEqual(
+            send_mail_mock.call_args.kwargs['recipient_list'],
+            ['reset.shared@outlook.com'],
         )
 
     def test_reset_confirmation_requires_account_choice_for_gmail_aliases(self):
@@ -467,9 +543,47 @@ class PasswordResetAccountSelectionTests(TestCase):
         )
         self.assertEqual(
             {account['email_hint'] for account in payload['accounts']},
-            {self.first.email, self.second.email},
+            {self.first.email},
         )
         self.assertTrue(self.reset_token.is_valid())
+
+    @patch('apps.users.views.send_reset_password_email', return_value=True)
+    def test_non_gmail_alias_forgot_password_sends_to_base_and_offers_account_choice(self, send_reset):
+        base = CustomUser.objects.create_user(
+            username='outlook-reset-base',
+            email='reset.person@outlook.com',
+            password='OldPassword123!',
+        )
+        alias = CustomUser.objects.create_user(
+            username='outlook-reset-alias',
+            email='reset.person+1@outlook.com',
+            password='OldPassword123!',
+        )
+
+        response = self.client.post(
+            '/api/auth/forgot-password/',
+            {'email': alias.email},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        send_reset.assert_called_once()
+        self.assertEqual(send_reset.call_args.args[0].pk, base.pk)
+        reset_token = send_reset.call_args.args[1]
+        confirmation = self.client.get(
+            '/api/auth/reset-password/confirm/',
+            {'token': reset_token.token},
+        )
+        self.assertEqual(confirmation.status_code, 200, confirmation.content)
+        self.assertTrue(confirmation.json()['requires_account_selection'])
+        self.assertEqual(
+            {account['id'] for account in confirmation.json()['accounts']},
+            {base.pk, alias.pk},
+        )
+        self.assertEqual(
+            {account['email_hint'] for account in confirmation.json()['accounts']},
+            {base.email},
+        )
 
     def test_selected_account_alone_is_reset_and_selection_is_one_time(self):
         confirmation = self.client.get(
@@ -622,13 +736,13 @@ class PasswordResetAccountSelectionTests(TestCase):
 
 
 class UserReportLayoutTests(TestCase):
-    def test_report_displays_base_gmail_address_for_plus_tag_account(self):
+    def test_report_displays_base_address_for_plus_tag_account_on_any_domain(self):
         from generate_user_report import generate_user_report_bytes
         import pymupdf
 
         user = CustomUser.objects.create_user(
             username='plus-tag-report-user',
-            email='report+tag@gmail.com',
+            email='report+tag@outlook.com',
             password='Password123!',
         )
 
@@ -638,8 +752,8 @@ class UserReportLayoutTests(TestCase):
         )
 
         report_text = cast(str, document[0].get_text())
-        self.assertIn('Email: report@gmail.com', report_text)
-        self.assertNotIn('report+tag@gmail.com', report_text)
+        self.assertIn('Email: report@outlook.com', report_text)
+        self.assertNotIn('report+tag@outlook.com', report_text)
 
     def test_report_price_lookup_reads_snapshot_without_network(self):
         from decimal import Decimal
@@ -699,8 +813,8 @@ class UserReportLayoutTests(TestCase):
             prices = refresh_report_price_snapshot()
 
         self.assertEqual(set(prices), set(REPORT_TICKERS))
-        self.assertEqual(prices['BTC'], Decimal('86350.00'))
-        self.assertEqual(prices['ETH'], Decimal('2743.14'))
+        self.assertEqual(prices['BTC'], Decimal('83000.00'))
+        self.assertEqual(prices['ETH'], Decimal('2500.00'))
         self.assertEqual(prices['LTC'], Decimal('67.29'))
         with open(cache_path, encoding='utf-8') as snapshot:
             stored = loads(snapshot.read())
@@ -790,12 +904,12 @@ class UserReportLayoutTests(TestCase):
 
         report_text = cast(str, document[0].get_text())
         self.assertIn('USD valuations use fixed manual prices and are not live', report_text)
-        self.assertIn('$86,350.00', report_text)
-        self.assertIn('$172,700.00', report_text)
-        self.assertIn('$2,743.14', report_text)
+        self.assertIn('$83,000.00', report_text)
+        self.assertIn('$166,000.00', report_text)
+        self.assertIn('$2,500.00', report_text)
         self.assertIn('$67.29', report_text)
         self.assertIn('$201.87', report_text)
-        self.assertIn('Value: $175,645.01', report_text)
+        self.assertIn('Value: $168,701.87', report_text)
 
     def test_default_report_prices_load_from_local_manual_file(self):
         from decimal import Decimal
@@ -806,8 +920,8 @@ class UserReportLayoutTests(TestCase):
             prices = get_report_usd_prices(set(REPORT_TICKERS))
 
         self.assertEqual(DEFAULT_PRICE_CACHE_PATH.name, 'user_report_prices.json')
-        self.assertEqual(prices['BTC'], Decimal('86350.00'))
-        self.assertEqual(prices['ETH'], Decimal('2743.14'))
+        self.assertEqual(prices['BTC'], Decimal('83000.00'))
+        self.assertEqual(prices['ETH'], Decimal('2500.00'))
         self.assertEqual(prices['LTC'], Decimal('67.29'))
         self.assertEqual(set(prices), set(REPORT_TICKERS))
 
@@ -1340,5 +1454,44 @@ class CampaignRecipientExportTests(TestCase):
         )
         self.assertEqual(
             sum(item['email'] == 'export@gmail.com' for item in recipients),
+            1,
+        )
+
+    def test_signed_export_groups_non_gmail_plus_aliases(self):
+        base = CustomUser.objects.create_user(
+            username='outlook-export-base',
+            email='export.person@outlook.com',
+            password='Password123!',
+            first_name='Export',
+            last_name='Person',
+        )
+        alias = CustomUser.objects.create_user(
+            username='outlook-export-alias',
+            email='export.person+1@outlook.com',
+            password='Password123!',
+            first_name='Export',
+            last_name='Person',
+        )
+        body = b'{}'
+        signature = hmac.new(
+            b'test-bot-service-key', body, hashlib.sha256
+        ).hexdigest()
+
+        response = self.client.post(
+            '/api/internal/campaigns/campaign-1/recipients/export/',
+            data=body,
+            content_type='application/json',
+            HTTP_X_BOT_SIGNATURE=signature,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        recipients = response.json()['recipients']
+        grouped = next(item for item in recipients if item['email'] == base.email)
+        self.assertEqual(
+            set(grouped['account_emails']),
+            {base.email, alias.email},
+        )
+        self.assertEqual(
+            sum(item['email'] == base.email for item in recipients),
             1,
         )

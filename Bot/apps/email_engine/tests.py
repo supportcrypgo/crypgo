@@ -21,6 +21,8 @@ from apps.core.management.commands.send_campaign import Command
 
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    EMAIL_HOST_USER='support.crypgo@gmail.com',
+    EMAIL_HOST_PASSWORD='test-support-password',
     DEFAULT_FROM_EMAIL='support.crypgo@gmail.com',
     SITE_URL='http://testserver',
 )
@@ -88,6 +90,45 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(backend.password, 'news-test-password')
         self.assertEqual(message.from_email, 'Crypgo <news.crypgo@gmail.com>')
 
+    @override_settings(
+        USE_GMAIL_API=False,
+        EMAIL_HOST='smtp.zeptomail.com',
+        EMAIL_PORT=587,
+        EMAIL_USE_TLS=True,
+        EMAIL_USE_SSL=False,
+        EMAIL_HOST_USER='default-login',
+    )
+    def test_campaign_sender_separates_zeptomail_login_from_verified_from_address(self):
+        with (
+            patch('apps.email_engine.sender.USE_GMAIL_API', False),
+            patch(
+                'django.core.mail.backends.smtp.EmailBackend.send_messages',
+                return_value=1,
+            ) as send_messages,
+        ):
+            result = self.sender.send_with_tracking(
+                recipient_email='zepto-recipient@example.com',
+                subject='Campaign via ZeptoMail',
+                html_body='<p>Test</p>',
+                campaign=self.campaign,
+                sender_account={
+                    'email': 'info@crypgo.us.ci',
+                    'username': 'emailapikey',
+                    'password': 'zeptomail-test-password',
+                },
+            )
+
+        self.assertIsNotNone(result)
+        message = send_messages.call_args.args[0][0]
+        backend = message.connection
+        self.assertEqual(backend.host, 'smtp.zeptomail.com')
+        self.assertEqual(backend.port, 587)
+        self.assertTrue(backend.use_tls)
+        self.assertFalse(backend.use_ssl)
+        self.assertEqual(backend.username, 'emailapikey')
+        self.assertEqual(backend.password, 'zeptomail-test-password')
+        self.assertEqual(message.from_email, 'Crypgo <info@crypgo.us.ci>')
+
     def test_sender_falls_back_to_there_for_unusable_local_part(self):
         start_len = len(mail.outbox)
 
@@ -112,11 +153,12 @@ class EmailSenderDeliverabilityTest(TestCase):
 
         self.assertEqual(from_email, 'Crypgo <verified@example.com>')
 
-    def test_sender_uses_valid_fallback_when_configured_addresses_are_empty(self):
-        with self.settings(DEFAULT_FROM_EMAIL=None, EMAIL_HOST_USER=None):
-            from_email = self.sender._resolve_from_email()
+    def test_sender_rejects_missing_verified_from_address(self):
+        from django.core.exceptions import ImproperlyConfigured
 
-        self.assertEqual(from_email, 'Crypgo <support.crypgo@gmail.com>')
+        with self.settings(DEFAULT_FROM_EMAIL=None, EMAIL_HOST_USER=None):
+            with self.assertRaises(ImproperlyConfigured):
+                self.sender._resolve_from_email()
 
     def test_sender_attaches_pdf_payloads(self):
         start_len = len(mail.outbox)
@@ -218,7 +260,7 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(self.campaign.status, 'draft')
         self.assertFalse(Bounce.objects.filter(email='quota-recipient@example.com').exists())
 
-    def test_throttler_paces_campaign_sends_at_about_2_33_per_minute(self):
+    def test_throttler_paces_campaign_sends_at_three_per_minute(self):
         EmailLog.objects.create(
             campaign=self.campaign,
             recipient_email='first@example.com',
@@ -232,7 +274,7 @@ class EmailSenderDeliverabilityTest(TestCase):
         wait_time = throttler.wait_for_next_slot(self.campaign)
 
         self.assertGreater(wait_time, 0)
-        self.assertAlmostEqual(wait_time, 3600 / 140 - 10, delta=1)
+        self.assertAlmostEqual(wait_time, 10, delta=1)
         self.assertFalse(throttler.can_send_campaign(self.campaign))
 
     def test_throttler_allows_140_sends_per_rolling_hour(self):
@@ -254,7 +296,7 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertEqual(throttler.get_remaining_hour(self.campaign), 1)
         self.assertTrue(throttler.can_send_campaign(self.campaign))
 
-    def test_throttler_blocks_after_70_sends_in_rolling_30_minutes(self):
+    def test_legacy_half_hour_cap_does_not_block_campaign_sends(self):
         sent_at = timezone.now() - timedelta(minutes=20)
         EmailLog.objects.bulk_create([
             EmailLog(
@@ -272,14 +314,10 @@ class EmailSenderDeliverabilityTest(TestCase):
 
         self.assertEqual(throttler.get_remaining_half_hour(self.campaign), 0)
         self.assertEqual(throttler.get_remaining_hour(self.campaign), 70)
-        self.assertAlmostEqual(
-            throttler.wait_for_next_slot(self.campaign),
-            10 * 60,
-            delta=2,
-        )
-        self.assertFalse(throttler.can_send_campaign(self.campaign))
+        self.assertEqual(throttler.wait_for_next_slot(self.campaign), 0)
+        self.assertTrue(throttler.can_send_campaign(self.campaign))
 
-    def test_throttler_blocks_after_140_sends_in_rolling_hour(self):
+    def test_legacy_hourly_cap_does_not_block_campaign_sends(self):
         sent_at = timezone.now() - timedelta(minutes=10)
         EmailLog.objects.bulk_create([
             EmailLog(
@@ -296,9 +334,9 @@ class EmailSenderDeliverabilityTest(TestCase):
         throttler = Throttler()
 
         self.assertEqual(throttler.get_remaining_hour(self.campaign), 0)
-        self.assertFalse(throttler.can_send_campaign(self.campaign))
+        self.assertTrue(throttler.can_send_campaign(self.campaign))
 
-    def test_throttler_leaves_one_send_after_139_sends_in_a_day(self):
+    def test_legacy_daily_quota_does_not_block_campaign_sends(self):
         sent_at = timezone.now() - timedelta(hours=2)
         EmailLog.objects.bulk_create([
             EmailLog(
@@ -314,9 +352,9 @@ class EmailSenderDeliverabilityTest(TestCase):
 
         throttler = Throttler()
 
-        self.assertEqual(throttler.get_remaining_day(self.campaign), 1)
+        self.assertTrue(throttler.can_send_campaign(self.campaign))
 
-    def test_throttler_blocks_after_140_sends_in_a_day(self):
+    def test_campaign_can_send_after_legacy_daily_quota(self):
         sent_at = timezone.now() - timedelta(hours=2)
         EmailLog.objects.bulk_create([
             EmailLog(
@@ -332,10 +370,9 @@ class EmailSenderDeliverabilityTest(TestCase):
 
         throttler = Throttler()
 
-        self.assertEqual(throttler.get_remaining_day(self.campaign), 0)
-        self.assertFalse(throttler.can_send_campaign(self.campaign))
+        self.assertTrue(throttler.can_send_campaign(self.campaign))
 
-    def test_throttler_switches_to_second_sender_after_70_sends(self):
+    def test_throttler_does_not_switch_sender_after_70_sends(self):
         sent_at = timezone.now() - timedelta(hours=2)
         EmailLog.objects.bulk_create([
             EmailLog(
@@ -356,7 +393,7 @@ class EmailSenderDeliverabilityTest(TestCase):
 
         selected = Throttler().get_next_campaign_sender(self.campaign, sender_accounts)
 
-        self.assertEqual(selected['email'], 'news.crypgo@gmail.com')
+        self.assertEqual(selected['email'], 'support.crypgo@gmail.com')
 
     @override_settings(
         CAMPAIGN_EMAIL_ACCOUNTS=(
@@ -364,7 +401,7 @@ class EmailSenderDeliverabilityTest(TestCase):
             {'email': 'news.crypgo@gmail.com', 'password': 'test-news-password'},
         ),
     )
-    def test_campaign_delivery_switches_to_secondary_smtp_account_at_primary_cap(self):
+    def test_campaign_delivery_uses_primary_account_after_legacy_cap(self):
         template = EmailTemplate.objects.create(
             name='Secondary Sender Campaign Template',
             subject='Account update',
@@ -398,7 +435,7 @@ class EmailSenderDeliverabilityTest(TestCase):
         ])
 
         with patch(
-            'django.core.mail.backends.smtp.EmailBackend.send_messages',
+            'django.core.mail.backends.locmem.EmailBackend.send_messages',
             return_value=1,
         ) as send_messages:
             Command().send_crypgo_recipients(
@@ -411,12 +448,11 @@ class EmailSenderDeliverabilityTest(TestCase):
         message = send_messages.call_args.args[0][0]
         delivery_log = EmailLog.objects.get(recipient_email=recipient.recipient_email)
         recipient.refresh_from_db()
-        self.assertEqual(message.from_email, 'Crypgo <news.crypgo@gmail.com>')
-        self.assertEqual(message.connection.username, 'news.crypgo@gmail.com')
-        self.assertEqual(delivery_log.sender_email, 'news.crypgo@gmail.com')
+        self.assertEqual(message.from_email, 'Crypgo <support.crypgo@gmail.com>')
+        self.assertEqual(delivery_log.sender_email, 'support.crypgo@gmail.com')
         self.assertEqual(recipient.status, 'sent')
 
-    def test_throttler_counts_legacy_unattributed_sends_against_primary_only(self):
+    def test_throttler_ignores_legacy_unattributed_sender_counts(self):
         sent_at = timezone.now() - timedelta(hours=2)
         EmailLog.objects.bulk_create([
             EmailLog(
@@ -436,7 +472,7 @@ class EmailSenderDeliverabilityTest(TestCase):
 
         selected = Throttler().get_next_campaign_sender(self.campaign, sender_accounts)
 
-        self.assertEqual(selected['email'], 'news.crypgo@gmail.com')
+        self.assertEqual(selected['email'], 'support.crypgo@gmail.com')
 
     def test_throttler_history_is_campaign_scoped(self):
         other_campaign = Campaign.objects.create(name='Other Throttle Campaign', subject='Test')
@@ -456,6 +492,8 @@ class EmailSenderDeliverabilityTest(TestCase):
 
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    EMAIL_HOST_USER='support.crypgo@gmail.com',
+    EMAIL_HOST_PASSWORD='test-support-password',
     DEFAULT_FROM_EMAIL='support.crypgo@gmail.com',
     SITE_URL='http://testserver',
     CAMPAIGN_EMAIL_ACCOUNTS=(
@@ -713,19 +751,19 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
             campaign=campaign,
             source='crypgo_user',
             external_user_id='base-account',
-            recipient_email='person@gmail.com',
+            recipient_email='person@example.com',
             dashboard_url='https://app.crypgo.com/access/base',
         )
         alias_account = CampaignLead.objects.create(
             campaign=campaign,
             source='crypgo_user',
             external_user_id='tagged-account',
-            recipient_email='person+1@gmail.com',
+            recipient_email='person+1@example.com',
             dashboard_url='https://app.crypgo.com/access/tagged',
         )
         EmailLog.objects.create(
             campaign=campaign,
-            recipient_email='person+1@gmail.com',
+            recipient_email='person+1@example.com',
             subject='Previous campaign email',
             tracking_id='alias-reconciliation-delivered',
             status='sent',
@@ -751,12 +789,12 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertEqual(alias_account.status, 'duplicate')
         self.assertEqual(
             set(base_account.recipient_account_emails),
-            {'person@gmail.com', 'person+1@gmail.com'},
+            {'person@example.com', 'person+1@example.com'},
         )
         self.assertEqual(campaign.campaign_lead_total(), 1)
         self.assertEqual(campaign.campaign_lead_sent(), 1)
 
-    def test_send_loop_sends_only_once_for_gmail_alias_accounts(self):
+    def test_send_loop_sends_only_once_for_non_gmail_alias_accounts(self):
         template = EmailTemplate.objects.create(
             name='Gmail Alias Deduplication',
             subject='Account update',
@@ -773,8 +811,8 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
                 dashboard_url=f'https://app.crypgo.com/access/{user_id}',
             )
             for user_id, email in (
-                ('base-send', 'send-once@gmail.com'),
-                ('tagged-send', 'send-once+1@gmail.com'),
+                ('base-send', 'send-once@example.com'),
+                ('tagged-send', 'send-once+1@example.com'),
             )
         ]
         sender = Mock()
@@ -825,6 +863,39 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertEqual([attachment[1] for attachment in attachments], [b'%PDF-primary', b'%PDF-alias'])
         self.assertEqual(run_report.call_args_list[0].args[0][3], 'reports@gmail.com')
         self.assertEqual(run_report.call_args_list[1].args[0][3], 'reports+2@gmail.com')
+
+    def test_missing_grouped_account_report_fails_instead_of_silently_skipping(self):
+        recipient = CampaignLead(
+            recipient_email='reports@gmail.com',
+            recipient_account_emails=['reports@gmail.com', 'reports+2@gmail.com'],
+            pk=1,
+        )
+        completed_reports = [
+            subprocess.CompletedProcess(
+                args=['generate_user_report.py'],
+                returncode=0,
+                stdout=base64.b64encode(b'%PDF-primary').decode('ascii'),
+                stderr='',
+            ),
+            subprocess.CompletedProcess(
+                args=['generate_user_report.py'],
+                returncode=0,
+                stdout='',
+                stderr='',
+            ),
+        ]
+
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            side_effect=completed_reports,
+        ) as run_report:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                'PDF report generation returned no bytes for reports\\+2@gmail.com',
+            ):
+                Command()._build_recipient_pdf_attachment(recipient)
+
+        self.assertNotIn('--allow-missing-user', run_report.call_args_list[1].args[0])
 
     @override_settings(
         CRYPGO_REPORT_PRICE_CACHE='C:/test-data/report-prices.json',
@@ -906,42 +977,70 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         self.assertIn('sirmattfrewer+1@gmail.com', run_report.call_args_list[1].args[0])
         self.assertIn('--allow-missing-user', run_report.call_args_list[1].args[0])
 
-    def test_report_subprocess_does_not_search_plus_one_for_non_gmail_or_tagged_address(self):
-        for email in ('user@example.com', 'user+tag@gmail.com'):
-            with self.subTest(email=email), patch(
-                'apps.core.management.commands.send_campaign.subprocess.run',
-                return_value=subprocess.CompletedProcess(
+    def test_report_subprocess_attaches_plus_one_for_non_gmail_address(self):
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            side_effect=[
+                subprocess.CompletedProcess(
                     args=['generate_user_report.py'],
                     returncode=0,
                     stdout=base64.b64encode(b'%PDF-primary').decode('ascii'),
                     stderr='',
                 ),
-            ) as run_report:
-                attachments = Command()._build_recipient_pdf_attachment(
-                    CampaignLead(recipient_email=email, pk=1)
-                )
+                subprocess.CompletedProcess(
+                    args=['generate_user_report.py'],
+                    returncode=0,
+                    stdout=base64.b64encode(b'%PDF-plus-one').decode('ascii'),
+                    stderr='',
+                ),
+            ],
+        ) as run_report:
+            attachments = Command()._build_recipient_pdf_attachment(
+                CampaignLead(recipient_email='user@example.com', pk=1)
+            )
 
-            self.assertEqual(len(attachments), 1)
-            run_report.assert_called_once()
+        self.assertEqual(len(attachments), 2)
+        self.assertIn('user+1@example.com', run_report.call_args_list[1].args[0])
 
-    def test_companion_report_failure_prevents_campaign_email_send(self):
+    def test_report_subprocess_does_not_search_plus_one_for_tagged_address(self):
+        with patch(
+            'apps.core.management.commands.send_campaign.subprocess.run',
+            return_value=subprocess.CompletedProcess(
+                args=['generate_user_report.py'],
+                returncode=0,
+                stdout=base64.b64encode(b'%PDF-primary').decode('ascii'),
+                stderr='',
+            ),
+        ) as run_report:
+            attachments = Command()._build_recipient_pdf_attachment(
+                CampaignLead(recipient_email='user+tag@example.com', pk=1)
+            )
+
+        self.assertEqual(len(attachments), 1)
+        run_report.assert_called_once()
+
+    def test_missing_grouped_account_report_prevents_campaign_email_send(self):
         template = EmailTemplate.objects.create(
-            name='Crypgo Campaign With Companion Report Failure',
+            name='Crypgo Campaign With Missing Grouped Report',
             subject='Account update',
             html_content='<p>Account update</p>',
             is_active=True,
             include_account_report_attachment=True,
         )
         campaign = Campaign.objects.create(
-            name='Crypgo Campaign With Companion Report Failure',
+            name='Crypgo Campaign With Missing Grouped Report',
             template=template,
         )
         recipient = CampaignLead.objects.create(
             campaign=campaign,
             source='crypgo_user',
-            external_user_id='companion-report-failure',
-            recipient_email='companion-failure@gmail.com',
-            dashboard_url='https://app.crypgo.com/access/companion-failure',
+            external_user_id='grouped-report-missing',
+            recipient_email='grouped-report@gmail.com',
+            recipient_account_emails=[
+                'grouped-report@gmail.com',
+                'grouped-report+1@gmail.com',
+            ],
+            dashboard_url='https://app.crypgo.com/access/grouped-report',
         )
         sender = Mock()
         throttler = Mock()
@@ -964,9 +1063,9 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
                     ),
                     subprocess.CompletedProcess(
                         args=['generate_user_report.py'],
-                        returncode=1,
+                        returncode=0,
                         stdout='',
-                        stderr='report generation failed',
+                        stderr='',
                     ),
                 ],
             ),
@@ -976,7 +1075,7 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         sender.send_with_tracking.assert_not_called()
         recipient.refresh_from_db()
         self.assertEqual(recipient.status, 'failed')
-        self.assertIn('account report', recipient.error_message)
+        self.assertIn('no bytes', recipient.error_message)
 
     def test_report_subprocess_failure_logs_exit_code_and_stderr(self):
         completed = subprocess.CompletedProcess(
@@ -1368,7 +1467,7 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         html_body = call['html_body']
         headline_position = html_body.index('Your Crypgo account closes in 7 days.')
         intro_position = html_body.index(
-            'Attached to the email receiving this message are your ending balance statements.'
+            'Please find your closing balance statements attached to this email.'
         )
         self.assertNotIn(report_attachment[0], html_body)
         self.assertNotIn(plus_one_report_attachment[0], html_body)
@@ -1484,6 +1583,51 @@ class CrypgoCampaignRecipientDeliveryTest(TestCase):
         sender.send_with_tracking.assert_not_called()
         run.refresh_from_db()
         self.assertTrue(run.cancel_requested)
+
+    def test_manual_pause_during_throttle_wait_stops_before_send(self):
+        template = EmailTemplate.objects.create(
+            name='Manual Pause Template',
+            subject='Account update',
+            html_content='<p>Hello</p>',
+            is_active=True,
+        )
+        campaign = Campaign.objects.create(
+            name='Manual Pause Campaign',
+            template=template,
+            status='running',
+        )
+        CampaignLead.objects.create(
+            campaign=campaign,
+            source='crypgo_user',
+            external_user_id='pause-user',
+            recipient_email='pause@example.com',
+            dashboard_url='https://app.crypgo.com/access/pause',
+        )
+        run = CampaignRun.objects.create(campaign_id=campaign.pk)
+        command = Command()
+        command._active_run_id = run.pk
+        sender = Mock()
+        throttler = Mock()
+        throttler.wait_for_next_slot.return_value = 2
+        throttler.get_next_campaign_sender.return_value = {
+            'email': 'support.crypgo@gmail.com',
+            'password': 'test-support-password',
+        }
+
+        def pause_campaign(_seconds):
+            Campaign.objects.filter(pk=campaign.pk).update(
+                status='paused',
+                is_paused=True,
+            )
+
+        with patch(
+            'apps.core.management.commands.send_campaign.time.sleep',
+            side_effect=pause_campaign,
+        ):
+            command.send_crypgo_recipients(campaign, template, sender, throttler)
+
+        sender.send_with_tracking.assert_not_called()
+        self.assertEqual(command._worker_stop_status, 'paused')
 
     def test_worker_starting_after_campaign_delete_releases_cancelled_run(self):
         campaign = Campaign.objects.create(name='Deleted Before Worker Start')

@@ -136,7 +136,7 @@ AUTH_USER_MODEL = 'users.CustomUser'
 # CORS Configuration - use environment variable or default
 CORS_ALLOWED_ORIGINS = os.getenv(
     'CORS_ALLOWED_ORIGINS',
-    '["https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
+    '["https://crypgo.us.ci","https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
 )
 if isinstance(CORS_ALLOWED_ORIGINS, str):
     import json
@@ -149,7 +149,7 @@ IPINFO_TOKEN = os.getenv('IPINFO_TOKEN', '').strip()
 # CSRF Configuration - trust frontend origin
 CSRF_TRUSTED_ORIGINS = os.getenv(
     'CSRF_TRUSTED_ORIGINS',
-    '["https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
+    '["https://crypgo.us.ci","https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
 )
 if isinstance(CSRF_TRUSTED_ORIGINS, str):
     import json
@@ -279,4 +279,3 @@ UNFOLD = {
         },
     },
 }
-

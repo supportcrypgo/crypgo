@@ -37,6 +37,7 @@ from .services import (
     send_reset_password_email, send_magic_link_email, build_campaign_access_url,
     begin_guarded_transaction, record_guarded_transaction, send_transaction_caution_email,
 )
+from .email_identity import normalize_shared_inbox
 import logging
 import time
 import hashlib
@@ -182,7 +183,7 @@ def issue_auth_response(user, request: Request, authentication_method: str = 'pa
     refresh_token = str(refresh)
     response = Response({
         'success': True,
-        'user': UserSerializer(user).data,
+        'user': shared_profile_data(user),
         'access_token': access_token,
     }, status=status.HTTP_200_OK)
     cookie_settings = getattr(settings, 'SIMPLE_JWT', {})
@@ -283,88 +284,91 @@ class LoginView(APIView):
         if not email or not isinstance(password, str) or not password:
             return Response({'error': 'Email and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        shared_group = SharedInboxGroup.objects.filter(
-            models.Q(inbox_email__iexact=email) | models.Q(users__email__iexact=email)
-        ).distinct().first()
-        gmail_inbox = normalize_gmail_inbox(email)
-        if shared_group or gmail_inbox:
-            if shared_group:
-                candidates_by_id = {
-                    candidate.pk: candidate
-                    for candidate in shared_group.users.filter(is_active=True)
-                }
-            else:
-                candidates_by_id = {}
-            if gmail_inbox:
-                local_part = gmail_inbox.rsplit('@', 1)[0]
-                gmail_candidates = CustomUser.objects.filter(is_active=True).filter(
-                    models.Q(email__iexact=gmail_inbox)
-                    | models.Q(email__istartswith=f'{local_part}+', email__iendswith='@gmail.com')
-                )
-                candidates_by_id.update({candidate.pk: candidate for candidate in gmail_candidates})
-            candidates = sorted(candidates_by_id.values(), key=lambda candidate: candidate.pk)
-            matching_users = [candidate for candidate in candidates if candidate.check_password(password)]
-            if not matching_users:
-                return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
-            if len(matching_users) > 1:
-                challenge, raw_challenge = AccountSelectionChallenge.generate_challenge(
-                    matching_users,
-                    AccountSelectionChallenge.Purpose.LOGIN,
-                )
-                return Response({
-                    'requires_account_selection': True,
-                    'selection_token': raw_challenge,
-                    'accounts': [
-                        build_account_choice(candidate, index, shared_group, gmail_inbox)
-                        for index, candidate in enumerate(matching_users)
-                    ],
-                    'expires_at': challenge.expires_at,
-                }, status=status.HTTP_200_OK)
-            return issue_auth_response(matching_users[0], request, 'password')
-
-        serializer = LoginSerializer(data={'email': email, 'password': password})
-        serializer.is_valid(raise_exception=True)
-        user = get_validated_data(serializer).get('user')
-        if user is None:
+        inbox_email = normalize_shared_inbox(email)
+        if inbox_email is None:
             return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
-        return issue_auth_response(user, request, 'password')
+
+        shared_group = SharedInboxGroup.objects.filter(
+            models.Q(inbox_email__iexact=email)
+            | models.Q(inbox_email__iexact=inbox_email)
+            | models.Q(users__email__iexact=email)
+        ).distinct().first()
+        candidates_by_id = {
+            candidate.pk: candidate
+            for candidate in get_shared_inbox_accounts(inbox_email)
+        }
+        if shared_group:
+            candidates_by_id.update({
+                candidate.pk: candidate
+                for candidate in shared_group.users.filter(is_active=True)
+            })
+        candidates = sorted(candidates_by_id.values(), key=lambda candidate: candidate.pk)
+        matching_users = [candidate for candidate in candidates if candidate.check_password(password)]
+        if not matching_users:
+            return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if len(matching_users) > 1:
+            challenge, raw_challenge = AccountSelectionChallenge.generate_challenge(
+                matching_users,
+                AccountSelectionChallenge.Purpose.LOGIN,
+            )
+            return Response({
+                'requires_account_selection': True,
+                'selection_token': raw_challenge,
+                'accounts': [
+                    build_account_choice(candidate, index, shared_group, inbox_email)
+                    for index, candidate in enumerate(matching_users)
+                ],
+                'expires_at': challenge.expires_at,
+            }, status=status.HTTP_200_OK)
+        return issue_auth_response(matching_users[0], request, 'password')
 
 
-def normalize_gmail_inbox(email: str) -> str | None:
-    local_part, separator, domain = email.strip().rpartition('@')
-    if not separator or domain.lower() != 'gmail.com':
-        return None
-    base_local_part = local_part.split('+', 1)[0].lower()
-    return f'{base_local_part}@gmail.com'
+def get_shared_inbox_accounts(email: str) -> list[CustomUser]:
+    inbox_email = normalize_shared_inbox(email)
+    if inbox_email is None:
+        return []
+    local_part, _, domain = inbox_email.rpartition('@')
+    return list(
+        CustomUser.objects.filter(is_active=True).filter(
+            models.Q(email__iexact=inbox_email)
+            | models.Q(
+                email__istartswith=f'{local_part}+',
+                email__iendswith=f'@{domain}',
+            )
+        ).order_by('pk')
+    )
 
 
 def build_account_choice(
     user: CustomUser,
     index: int,
     group: SharedInboxGroup | None = None,
-    gmail_inbox: str | None = None,
+    inbox_email: str | None = None,
 ) -> dict[str, Any]:
-    profile_user = user
     if group:
         profile_user = group.users.filter(email__iexact=group.inbox_email).first() or user
+        display_email = group.inbox_email
+    else:
+        profile_user = (
+            CustomUser.objects.filter(email__iexact=inbox_email).first()
+            if inbox_email
+            else None
+        ) or user
+        display_email = inbox_email or normalize_shared_inbox(user.email) or user.email
     name = ' '.join(part for part in (profile_user.first_name.strip(), profile_user.last_name.strip()) if part)
     return {
         'id': user.pk,
         'label': name or f'Account {index + 1}',
-        'email_hint': group.inbox_email if group else gmail_inbox or user.email,
+        'email_hint': display_email,
     }
 
 
 def get_password_reset_accounts(user: CustomUser) -> list[CustomUser]:
     candidates_by_id = {user.pk: user}
-    gmail_inbox = normalize_gmail_inbox(user.email)
-    if gmail_inbox:
-        local_part = gmail_inbox.rsplit('@', 1)[0]
-        gmail_candidates = CustomUser.objects.filter(is_active=True).filter(
-            models.Q(email__iexact=gmail_inbox)
-            | models.Q(email__istartswith=f'{local_part}+', email__iendswith='@gmail.com')
-        )
-        candidates_by_id.update({candidate.pk: candidate for candidate in gmail_candidates})
+    candidates_by_id.update({
+        candidate.pk: candidate
+        for candidate in get_shared_inbox_accounts(user.email)
+    })
 
     for group in SharedInboxGroup.objects.filter(users=user).prefetch_related('users'):
         candidates_by_id.update({
@@ -387,15 +391,25 @@ def copy_shared_profile(source: CustomUser, target: CustomUser) -> None:
 
 def shared_profile_data(user: CustomUser) -> dict[str, Any]:
     group = SharedInboxGroup.objects.filter(users=user).first()
-    if group is None:
+    inbox_email = normalize_shared_inbox(user.email)
+    inbox_users = get_shared_inbox_accounts(user.email)
+    if group:
+        profile_user = group.users.filter(email__iexact=group.inbox_email).first() or user
+        display_email = group.inbox_email
+    elif inbox_email:
+        profile_user = next(
+            (candidate for candidate in inbox_users if candidate.email.lower() == inbox_email),
+            inbox_users[0] if inbox_users else user,
+        )
+        display_email = inbox_email
+    else:
         return UserSerializer(user).data
 
-    profile_user = group.users.filter(email__iexact=group.inbox_email).first() or user
     data = UserSerializer(user).data
     profile_data = UserSerializer(profile_user).data
     for field in ('first_name', 'last_name', 'date_of_birth', 'country', 'city', 'address', 'avatar_url'):
         data[field] = profile_data[field]
-    data['email'] = group.inbox_email
+    data['email'] = display_email
     return data
 
 
@@ -431,17 +445,20 @@ class LoginAccountSelectionView(APIView):
                         raise AccountSelectionChallenge.DoesNotExist
                     if challenge.context.get('target_user_id') != access_token.user_id:
                         raise AccountSelectionChallenge.DoesNotExist
-                    target_gmail_inbox = challenge.context.get('target_gmail_inbox')
-                    same_gmail_inbox = (
-                        bool(target_gmail_inbox)
-                        and normalize_gmail_inbox(user.email) == target_gmail_inbox
+                    target_shared_inbox = (
+                        challenge.context.get('target_shared_inbox')
+                        or challenge.context.get('target_gmail_inbox')
+                    )
+                    same_shared_inbox = (
+                        bool(target_shared_inbox)
+                        and normalize_shared_inbox(user.email) == target_shared_inbox
                     )
                     shared_inbox_member = SharedInboxGroup.objects.filter(
                         users=access_token.user,
                     ).filter(users=user).exists()
                     if (
                         user.pk != access_token.user_id
-                        and not same_gmail_inbox
+                        and not same_shared_inbox
                         and not shared_inbox_member
                     ):
                         raise AccountSelectionChallenge.DoesNotExist
@@ -551,7 +568,12 @@ class MagicLinkRequestView(APIView):
             serializer = ForgotPasswordSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             email = get_validated_data(serializer)['email']
-            user = User.objects.filter(email__iexact=email, is_active=True).first()
+            inbox_email = normalize_shared_inbox(email)
+            inbox_accounts = get_shared_inbox_accounts(inbox_email or '')
+            user = next(
+                (candidate for candidate in inbox_accounts if candidate.email.lower() == inbox_email),
+                inbox_accounts[0] if inbox_accounts else None,
+            )
             
             if user:
                 try:
@@ -605,7 +627,7 @@ class MagicLinkConsumeView(APIView):
                         return Response({'error': 'User account is not active.'}, status=status.HTTP_400_BAD_REQUEST)
                     
                     group = SharedInboxGroup.objects.filter(users=token.user).first()
-                    linked_users = list(group.users.filter(is_active=True).order_by('pk')) if group else [token.user]
+                    linked_users = get_password_reset_accounts(token.user)
                     if len(linked_users) > 1:
                         challenge, raw_challenge = AccountSelectionChallenge.generate_challenge(
                             linked_users,
@@ -619,8 +641,8 @@ class MagicLinkConsumeView(APIView):
                                 build_account_choice(
                                     candidate,
                                     index,
-                                    group if candidate.pk in group_user_ids else None,
-                                    normalize_gmail_inbox(token.user.email),
+                                    group if group and group.users.filter(pk=candidate.pk).exists() else None,
+                                    normalize_shared_inbox(token.user.email),
                                 )
                                 for index, candidate in enumerate(linked_users)
                             ],
@@ -699,7 +721,7 @@ class CampaignAccessConsumeView(APIView):
                         context={
                             'campaign_access_token_id': token.pk,
                             'target_user_id': token.user_id,
-                            'target_gmail_inbox': normalize_gmail_inbox(token.user.email),
+                            'target_shared_inbox': normalize_shared_inbox(token.user.email),
                             'campaign_ref': token.campaign_ref,
                             'destination': destination,
                         },
@@ -712,7 +734,7 @@ class CampaignAccessConsumeView(APIView):
                                 candidate,
                                 index,
                                 group_by_user_id.get(candidate.pk),
-                                normalize_gmail_inbox(token.user.email),
+                                normalize_shared_inbox(token.user.email),
                             )
                             for index, candidate in enumerate(eligible_users)
                         ],
@@ -747,7 +769,7 @@ def export_campaign_recipients(request, campaign_ref):
     recipients_by_inbox = {}
     for user in users:
         user = cast(CustomUser, user)
-        inbox = normalize_gmail_inbox(user.email) or user.email.strip().lower()
+        inbox = normalize_shared_inbox(user.email) or user.email.strip().lower()
         recipients_by_inbox.setdefault(inbox, []).append(user)
 
     recipients = []
@@ -1120,7 +1142,14 @@ class ForgotPasswordView(APIView):
         email = validated_data['email']
 
         try:
-            user = User.objects.get(email=email)
+            inbox_email = normalize_shared_inbox(email)
+            inbox_accounts = get_shared_inbox_accounts(inbox_email or '')
+            user = next(
+                (candidate for candidate in inbox_accounts if candidate.email.lower() == inbox_email),
+                inbox_accounts[0] if inbox_accounts else None,
+            )
+            if user is None:
+                raise User.DoesNotExist
 
             reset_token = PasswordResetToken.generate_token(user)
 
@@ -1254,7 +1283,7 @@ class ResetPasswordConfirmView(APIView):
                     {
                         'id': account.pk,
                         'label': f'Account {index + 1}',
-                        'email_hint': account.email,
+                        'email_hint': normalize_shared_inbox(account.email) or account.email,
                     }
                     for index, account in enumerate(accounts)
                 ],
@@ -1536,12 +1565,22 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
         serializer = self.get_serializer(user, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        group = SharedInboxGroup.objects.filter(users=user).first()
-        if group:
-            profile_fields = ('first_name', 'last_name', 'date_of_birth', 'country', 'city', 'address', 'avatar_url')
-            updates = {field: getattr(user, field) for field in profile_fields if field in data}
-            if updates:
-                group.users.exclude(pk=user.pk).update(**updates)
+        profile_fields = ('first_name', 'last_name', 'date_of_birth', 'country', 'city', 'address', 'avatar_url')
+        updates = {field: getattr(user, field) for field in profile_fields if field in data}
+        if updates:
+            related_user_ids = {
+                candidate.pk
+                for candidate in get_shared_inbox_accounts(user.email)
+                if candidate.pk != user.pk
+            }
+            for group in SharedInboxGroup.objects.filter(users=user).prefetch_related('users'):
+                related_user_ids.update(
+                    candidate.pk
+                    for candidate in group.users.filter(is_active=True)
+                    if candidate.pk != user.pk
+                )
+            if related_user_ids:
+                CustomUser.objects.filter(pk__in=related_user_ids).update(**updates)
         return Response(shared_profile_data(user))
 
 

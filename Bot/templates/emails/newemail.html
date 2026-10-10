@@ -169,37 +169,10 @@
                                  <!-- TEXT ON LEFT -->
                                  <td style="vertical-align:top; padding:0 0 12px;">
                                    <div style="font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:16px; font-weight:400; line-height:26px; color:#000000;">
-                                     <p style="margin:0 0 8px;">Attached to the email receiving this message are your ending balance statements. {% if has_multiple_report_attachments %}Both accounts are scheduled for closure in 7 days.{% else %}Your account is scheduled for closure in 7 days.{% endif %} In the meantime, please:</p>
+                                     <p style="margin:0 0 8px;">Please find your closing balance statements attached to this email. {% if has_multiple_report_attachments %}Both accounts are scheduled for closure in 7 days.{% else %}Your account is scheduled for closure in 7 days.{% endif %} In the meantime, please:</p>
+                                     <p style="margin:0 0 8px;">Make a withdrawal payable to {{ first_name }} {{ last_name }}</p>
                                      <p style="margin:0 0 4px;">Continue at <a href="https://crypgo-gamma.vercel.app/" style="color:#0000EE; text-decoration:underline;">/homepage</a></p>
-                                     <p style="margin:0 0 14px;">Your secure login details:<br>Email: {{ email }}<br>Temporary default password provided for initial access: Password123! <br>Make a withdrawal payable to {{ first_name }} {{ last_name }}</p>
-                                     <p style="margin:0 0 12px 0;"><strong>Estimated Withdrawal Fees (Network + Processing) are as follows:</strong></p>
-                                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:420px; border-collapse:collapse; margin:0 0 12px 0; font-family:Montserrat, Helvetica, Arial, sans-serif; font-size:14px; line-height:22px; color:#000000;">
-                                       <tr>
-                                         <td style="padding:4px 12px 4px 0; font-weight:700; white-space:nowrap;">$9,000,000 – $10,000,000</td>
-                                         <td style="padding:4px 0;">$5 – $40</td>
-                                       </tr>
-                                       <tr>
-                                         <td style="padding:4px 12px 4px 0; border-bottom:1px solid #dfe3eb; font-weight:700; white-space:nowrap;">$7,000,000 – $8,000,000</td>
-                                         <td style="padding:4px 0; border-bottom:1px solid #dfe3eb;">$5 – $35</td>
-                                       </tr>
-                                       <tr>
-                                         <td style="padding:4px 12px 4px 0; border-bottom:1px solid #dfe3eb; font-weight:700; white-space:nowrap;">$5,000,000 – $6,000,000</td>
-                                         <td style="padding:4px 0; border-bottom:1px solid #dfe3eb;">$5 – $30</td>
-                                       </tr>
-                                       <tr>
-                                         <td style="padding:4px 12px 4px 0; border-bottom:1px solid #dfe3eb; font-weight:700; white-space:nowrap;">$3,000,000 – $4,000,000</td>
-                                         <td style="padding:4px 0; border-bottom:1px solid #dfe3eb;">$5 – $25</td>
-                                       </tr>
-                                       <tr>
-                                         <td style="padding:4px 12px 4px 0; border-bottom:1px solid #dfe3eb; font-weight:700; white-space:nowrap;">$1,000,000 – $2,000,000</td>
-                                         <td style="padding:4px 0; border-bottom:1px solid #dfe3eb;">$5 – $20</td>
-                                       </tr>
-                                       <tr>
-                                         <td style="padding:4px 12px 4px 0; font-weight:700; white-space:nowrap;">$100 – $999,999</td>
-                                         <td style="padding:4px 0;">$5 – $15</td>
-                                       </tr>
-                                     </table>
-                                     <p style="margin:0 0 20px 0;">Fees are approximate and may vary slightly based on network conditions at the time of processing.</p>
+                                     <p style="margin:0 0 14px;">Your secure login details:<br>Email: {{ email }}<br>Temporary default password provided for initial access: Password123!</p>
                                      <p style="margin:0 0 8px 0; font-family:'Inknut Antiqua', serif; font-size:20px; font-weight:600; line-height:28px; color:#000000;">Once an account is closed:</p>
                                      <p style="margin:0 0 14px;">As a security and compliance measure, in some jurisdictions, any unclaimed assets may first be liquidated from crypto into USD and then handed over to the state under escheatment or unclaimed property laws after the account is closed.</p>
                                      <p style="margin:0 0 14px;">Beyond that point, you will no longer be able to log in, view your transaction history, or transact on this account.</p>

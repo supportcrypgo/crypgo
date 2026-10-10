@@ -94,32 +94,70 @@ if os.getenv('DATABASE_URL') and DATABASE_SCHEMA != 'public':
         f'-c search_path={DATABASE_SCHEMA},public'
     )
 
-# Email Configuration - Gmail API (production) or SMTP (fallback)
+# Email configuration. Gmail remains available as a provider option.
+MAIL_PROVIDER = os.getenv('MAIL_PROVIDER', 'gmail').strip().lower()
+if MAIL_PROVIDER not in {'gmail', 'zeptomail'}:
+    raise ValueError('MAIL_PROVIDER must be either "gmail" or "zeptomail".')
+
 USE_GMAIL_API = os.getenv('USE_GMAIL_API', 'False') == 'True'
 
-if USE_GMAIL_API:
+if MAIL_PROVIDER == 'zeptomail':
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.getenv('ZEPTOMAIL_SMTP_HOST', 'smtp.zeptomail.com')
+    EMAIL_PORT = int(os.getenv('ZEPTOMAIL_SMTP_PORT', '587'))
+    EMAIL_USE_SSL = os.getenv('ZEPTOMAIL_SMTP_USE_SSL', 'False') == 'True'
+    EMAIL_USE_TLS = os.getenv('ZEPTOMAIL_SMTP_USE_TLS', 'True') == 'True'
+    EMAIL_HOST_USER = os.getenv('ZEPTOMAIL_SMTP_USERNAME', 'emailapikey')
+    EMAIL_HOST_PASSWORD = os.getenv(
+        'ZEPTOMAIL_SMTP_PASSWORD',
+        os.getenv('EMAIL_HOST_PASSWORD', ''),
+    )
+    DEFAULT_FROM_EMAIL = os.getenv('ZEPTOMAIL_FROM_ADDRESS', 'info@crypgo.us.ci')
+    EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
+    EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
+elif USE_GMAIL_API:
     EMAIL_BACKEND = 'apps.email_engine.gmail_backend.GmailAPIBackend'
     GMAIL_CLIENT_ID = os.getenv('GMAIL_CLIENT_ID')
     GMAIL_CLIENT_SECRET = os.getenv('GMAIL_CLIENT_SECRET')
     GMAIL_REFRESH_TOKEN = os.getenv('GMAIL_REFRESH_TOKEN')
-    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com') or 'support.crypgo@gmail.com'
-    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    EMAIL_HOST_USER = os.getenv(
+        'GMAIL_SMTP_PRIMARY_EMAIL',
+        os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com'),
+    ) or 'support.crypgo@gmail.com'
+    EMAIL_HOST_PASSWORD = os.getenv(
+        'GMAIL_SMTP_PRIMARY_PASSWORD',
+        os.getenv('EMAIL_HOST_PASSWORD', ''),
+    )
     EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
     EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
     EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True'
     EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
-    DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com') or 'support.crypgo@gmail.com'
+    DEFAULT_FROM_EMAIL = os.getenv(
+        'DEFAULT_FROM_EMAIL',
+        'support.crypgo@gmail.com',
+    ) or 'support.crypgo@gmail.com'
     EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
     EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
 else:
-    # Fallback SMTP configuration
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-    EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-    EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True'
-    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
-    EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com') or 'support.crypgo@gmail.com'
-    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+    EMAIL_HOST = os.getenv('GMAIL_SMTP_HOST', os.getenv('EMAIL_HOST', 'smtp.gmail.com'))
+    EMAIL_PORT = int(os.getenv('GMAIL_SMTP_PORT', os.getenv('EMAIL_PORT', 587)))
+    EMAIL_USE_SSL = os.getenv(
+        'GMAIL_SMTP_USE_SSL',
+        os.getenv('EMAIL_USE_SSL', 'False'),
+    ) == 'True'
+    EMAIL_USE_TLS = os.getenv(
+        'GMAIL_SMTP_USE_TLS',
+        os.getenv('EMAIL_USE_TLS', 'True'),
+    ) == 'True'
+    EMAIL_HOST_USER = os.getenv(
+        'GMAIL_SMTP_PRIMARY_EMAIL',
+        os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com'),
+    ) or 'support.crypgo@gmail.com'
+    EMAIL_HOST_PASSWORD = os.getenv(
+        'GMAIL_SMTP_PRIMARY_PASSWORD',
+        os.getenv('EMAIL_HOST_PASSWORD', ''),
+    )
     DEFAULT_FROM_EMAIL = os.getenv(
         'DEFAULT_FROM_EMAIL',
         'support.crypgo@gmail.com'
@@ -127,22 +165,45 @@ else:
     EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
     EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
 
-# Campaigns use separate SMTP credentials per sending account. The primary
-# account reuses the existing SMTP configuration; keep the secondary password
-# in deployment environment variables, never in source control.
-CAMPAIGN_EMAIL_ACCOUNTS = (
-    {
-        'email': 'support.crypgo@gmail.com',
+# ZeptoMail authenticates as emailapikey but requires a verified From address.
+# Keep the two Gmail SMTP accounts available for an explicit provider switch.
+if MAIL_PROVIDER == 'zeptomail':
+    CAMPAIGN_EMAIL_ACCOUNTS = ({
+        'email': DEFAULT_FROM_EMAIL,
+        'username': EMAIL_HOST_USER,
         'password': EMAIL_HOST_PASSWORD,
-    },
-    {
-        'email': os.getenv(
-            'CAMPAIGN_SECONDARY_EMAIL',
-            'news.crypgo@gmail.com',
-        ),
-        'password': os.getenv('CAMPAIGN_SECONDARY_EMAIL_PASSWORD', ''),
-    },
-)
+    },)
+else:
+    CAMPAIGN_EMAIL_ACCOUNTS = (
+        {
+            'email': os.getenv(
+                'GMAIL_SMTP_PRIMARY_EMAIL',
+                os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com'),
+            ),
+            'username': os.getenv(
+                'GMAIL_SMTP_PRIMARY_EMAIL',
+                os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com'),
+            ),
+            'password': os.getenv(
+                'GMAIL_SMTP_PRIMARY_PASSWORD',
+                os.getenv('EMAIL_HOST_PASSWORD', ''),
+            ),
+        },
+        {
+            'email': os.getenv(
+                'GMAIL_SMTP_SECONDARY_EMAIL',
+                os.getenv('CAMPAIGN_SECONDARY_EMAIL', 'news.crypgo@gmail.com'),
+            ),
+            'username': os.getenv(
+                'GMAIL_SMTP_SECONDARY_EMAIL',
+                os.getenv('CAMPAIGN_SECONDARY_EMAIL', 'news.crypgo@gmail.com'),
+            ),
+            'password': os.getenv(
+                'GMAIL_SMTP_SECONDARY_PASSWORD',
+                os.getenv('CAMPAIGN_SECONDARY_EMAIL_PASSWORD', ''),
+            ),
+        },
+    )
 
 # REST Framework
 REST_FRAMEWORK = {
@@ -183,7 +244,7 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = os.getenv(
     'CORS_ALLOWED_ORIGINS',
-    '["https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
+    '["https://crypgo.us.ci","https://crypgo-gamma.vercel.app","https://crypgo.pythonanywhere.com"]'
 )
 if isinstance(CORS_ALLOWED_ORIGINS, str):
     import json
@@ -202,7 +263,11 @@ SITE_URL = os.getenv('SITE_URL', 'https://Crypgoemail.pythonanywhere.com')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://crypgo-gamma.vercel.app')
 CLICK_TRACKING_ALLOWED_ORIGINS = tuple(dict.fromkeys(
     origin.strip().rstrip('/')
-    for origin in (FRONTEND_URL + ',' + os.getenv('CLICK_TRACKING_ALLOWED_ORIGINS', '')).split(',')
+    for origin in (
+        FRONTEND_URL
+        + ',https://crypgo.us.ci,'
+        + os.getenv('CLICK_TRACKING_ALLOWED_ORIGINS', '')
+    ).split(',')
     if origin.strip()
 ))
 CRYPGO_SERVICE_KEY = os.getenv('CRYPGO_SERVICE_KEY', '')

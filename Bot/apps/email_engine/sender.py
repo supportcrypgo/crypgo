@@ -5,7 +5,7 @@ from html import unescape
 from email.utils import parseaddr
 from urllib.parse import quote, urlparse
 from django.core.mail import EmailMultiAlternatives
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.template import Template, Context
 from django.conf import settings
 from django.core.validators import validate_email
@@ -62,12 +62,9 @@ class EmailSender:
             display_name = display_name or getattr(settings, 'EMAIL_FROM_NAME', None) or 'Crypgo'
             return f'{display_name} <{email_address}>'
 
-        logger.warning(
-            'No valid DEFAULT_FROM_EMAIL or EMAIL_HOST_USER is configured; '
-            'using support.crypgo@gmail.com. Configure a verified sender for delivery.'
+        raise ImproperlyConfigured(
+            'Configure a valid verified DEFAULT_FROM_EMAIL before sending.'
         )
-        display_name = getattr(settings, 'EMAIL_FROM_NAME', 'Crypgo') or 'Crypgo'
-        return f'{display_name} <support.crypgo@gmail.com>'
 
     def _build_headers(self, recipient_email, tracking_id):
         """Build a standard, safe set of email headers."""
@@ -128,7 +125,7 @@ class EmailSender:
 
         try:
             # Check rate limits
-            if not self.throttler.can_send():
+            if not self.throttler.can_send(campaign):
                 logger.warning("Rate limit exceeded, queuing email for %s", lead.email)
                 return self._log_attempt(
                     campaign=campaign,
@@ -173,7 +170,7 @@ class EmailSender:
                 msg.send(fail_silently=False)
 
             # Track success
-            self.throttler.record_send()
+            self.throttler.record_send(campaign)
             email_log = self._log_attempt(
                 campaign=campaign,
                 recipient_email=lead.email,
@@ -252,7 +249,7 @@ class EmailSender:
 
         delivery_attempted = False
         try:
-            if not self.throttler.can_send():
+            if not self.throttler.can_send(campaign):
                 return self._log_attempt(
                     campaign=campaign,
                     recipient_email=recipient_email, subject=subject,
@@ -265,18 +262,19 @@ class EmailSender:
             sender_email = ''
             if sender_account:
                 sender_email = sender_account['email']
+                smtp_username = sender_account.get('username', sender_email)
                 display_name = getattr(settings, 'EMAIL_FROM_NAME', None) or 'Crypgo'
                 from_email = f'{display_name} <{sender_email}>'
                 if (
                     USE_GMAIL_API
-                    or sender_email.lower() != settings.EMAIL_HOST_USER.lower()
+                    or smtp_username.lower() != settings.EMAIL_HOST_USER.lower()
                 ):
                     from django.core.mail.backends.smtp import EmailBackend
 
                     connection = EmailBackend(
                         host=settings.EMAIL_HOST,
                         port=settings.EMAIL_PORT,
-                        username=sender_email,
+                        username=smtp_username,
                         password=sender_account['password'],
                         use_tls=settings.EMAIL_USE_TLS,
                         use_ssl=settings.EMAIL_USE_SSL,
@@ -312,7 +310,7 @@ class EmailSender:
                     msg.attach(filename, content, mime_type)
                 delivery_attempted = True
                 msg.send(fail_silently=False)
-            self.throttler.record_send()
+            self.throttler.record_send(campaign)
 
             return self._log_attempt(
                 campaign=campaign,

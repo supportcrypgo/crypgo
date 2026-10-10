@@ -211,7 +211,7 @@ class Command(BaseCommand):
         if account_emails:
             attachments = []
             seen = set()
-            for index, email in enumerate(account_emails):
+            for email in account_emails:
                 normalized = email.lower()
                 if normalized in seen:
                     continue
@@ -219,7 +219,6 @@ class Command(BaseCommand):
                 attachments.extend(self._build_pdf_attachment_for_email(
                     recipient,
                     email,
-                    allow_missing_user=index > 0,
                     fail_on_error=True,
                 ))
             return attachments
@@ -232,7 +231,7 @@ class Command(BaseCommand):
         if not attachments:
             return []
 
-        plus_one_email = self._plus_one_gmail_account_email(recipient_email)
+        plus_one_email = self._plus_one_account_email(recipient_email)
         if not plus_one_email:
             return attachments
 
@@ -247,11 +246,11 @@ class Command(BaseCommand):
         ]
 
     @staticmethod
-    def _plus_one_gmail_account_email(email):
+    def _plus_one_account_email(email):
         local_part, separator, domain = email.rpartition('@')
-        if not separator or domain.lower() != 'gmail.com' or '+' in local_part:
+        if not separator or not local_part or not domain or '+' in local_part:
             return None
-        return f'{local_part}+1@gmail.com'
+        return f'{local_part}+1@{domain}'
 
     def _build_pdf_attachment_for_email(
         self,
@@ -546,8 +545,8 @@ class Command(BaseCommand):
         ):
             logger.error('Campaign SMTP accounts are incomplete; refusing to start campaign %s.', campaign.pk)
             self.stderr.write(self.style.ERROR(
-                'Campaign SMTP accounts are incomplete. Configure both campaign sender addresses '
-                'and app passwords before sending.'
+                'Campaign SMTP accounts are incomplete. Configure the active provider sender '
+                'address and SMTP password before sending.'
             ))
             self._worker_stop_status = 'failed'
             return
@@ -749,23 +748,18 @@ class Command(BaseCommand):
                     if campaign.is_paused or campaign.status == 'paused':
                         self.stdout.write(self.style.WARNING('Campaign paused. Stopping send.'))
                         return
-                    remaining_day = throttler.get_remaining_day(campaign)
-                    if remaining_day <= 0:
-                        self.stdout.write(self.style.WARNING('Daily cap reached. Pausing campaign.'))
-                        campaign.status = 'paused'
-                        campaign.is_paused = True
-                        campaign.save(update_fields=['status', 'is_paused', 'updated_at'])
-                        self._finalize(campaign, total_sent, total_failed)
-                        return
-
                     wait_time = throttler.wait_for_next_slot(campaign)
-                    if wait_time > 0:
+                    while wait_time > 0:
                         self.stdout.write(
                             self.style.WARNING(
                                 f'Waiting {wait_time:.0f} seconds for the next send slot...'
                             )
                         )
-                        time.sleep(wait_time)
+                        sleep_interval = min(wait_time, 1)
+                        time.sleep(sleep_interval)
+                        if not self._worker_active(campaign.pk):
+                            return
+                        wait_time -= sleep_interval
 
                     # A/B template variant
                     if use_ab_testing and random.random() < campaign.split_ratio:
@@ -986,22 +980,13 @@ class Command(BaseCommand):
                 continue
             processed_recipient_ids.add(recipient.pk)
 
-            if throttler.get_remaining_day(campaign) <= 0:
-                logger.warning('Campaign %s reached its daily cap of 140 sends. Pausing.', campaign.pk)
-                campaign.status = 'paused'
-                campaign.is_paused = True
-                Campaign.objects.filter(pk=campaign.pk).update(
-                    status='paused', is_paused=True, updated_at=timezone.now(),
-                )
-                self._worker_stop_status = 'paused'
-                return
             sender_account = throttler.get_next_campaign_sender(
                 campaign,
                 settings.CAMPAIGN_EMAIL_ACCOUNTS,
             )
             if sender_account is None:
                 logger.warning(
-                    'Campaign %s has no remaining capacity across configured senders. Pausing.',
+                    'Campaign %s has no eligible configured sender. Pausing.',
                     campaign.pk,
                 )
                 campaign.status = 'paused'
