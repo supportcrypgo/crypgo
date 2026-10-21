@@ -1,0 +1,263 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .targeted-send {
+      max-width: 1120px;
+      margin: 28px auto;
+      color: var(--body-fg, #e5e7eb);
+    }
+    .targeted-send__panel {
+      margin-bottom: 20px;
+      padding: 22px;
+      border: 1px solid rgba(148, 163, 184, .2);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, .42);
+    }
+    .targeted-send__panel h2 {
+      margin: 0 0 16px;
+      font-size: 16px;
+      font-weight: 650;
+    }
+    .targeted-send__template {
+      width: min(100%, 560px);
+      padding: 10px 12px;
+      border: 1px solid rgba(148, 163, 184, .32);
+      border-radius: 8px;
+      background: #111827;
+      color: inherit;
+    }
+    .targeted-send__toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .targeted-send__search {
+      flex: 1 1 260px;
+      min-width: 0;
+      padding: 10px 12px;
+      border: 1px solid rgba(148, 163, 184, .32);
+      border-radius: 8px;
+      background: #111827;
+      color: inherit;
+    }
+    .targeted-send__toolbar button {
+      padding: 9px 12px;
+      border: 1px solid rgba(148, 163, 184, .32);
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+    }
+    .targeted-send__count {
+      margin-left: auto;
+      color: #9ca3af;
+      font-size: 13px;
+    }
+    .targeted-send__list {
+      max-height: 460px;
+      overflow: auto;
+      border: 1px solid rgba(148, 163, 184, .18);
+      border-radius: 10px;
+    }
+    .targeted-send__account {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 13px 15px;
+      border-bottom: 1px solid rgba(148, 163, 184, .12);
+      cursor: pointer;
+    }
+    .targeted-send__account:last-child {
+      border-bottom: 0;
+    }
+    .targeted-send__account:hover {
+      background: rgba(148, 163, 184, .07);
+    }
+    .targeted-send__account input {
+      width: 17px;
+      height: 17px;
+      accent-color: #22c55e;
+    }
+    .targeted-send__account-name {
+      display: block;
+      font-weight: 600;
+    }
+    .targeted-send__account-email {
+      display: block;
+      margin-top: 3px;
+      color: #9ca3af;
+      font-size: 13px;
+    }
+    .targeted-send__empty {
+      padding: 22px;
+      color: #9ca3af;
+      text-align: center;
+    }
+    .targeted-send__note {
+      margin: 12px 0 0;
+      color: #9ca3af;
+      font-size: 13px;
+    }
+    .targeted-send__actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .targeted-send__submit {
+      padding: 11px 17px;
+      border: 1px solid #16a34a;
+      border-radius: 9px;
+      background: #22c55e;
+      color: #052e16;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .targeted-send__submit:hover {
+      background: #4ade80;
+    }
+    .targeted-send__back {
+      color: #9ca3af;
+    }
+    .targeted-send__error {
+      margin-bottom: 16px;
+      padding: 12px 14px;
+      border: 1px solid rgba(239, 68, 68, .35);
+      border-radius: 9px;
+      background: rgba(127, 29, 29, .18);
+      color: #fca5a5;
+    }
+    @media (max-width: 640px) {
+      .targeted-send {
+        margin: 16px auto;
+      }
+      .targeted-send__panel {
+        padding: 17px;
+      }
+      .targeted-send__count {
+        width: 100%;
+        margin-left: 0;
+      }
+      .targeted-send__actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <main class="targeted-send">
+    {% if directory_error %}
+      <div class="targeted-send__error" role="alert">{{ directory_error }}</div>
+    {% endif %}
+
+    <form method="post" id="targeted-send-form">
+      {% csrf_token %}
+      <section class="targeted-send__panel">
+        <h2>01 / Select a template</h2>
+        <select class="targeted-send__template" name="template_id" required {% if directory_error %}disabled{% endif %}>
+          <option value="">Choose an active template</option>
+          {% for email_template in templates %}
+            <option value="{{ email_template.pk }}" {% if selected_template_id == email_template.pk|stringformat:"s" %}selected{% endif %}>
+              {{ email_template.name }} — {{ email_template.subject }}
+            </option>
+          {% endfor %}
+        </select>
+      </section>
+
+      <section class="targeted-send__panel">
+        <h2>02 / Choose accounts</h2>
+        <div class="targeted-send__toolbar">
+          <input class="targeted-send__search" id="account-search" type="search" placeholder="Filter by name, email, or account ID" aria-label="Filter Crypgo accounts" {% if directory_error %}disabled{% endif %}>
+          <button type="button" id="select-visible" {% if directory_error %}disabled{% endif %}>Select visible</button>
+          <button type="button" id="clear-selection" {% if directory_error %}disabled{% endif %}>Clear selection</button>
+          <span class="targeted-send__count" id="selection-count" aria-live="polite">0 accounts selected</span>
+        </div>
+        <div class="targeted-send__list" id="account-list">
+          {% for account in accounts %}
+            <label class="targeted-send__account" data-account-row data-search="{{ account.first_name }} {{ account.last_name }} {{ account.email }} {{ account.external_user_id }}">
+              <input type="checkbox" name="user_ids" value="{{ account.external_user_id }}" {% if account.external_user_id in selected_user_ids %}checked{% endif %}>
+              <span>
+                <span class="targeted-send__account-name">
+                  {% if account.first_name or account.last_name %}{{ account.first_name }} {{ account.last_name }}{% else %}Crypgo user{% endif %}
+                </span>
+                <span class="targeted-send__account-email">{{ account.email }} · Account {{ account.external_user_id }}</span>
+              </span>
+            </label>
+          {% empty %}
+            <div class="targeted-send__empty">
+              {% if directory_error %}Account list could not be loaded.{% else %}No active Crypgo accounts were found.{% endif %}
+            </div>
+          {% endfor %}
+        </div>
+        <p class="targeted-send__note">Accounts sharing an inbox are listed separately. If multiple accounts with the same inbox are selected, delivery is grouped into one email to that inbox.</p>
+      </section>
+
+      <div class="targeted-send__actions">
+        <button class="targeted-send__submit" type="submit" {% if not templates or not accounts or directory_error %}disabled{% endif %}>Queue email to selected accounts</button>
+        <a class="targeted-send__back" href="{% url 'admin:campaigns_campaign_changelist' %}">Back to campaigns</a>
+      </div>
+    </form>
+  </main>
+
+  <script>
+    (() => {
+      const form = document.getElementById('targeted-send-form');
+      const search = document.getElementById('account-search');
+      const rows = Array.from(document.querySelectorAll('[data-account-row]'));
+      const count = document.getElementById('selection-count');
+      const selectVisible = document.getElementById('select-visible');
+      const clearSelection = document.getElementById('clear-selection');
+
+      const updateCount = () => {
+        const selected = form.querySelectorAll('input[name="user_ids"]:checked').length;
+        count.textContent = `${selected} account${selected === 1 ? '' : 's'} selected`;
+      };
+
+      search.addEventListener('input', () => {
+        const query = search.value.trim().toLowerCase();
+        rows.forEach((row) => {
+          row.hidden = !row.dataset.search.toLowerCase().includes(query);
+        });
+      });
+
+      selectVisible.addEventListener('click', () => {
+        rows.filter((row) => !row.hidden).forEach((row) => {
+          row.querySelector('input[type="checkbox"]').checked = true;
+        });
+        updateCount();
+      });
+
+      clearSelection.addEventListener('click', () => {
+        form.querySelectorAll('input[name="user_ids"]:checked').forEach((checkbox) => {
+          checkbox.checked = false;
+        });
+        updateCount();
+      });
+
+      form.addEventListener('change', (event) => {
+        if (event.target.matches('input[name="user_ids"]')) updateCount();
+      });
+
+      form.addEventListener('submit', (event) => {
+        const selected = form.querySelectorAll('input[name="user_ids"]:checked').length;
+        if (!selected) {
+          event.preventDefault();
+          window.alert('Select at least one Crypgo account.');
+          return;
+        }
+        const templateName = form.querySelector('select[name="template_id"]')
+          .selectedOptions[0].textContent.trim();
+        if (!window.confirm(`Queue “${templateName}” for ${selected} selected account${selected === 1 ? '' : 's'}?`)) {
+          event.preventDefault();
+        }
+      });
+
+      updateCount();
+    })();
+  </script>
+{% endblock %}

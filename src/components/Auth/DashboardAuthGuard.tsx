@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function DashboardAuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, userId } = useAuth();
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -26,5 +26,5 @@ export default function DashboardAuthGuard({ children }: { children: React.React
 
   if (loading || !isAuthenticated) return null;
 
-  return <>{children}</>;
+  return <Fragment key={userId}>{children}</Fragment>;
 }

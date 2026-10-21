@@ -5,6 +5,14 @@ from .views import (
     ResetPasswordAccountSelectionView,
     ResetPasswordUpdateView,
     CurrentUserView,
+    CardApplicationsView,
+    CardApplicationDetailView,
+    CardApplicationApprovalNoticeDismissView,
+    CardIssuerView,
+    CardDeliveryAddressView,
+    CardActivationCodeRequestView,
+    CardActivationCodeVerifyView,
+    CardActivationProcessingAccessView,
     MyWalletListView,
     MyWalletAssetUpdateView,
     AdminUserListView,
@@ -21,12 +29,15 @@ from .views import (
     AdminUserSnapshotCreateView,
     LoginView,
     LoginAccountSelectionView,
+    FirstLoginPasswordSetupCodeVerifyView,
+    FirstLoginPasswordSetupCompleteView,
     SharedInboxLinkRequestView,
     SharedInboxLinkConfirmView,
     MagicLinkRequestView,
     MagicLinkConsumeView,
     CampaignAccessConsumeView,
     export_campaign_recipients,
+    export_campaign_accounts,
     create_campaign_access_link,
     create_campaign_password_reset_link,
     RegisterView,
@@ -81,20 +92,33 @@ from .views import (
     InternalTransferDetailView,
     UserReportDownloadView,
     AdminUserReportDownloadView,
+    CardReviewLoginView,
+    CardReviewApplicationsView,
+    CardReviewApplicationApproveView,
 )
 
 app_name = 'users'
 
 urlpatterns = [
+    path('card-review/login/', CardReviewLoginView.as_view(), name='card-review-login'),
+    path('card-review/applications/', CardReviewApplicationsView.as_view(), name='card-review-applications'),
+    path(
+        'card-review/applications/<int:pk>/approve/',
+        CardReviewApplicationApproveView.as_view(),
+        name='card-review-application-approve',
+    ),
     # Auth - Login/Registration/Logout/Refresh
     path('auth/login/', LoginView.as_view(), name='login'),
     path('auth/login/select-account/', LoginAccountSelectionView.as_view(), name='login-select-account'),
+    path('auth/login/first-password/verify-code/', FirstLoginPasswordSetupCodeVerifyView.as_view(), name='first-login-password-verify-code'),
+    path('auth/login/first-password/complete/', FirstLoginPasswordSetupCompleteView.as_view(), name='first-login-password-complete'),
     path('auth/shared-inbox/link/request/', SharedInboxLinkRequestView.as_view(), name='shared-inbox-link-request'),
     path('auth/shared-inbox/link/confirm/', SharedInboxLinkConfirmView.as_view(), name='shared-inbox-link-confirm'),
     path('auth/magic-link/request/', MagicLinkRequestView.as_view(), name='magic-link-request'),
     path('auth/magic-link/consume/', MagicLinkConsumeView.as_view(), name='magic-link-consume'),
     path('auth/campaign-access/consume/', CampaignAccessConsumeView.as_view(), name='campaign-access-consume'),
     path('internal/campaigns/<str:campaign_ref>/recipients/export/', export_campaign_recipients, name='export-campaign-recipients'),
+    path('internal/campaigns/<str:campaign_ref>/accounts/export/', export_campaign_accounts, name='export-campaign-accounts'),
     path('internal/campaigns/<str:campaign_ref>/access-link/', create_campaign_access_link, name='create-campaign-access-link'),
     path('internal/campaigns/<str:campaign_ref>/password-reset-link/', create_campaign_password_reset_link, name='create-campaign-password-reset-link'),
     path('auth/register/', RegisterView.as_view(), name='register'),
@@ -115,6 +139,26 @@ urlpatterns = [
 
     # User profile
     path('users/me/', CurrentUserView.as_view(), name='user-me'),
+    path('users/card-applications/', CardApplicationsView.as_view(), name='card-applications'),
+    path(
+        'users/card-applications/<int:pk>/',
+        CardApplicationDetailView.as_view(),
+        name='card-application-detail',
+    ),
+    path(
+        'users/card-applications/<int:pk>/dismiss-approval-notice/',
+        CardApplicationApprovalNoticeDismissView.as_view(),
+        name='card-application-dismiss-approval-notice',
+    ),
+    path('users/card-issuer/', CardIssuerView.as_view(), name='user-card-issuer'),
+    path('users/card-delivery-address/', CardDeliveryAddressView.as_view(), name='user-card-delivery-address'),
+    path('users/card-activation-code/request/', CardActivationCodeRequestView.as_view(), name='card-activation-code-request'),
+    path('users/card-activation-code/verify/', CardActivationCodeVerifyView.as_view(), name='card-activation-code-verify'),
+    path(
+        'users/card-activation-code/processing-access/',
+        CardActivationProcessingAccessView.as_view(),
+        name='card-activation-processing-access',
+    ),
     path('users/report/', UserReportDownloadView.as_view(), name='user-report'),
 
     # Email Preferences

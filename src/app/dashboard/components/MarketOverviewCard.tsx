@@ -3,10 +3,12 @@
 import React from 'react';
 import { ChevronRight, TrendingDown, TrendingUp } from 'lucide-react';
 import { useCryptoPricesGlobal } from '@/context/CryptoPriceContext';
+import { useDisplayCurrency } from '@/context/DisplayCurrencyContext';
+import CurrencyLoadingShimmer from './CurrencyLoadingShimmer';
 
 interface MarketMetric {
   label: string;
-  value: string;
+  value: number;
   change: string;
   changeType: 'positive' | 'negative' | 'neutral';
 }
@@ -35,6 +37,7 @@ const getChangeColor = (type: MarketMetric['changeType']) => {
 
 export default function MarketOverviewCard() {
   const { prices, isLoading } = useCryptoPricesGlobal();
+  const { formatFromUsd, convertFromUsd } = useDisplayCurrency();
 
   const marketMetrics: MarketMetric[] = React.useMemo(() => {
     if (!prices) return [];
@@ -48,7 +51,7 @@ export default function MarketOverviewCard() {
       .filter((item) => typeof item.value === 'number')
       .map((item) => ({
         label: item.label,
-        value: `$${Number(item.value).toLocaleString('en-US', { maximumFractionDigits: 2 })}`,
+        value: Number(item.value),
         change: `${Number(item.change ?? 0) >= 0 ? '+' : ''}${Number(item.change ?? 0).toFixed(2)}%`,
         changeType: Number(item.change ?? 0) >= 0 ? 'positive' : 'negative',
       }));
@@ -83,7 +86,11 @@ export default function MarketOverviewCard() {
             >
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-charcoalGray truncate">{metric.label}</p>
-                <p className="text-sm font-semibold text-white mt-0.5 truncate">{metric.value}</p>
+                <p className="text-sm font-semibold text-white mt-0.5 truncate">
+                  {convertFromUsd(metric.value) === null ? (
+                    <CurrencyLoadingShimmer className="h-3.5 w-24" />
+                  ) : formatFromUsd(metric.value)}
+                </p>
               </div>
               <div className="flex-shrink-0 ml-4 flex items-center gap-1.5">
                 <span className={`text-sm font-medium ${getChangeColor(metric.changeType)}`}>

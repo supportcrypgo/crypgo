@@ -3,7 +3,13 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef, createElement } from 'react';
 import { UnifiedUser } from '@/types/unified';
-import { AccountSelectionResponse, authApi, profileApi } from '@/data/api';
+import {
+  AccountSelectionResponse,
+  AUTH_SESSION_EXPIRED_EVENT,
+  authApi,
+  FirstLoginPasswordSetupResponse,
+  profileApi,
+} from '@/data/api';
 import { usePathname } from 'next/navigation';
 import { clearCautionRestriction } from '@/lib/cautionRestriction';
 
@@ -13,7 +19,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   userId: string | null;
-  login: (email: string, password: string) => Promise<AccountSelectionResponse | null>;
+  login: (email: string, password: string) => Promise<AccountSelectionResponse | FirstLoginPasswordSetupResponse | null>;
   selectLoginAccount: (selectionToken: string, accountId: number) => Promise<void>;
   register: (data: { email: string; username: string; password: string; first_name?: string; last_name?: string }) => Promise<void>;
   logout: (options?: { redirect?: boolean }) => Promise<void>;
@@ -28,6 +34,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
   const hasCheckedInitialSession = useRef(false);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setUser(null);
+      setLoading(false);
+    };
+
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleSessionExpired);
+  }, []);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -55,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const authResponse = await authApi.login({ email, password });
-    if ('requires_account_selection' in authResponse) {
+    if ('requires_account_selection' in authResponse || 'requires_password_setup' in authResponse) {
       return authResponse;
     }
     window.sessionStorage.removeItem('crypgo-campaign-access-session');

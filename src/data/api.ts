@@ -15,6 +15,8 @@ const configuredApiBaseUrl = (() => {
 // /backend-api to the configured Django API in local and production builds.
 const API_BASE_URL = typeof window === 'undefined' ? configuredApiBaseUrl : '/backend-api';
 const ACCESS_TOKEN_STORAGE_KEY = 'access_token';
+export const AUTH_SESSION_EXPIRED_EVENT = 'crypgo:session-expired';
+export const CARD_APPLICATIONS_CHANGED_EVENT = 'crypgo:card-applications-changed';
 
 function getAccessToken(): string | null {
   return typeof window !== 'undefined'
@@ -94,6 +96,30 @@ function extractErrorMessage(errorData: unknown, status?: number): string {
   return status ? `Login failed (${status}). Check console for details.` : 'Something went wrong.';
 }
 
+function extractRegistrationErrorMessage(errorData: unknown): string | null {
+  if (typeof errorData === 'string') return errorData.trim() || null;
+  if (Array.isArray(errorData)) {
+    for (const item of errorData) {
+      const message = extractRegistrationErrorMessage(item);
+      if (message) return message;
+    }
+    return null;
+  }
+  if (!errorData || typeof errorData !== 'object') return null;
+
+  const data = errorData as Record<string, unknown>;
+  for (const key of ['detail', 'message', 'error', 'non_field_errors', 'email']) {
+    const message = extractRegistrationErrorMessage(data[key]);
+    if (message) return message;
+  }
+  for (const [key, value] of Object.entries(data)) {
+    if (['detail', 'message', 'error', 'non_field_errors', 'email'].includes(key)) continue;
+    const message = extractRegistrationErrorMessage(value);
+    if (message) return message;
+  }
+  return null;
+}
+
 export class ApiRequestError extends Error {
   code?: string;
   status: number;
@@ -106,10 +132,6 @@ export class ApiRequestError extends Error {
   }
 }
 
-export function isTransactionCautionError(error: unknown): boolean {
-  return error instanceof ApiRequestError && error.code === 'TRANSACTION_CAUTION_REQUIRED';
-}
-
 function handleUnauthorized(): never {
   clearAccessToken();
   if (
@@ -118,6 +140,7 @@ function handleUnauthorized(): never {
     !window.location.pathname.startsWith('/dashboard/admin') &&
     window.location.pathname !== '/'
   ) {
+    window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT));
     window.location.replace('/');
   }
   throw new Error('Your session has expired. Please sign in again.');
@@ -137,8 +160,11 @@ function normalizeUser(user: any): UnifiedUser {
     firstName,
     lastName,
     email: user?.email || '',
+    displayCurrency: user?.display_currency || user?.displayCurrency || 'USD',
     country: user?.country || user?.location || '',
     dateOfBirth: user?.date_of_birth || user?.dateOfBirth || user?.dob || '',
+    identityDetailsVerified: Boolean(user?.identity_details_verified ?? user?.identityDetailsVerified),
+    kycStatus: user?.kyc_status || user?.kycStatus || 'none',
     password: '',
     avatarInitials: initials || (user?.email?.[0]?.toUpperCase() || 'U'),
     role: (user?.role === 'admin' || user?.role === 'merchant' || user?.role === 'trader' ? user?.role : 'trader') as UnifiedUser['role'],
@@ -245,15 +271,23 @@ function normalizeTransaction(tx: any): UnifiedTransaction {
     transfer: 'send',
   };
   const normalizedType = typeMap[rawType] ?? explicitDirection ?? 'receive';
+  const amount = Number(tx?.amount ?? 0);
+  const price = Number(tx?.price_at_time ?? tx?.price ?? 0);
+  const fiatAmount = Number(tx?.fiat_amount);
+  const totalValue = Number.isFinite(fiatAmount) && fiatAmount > 0
+    ? fiatAmount
+    : Number.isFinite(price) && price > 0
+      ? Math.abs(amount) * price
+      : 0;
 
   return {
     id: String(tx?.id ?? ''),
     userId: String(tx?.user ?? tx?.user_id ?? ''),
     type: normalizedType,
     asset: (tx?.asset || 'BTC') as UnifiedTransaction['asset'],
-    amount: Number(tx?.amount ?? 0),
-    price: Number(tx?.price_at_time ?? tx?.price ?? 0),
-    totalValue: Number(tx?.fiat_amount ?? tx?.amount ?? 0),
+    amount,
+    price,
+    totalValue,
     status: (tx?.status || 'completed') as UnifiedTransaction['status'],
     counterpartyType: 'internal',
     counterpartyId: tx?.counterparty ? String(tx.counterparty) : undefined,
@@ -305,6 +339,13 @@ export interface AccountSelectionResponse {
   next_path?: string;
 }
 
+export interface FirstLoginPasswordSetupResponse {
+  requires_password_setup: true;
+  setup_token: string;
+  email_hint: string;
+  expires_at: string;
+}
+
 export interface ResetPasswordAccountSelectionResponse extends AccountSelectionResponse {
   valid: true;
 }
@@ -313,7 +354,10 @@ export type ResetPasswordConfirmation =
   | { valid: true }
   | ResetPasswordAccountSelectionResponse;
 
-export type LoginResponse = TokenResponse | AccountSelectionResponse;
+export type LoginResponse =
+  | TokenResponse
+  | AccountSelectionResponse
+  | FirstLoginPasswordSetupResponse;
 
 export interface ChangePasswordData {
   current_password: string;
@@ -326,6 +370,70 @@ export interface EmailPreferences {
   security_alerts: boolean;
   product_updates: boolean;
   marketing: boolean;
+}
+
+export interface CardIssuerDetails {
+  card_issuer_number: string;
+  cardholder_name: string;
+  expiry: string;
+  is_non_functional: true;
+  activation_pending: boolean;
+  source_asset: string | null;
+  application_id: number;
+}
+
+export interface CardApplication {
+  id: number;
+  card_number: string | null;
+  source_asset: string;
+  status: 'draft' | 'activation_pending' | 'approved' | 'canceled';
+  approval_notice_pending: boolean;
+  cancellation_due_at: string | null;
+  issued_at: string;
+  expiry_date: string;
+  address?: CardDeliveryAddress | null;
+}
+
+export interface CardReviewApplication {
+  id: number;
+  first_name: string;
+  last_name: string;
+  cardholder_name: string;
+  email: string;
+  source_asset: string;
+  card_number: string | null;
+  expiry: string;
+  canceled_at: string | null;
+  status: 'activation_pending' | 'canceled';
+  created_at: string;
+  address: CardDeliveryAddress | null;
+}
+
+export interface CardReviewApplicationsResponse {
+  count: number;
+  page: number;
+  page_size: number;
+  page_count: number;
+  applications: CardReviewApplication[];
+}
+
+export interface CardApplicationsResponse {
+  applications: CardApplication[];
+  available_source_assets: string[];
+}
+
+export interface CardDeliveryAddress {
+  secondary_unit: string;
+  street_address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  country: string;
+}
+
+export interface CardDeliveryAddressResponse {
+  has_address: boolean;
+  address: CardDeliveryAddress | null;
 }
 
 // ─── New Types for Profile Features ───
@@ -652,8 +760,10 @@ async function authenticatedRequest<T>(
   // Handle other errors
   if (response.status >= 400) {
     const errorData = await response.json().catch(() => ({}));
+    const responseMessage = [errorData.detail, errorData.message, errorData.error]
+      .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
     throw new ApiRequestError(
-      errorData.detail || errorData.message || 'An error occurred.',
+      responseMessage || `Request failed (${response.status}).`,
       response.status,
       errorData.code
     );
@@ -671,9 +781,40 @@ export async function downloadUserReport(userId?: string | number): Promise<{
   blob: Blob;
   filename: string | null;
 }> {
+  const reportUser = userId === undefined
+    ? await profileApi.getMe()
+    : await adminApi.getUser(userId);
+  const currency = (reportUser.displayCurrency || 'USD').toUpperCase();
+  const query = new URLSearchParams();
+
+  if (currency !== 'USD') {
+    const ratesResponse = await fetch('/api/currency/rates', { cache: 'no-store' });
+    const ratesData = await ratesResponse.json().catch(() => ({}));
+    const rate = Number(ratesData?.rates?.[currency]);
+    const updatedAt = ratesData?.updatedAt;
+    if (
+      !ratesResponse.ok ||
+      !Number.isFinite(rate) ||
+      rate <= 0 ||
+      typeof updatedAt !== 'string' ||
+      !updatedAt.trim()
+    ) {
+      throw new Error(
+        typeof ratesData?.error === 'string'
+          ? ratesData.error
+          : `An exchange rate for ${currency} is unavailable. Please try again later.`,
+      );
+    }
+    query.set('display_currency_rate', String(rate));
+    query.set('display_currency_rate_as_of', updatedAt);
+  }
+
   const endpoint = userId === undefined
     ? '/users/report/'
     : `/admin/users/${userId}/report/`;
+  const reportUrl = query.size > 0
+    ? `${API_BASE_URL}${endpoint}?${query.toString()}`
+    : `${API_BASE_URL}${endpoint}`;
 
   const requestReport = () => {
     const headers: Record<string, string> = {};
@@ -682,7 +823,7 @@ export async function downloadUserReport(userId?: string | number): Promise<{
       headers.Authorization = `Bearer ${accessToken}`;
     }
 
-    return fetch(`${API_BASE_URL}${endpoint}`, {
+    return fetch(reportUrl, {
       headers,
       credentials: 'include',
     });
@@ -734,9 +875,9 @@ export const publicApi = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorData: unknown = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.detail || errorData.message || 'Registration failed.'
+        extractRegistrationErrorMessage(errorData) || 'Registration failed. Please try again.'
       );
     }
 
@@ -795,6 +936,45 @@ export const authApi = {
     return data;
   },
 
+  async verifyFirstLoginPasswordCode(setupToken: string, code: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/auth/login/first-password/verify-code/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setup_token: setupToken, code }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        extractErrorMessage(data, response.status) || 'Unable to verify the code.'
+      );
+    }
+  },
+
+  async completeFirstLoginPasswordSetup(
+    setupToken: string,
+    password: string,
+  ): Promise<TokenResponse | AccountSelectionResponse> {
+    const response = await fetch(`${API_BASE_URL}/auth/login/first-password/complete/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ setup_token: setupToken, password }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        extractErrorMessage(data, response.status) || 'Unable to set your password.'
+      );
+    }
+    if (data?.access_token && typeof window !== 'undefined') {
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, data.access_token);
+    }
+    if (data?.user) {
+      data.user = normalizeUser(data.user);
+    }
+    return data;
+  },
+
   async requestSharedInboxLink(email: string, password: string): Promise<void> {
     await authenticatedRequest('/auth/shared-inbox/link/request/', {
       method: 'POST',
@@ -828,9 +1008,9 @@ export const authApi = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      const errorData: unknown = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.detail || errorData.message || 'Registration failed.'
+        extractRegistrationErrorMessage(errorData) || 'Registration failed. Please try again.'
       );
     }
 
@@ -1012,6 +1192,7 @@ export const profileApi = {
     if (data.lastName !== undefined) payload.last_name = data.lastName;
     if (data.country !== undefined) payload.country = data.country;
     if (data.dateOfBirth !== undefined) payload.date_of_birth = data.dateOfBirth;
+    if (data.displayCurrency !== undefined) payload.display_currency = data.displayCurrency;
     if ((data as any).location !== undefined) payload.country = (data as any).location;
 
     const response = await authenticatedRequest<any>('/users/me/', {
@@ -1077,6 +1258,206 @@ export const profileApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  },
+};
+
+export const cardIssuerApi = {
+  getDetails(applicationId?: number): Promise<CardIssuerDetails> {
+    const query = applicationId ? `?application_id=${applicationId}` : '';
+    return authenticatedRequest<CardIssuerDetails>(`/users/card-issuer/${query}`);
+  },
+
+  saveSourceAsset(sourceAsset: string, applicationId?: number): Promise<{ source_asset: string }> {
+    return authenticatedRequest<{ source_asset: string }>('/users/card-issuer/', {
+      method: 'PATCH',
+      body: JSON.stringify({ source_asset: sourceAsset, application_id: applicationId }),
+    });
+  },
+
+  deleteApplication(applicationId?: number): Promise<void> {
+    const query = applicationId ? `?application_id=${applicationId}` : '';
+    return authenticatedRequest<void>(`/users/card-issuer/${query}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+export const cardApplicationsApi = {
+  list(): Promise<CardApplicationsResponse> {
+    return authenticatedRequest<CardApplicationsResponse>('/users/card-applications/');
+  },
+
+  async create(): Promise<CardApplication> {
+    const application = await authenticatedRequest<CardApplication>('/users/card-applications/', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(CARD_APPLICATIONS_CHANGED_EVENT));
+    }
+    return application;
+  },
+
+  get(applicationId: number): Promise<CardApplication> {
+    return authenticatedRequest<CardApplication>(`/users/card-applications/${applicationId}/`);
+  },
+
+  async delete(applicationId: number): Promise<void> {
+    await authenticatedRequest<void>(`/users/card-applications/${applicationId}/`, {
+      method: 'DELETE',
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(CARD_APPLICATIONS_CHANGED_EVENT));
+    }
+  },
+
+  async dismissApprovalNotice(applicationId: number): Promise<void> {
+    await authenticatedRequest<void>(
+      `/users/card-applications/${applicationId}/dismiss-approval-notice/`,
+      { method: 'POST' },
+    );
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(CARD_APPLICATIONS_CHANGED_EVENT));
+    }
+  },
+};
+
+const CARD_REVIEW_TOKEN_KEY = 'crypgo_card_review_token';
+
+function getCardReviewToken(): string | null {
+  return typeof window === 'undefined'
+    ? null
+    : window.sessionStorage.getItem(CARD_REVIEW_TOKEN_KEY);
+}
+
+export function clearCardReviewToken(): void {
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.removeItem(CARD_REVIEW_TOKEN_KEY);
+  }
+}
+
+async function cardReviewRequest<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  token?: string,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+  if (token) headers.Authorization = `CardReview ${token}`;
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+  const responseData = response.status === 204
+    ? null
+    : await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    if (response.status === 401 && token) clearCardReviewToken();
+    const message = (
+      responseData &&
+      typeof responseData === 'object' &&
+      typeof responseData.error === 'string'
+    ) ? responseData.error : `Card review request failed (${response.status}).`;
+    throw new ApiRequestError(message, response.status);
+  }
+  return responseData as T;
+}
+
+export const cardReviewApi = {
+  async login(code: string): Promise<string> {
+    const response = await cardReviewRequest<{ token: string }>('/card-review/login/', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+    window.sessionStorage.setItem(CARD_REVIEW_TOKEN_KEY, response.token);
+    return response.token;
+  },
+
+  getToken(): string | null {
+    return getCardReviewToken();
+  },
+
+  clearToken(): void {
+    clearCardReviewToken();
+  },
+
+  list(token: string, page = 1): Promise<CardReviewApplicationsResponse> {
+    return cardReviewRequest(`/card-review/applications/?page=${page}`, {}, token);
+  },
+
+  approve(token: string, applicationId: number): Promise<{ status: string }> {
+    return cardReviewRequest(
+      `/card-review/applications/${applicationId}/approve/`,
+      { method: 'POST', body: JSON.stringify({}) },
+      token,
+    );
+  },
+};
+
+export const cardDeliveryAddressApi = {
+  get(applicationId?: number): Promise<CardDeliveryAddressResponse> {
+    const query = applicationId ? `?application_id=${applicationId}` : '';
+    return authenticatedRequest<CardDeliveryAddressResponse>(`/users/card-delivery-address/${query}`);
+  },
+
+  save(address: CardDeliveryAddress, applicationId?: number): Promise<CardDeliveryAddressResponse> {
+    return authenticatedRequest<CardDeliveryAddressResponse>('/users/card-delivery-address/', {
+      method: 'PUT',
+      body: JSON.stringify({ ...address, application_id: applicationId }),
+    });
+  },
+};
+
+export interface CardActivationCodeResponse {
+  detail: string;
+  sent?: boolean;
+  resend_available_in?: number;
+}
+
+export const CARD_ACTIVATION_PROCESSING_TICKET_KEY = 'cardActivationProcessingTicket';
+export const CARD_ACTIVATION_PROCESSING_APPLICATION_ID_KEY = 'cardActivationProcessingApplicationId';
+
+export const cardActivationCodeApi = {
+  request(resend = false, applicationId?: number): Promise<CardActivationCodeResponse> {
+    return authenticatedRequest<CardActivationCodeResponse>(
+      '/users/card-activation-code/request/',
+      {
+        method: 'POST',
+        body: JSON.stringify({ resend, application_id: applicationId }),
+      },
+    );
+  },
+
+  verify(code: string, applicationId?: number): Promise<{
+    verified: boolean;
+    processing_ticket: string;
+    application_id: number;
+  }> {
+    return authenticatedRequest<{
+      verified: boolean;
+      processing_ticket: string;
+      application_id: number;
+    }>(
+      '/users/card-activation-code/verify/',
+      {
+        method: 'POST',
+        body: JSON.stringify({ code, application_id: applicationId }),
+      },
+    );
+  },
+
+  authorizeProcessing(ticket: string): Promise<{ authorized: boolean }> {
+    return authenticatedRequest<{ authorized: boolean }>(
+      '/users/card-activation-code/processing-access/',
+      {
+        method: 'POST',
+        body: JSON.stringify({ ticket }),
+      },
+    );
   },
 };
 

@@ -6,14 +6,7 @@ import type { UnifiedUser } from '@/types/unified';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { useUnified } from '@/context/UnifiedContext';
-
-function toDateInputValue(value?: string) {
-  if (!value) return '';
-  const match = value.match(/^\d{4}-\d{2}-\d{2}/);
-  if (match) return match[0];
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
-}
+import Link from 'next/link';
 
 export function EditProfileContent({ user: initialUser }: { user: UnifiedUser }) {
   const { refreshUser } = useAuth();
@@ -21,9 +14,7 @@ export function EditProfileContent({ user: initialUser }: { user: UnifiedUser })
   const [form, setForm] = useState({
     firstName: initialUser.firstName,
     lastName: initialUser.lastName,
-    dateOfBirth: toDateInputValue(initialUser.dateOfBirth),
     email: initialUser.email,
-    countryRegion: initialUser.country,
   });
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -60,8 +51,6 @@ export function EditProfileContent({ user: initialUser }: { user: UnifiedUser })
       const updatedUser = await updateUserProfile({
         firstName: form.firstName,
         lastName: form.lastName,
-        dateOfBirth: form.dateOfBirth || undefined,
-        country: form.countryRegion,
       });
 
       await refreshUser();
@@ -69,9 +58,6 @@ export function EditProfileContent({ user: initialUser }: { user: UnifiedUser })
       toast.success('Profile updated successfully');
       if (updatedUser.email) {
         setForm(prev => ({ ...prev, email: updatedUser.email }));
-      }
-      if (updatedUser.dateOfBirth) {
-        setForm(prev => ({ ...prev, dateOfBirth: toDateInputValue(updatedUser.dateOfBirth) }));
       }
     } catch (error: any) {
       toast.error(error.message || 'Failed to update profile');
@@ -142,17 +128,6 @@ export function EditProfileContent({ user: initialUser }: { user: UnifiedUser })
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-2">Date of Birth</label>
-          <input
-            type="date"
-            name="dateOfBirth"
-            value={form.dateOfBirth}
-            onChange={handleChange}
-            className="w-full px-4 py-3 bg-background border border-white/5 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none text-foreground"
-          />
-        </div>
-
-        <div>
           <label className="block text-sm font-medium text-muted-foreground mb-2">Email</label>
           <input
             type="email"
@@ -163,15 +138,12 @@ export function EditProfileContent({ user: initialUser }: { user: UnifiedUser })
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-2">Country / Region</label>
-          <input
-            type="text"
-            name="countryRegion"
-            value={form.countryRegion}
-            onChange={handleChange}
-            className="w-full px-4 py-3 bg-background border border-white/5 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none text-foreground"
-          />
+        <div className="rounded-lg border border-white/5 bg-muted/20 p-4 text-sm text-muted-foreground">
+          Region and date of birth are updated from your identity documents after KYC review.{' '}
+          <Link href="/dashboard/profile?tab=id-verify" className="font-medium text-primary hover:underline">
+            Go to identity verification
+          </Link>
+          .
         </div>
 
         <div className="flex items-center gap-4">

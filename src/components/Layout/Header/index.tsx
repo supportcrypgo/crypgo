@@ -13,6 +13,7 @@ import SignUp from "@/components/Auth/SignUp";
 
 interface HeaderSearchParamsHandlerProps {
   pathUrl: string | null;
+  router: ReturnType<typeof useRouter>;
   setIsSignInOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSignUpOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setMagicLinkToken: React.Dispatch<React.SetStateAction<string | null>>;
@@ -21,6 +22,7 @@ interface HeaderSearchParamsHandlerProps {
 
 const HeaderSearchParamsHandler = ({
   pathUrl,
+  router,
   setIsSignInOpen,
   setIsSignUpOpen,
   setMagicLinkToken,
@@ -30,8 +32,13 @@ const HeaderSearchParamsHandler = ({
 
   useEffect(() => {
     if (pathUrl !== '/') return;
+    const isMobile = window.matchMedia('(max-width: 1023px)').matches;
     const resetToken = searchParams.get('resetToken');
     if (resetToken) {
+      if (isMobile) {
+        router.replace(`/auth/sign-in?resetToken=${encodeURIComponent(resetToken)}`);
+        return;
+      }
       setPasswordResetToken(resetToken);
       setMagicLinkToken(null);
       setIsSignInOpen(true);
@@ -40,6 +47,10 @@ const HeaderSearchParamsHandler = ({
     }
     const token = searchParams.get('magicToken');
     if (token) {
+      if (isMobile) {
+        router.replace(`/auth/sign-in?magicToken=${encodeURIComponent(token)}`);
+        return;
+      }
       setMagicLinkToken(token);
       setPasswordResetToken(null);
       setIsSignInOpen(true);
@@ -47,13 +58,21 @@ const HeaderSearchParamsHandler = ({
       return;
     }
     if (searchParams.get('signin') === '1') {
+      if (isMobile) {
+        router.replace('/auth/sign-in');
+        return;
+      }
       setMagicLinkToken(null);
       setIsSignInOpen(true);
     }
     if (searchParams.get('signup') === '1') {
+      if (isMobile) {
+        router.replace('/auth/sign-up');
+        return;
+      }
       setIsSignUpOpen(true);
     }
-  }, [pathUrl, searchParams, setIsSignInOpen, setIsSignUpOpen, setMagicLinkToken, setPasswordResetToken]);
+  }, [pathUrl, router, searchParams, setIsSignInOpen, setIsSignUpOpen, setMagicLinkToken, setPasswordResetToken]);
 
   return null;
 };
@@ -110,6 +129,14 @@ const Header: React.FC = () => {
   }, [navbarOpen, isSignInOpen, isSignUpOpen]);
 
   useEffect(() => {
+    if (pathUrl !== '/') {
+      setNavbarOpen(false);
+      setIsSignInOpen(false);
+      setIsSignUpOpen(false);
+    }
+  }, [pathUrl]);
+
+  useEffect(() => {
     if (isSignInOpen || isSignUpOpen || navbarOpen) {
       document.body.style.overflow = "hidden";
     } else {
@@ -126,6 +153,7 @@ const Header: React.FC = () => {
       <Suspense fallback={null}>
         <HeaderSearchParamsHandler
           pathUrl={pathUrl}
+          router={router}
           setIsSignInOpen={setIsSignInOpen}
           setIsSignUpOpen={setIsSignUpOpen}
           setMagicLinkToken={setMagicLinkToken}
@@ -167,7 +195,7 @@ const Header: React.FC = () => {
               </svg>
             </button> */}
             <Link
-              href="/?signin=1"
+              href="/auth/sign-in"
               className="hidden lg:block bg-transparent text-primary border hover:bg-primary border-primary hover:text-darkmode px-4 py-2 rounded-lg"
                 onClick={(event) => {
                   event.preventDefault();
@@ -217,7 +245,7 @@ const Header: React.FC = () => {
               </div>
             )}
             <Link
-              href="/?signup=1"
+              href="/auth/sign-up"
               className="hidden lg:block bg-primary text-darkmode hover:bg-transparent hover:text-primary border border-primary px-4 py-2 rounded-lg"
                 onClick={(event) => {
                   event.preventDefault();
@@ -287,22 +315,18 @@ const Header: React.FC = () => {
             ))}
             <div className="mt-4 flex flex-col space-y-4 w-full">
               <Link
-                href="/?signin=1"
+                href="/auth/sign-in"
                 className="bg-transparent border border-primary text-primary px-4 py-2 rounded-lg hover:bg-blue-600 hover:text-white"
                 onClick={(event) => {
-                  event.preventDefault();
-                  setIsSignInOpen(true);
                   setNavbarOpen(false);
                 }}
               >
                 Sign In
               </Link>
               <Link
-                href="/?signup=1"
+                href="/auth/sign-up"
                 className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                 onClick={(event) => {
-                  event.preventDefault();
-                  setIsSignUpOpen(true);
                   setNavbarOpen(false);
                 }}
               >

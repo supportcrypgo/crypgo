@@ -22,7 +22,9 @@ type ProfileSection =
   | 'password'
   | 'activity'
   | 'preferences'
-  | 'delete-account';
+  | 'currency'
+  | 'delete-account'
+  | 'logout';
 
 export default function ProfilePage() {
   const isDesktop = useMediaQuery('(min-width: 768px)');
@@ -31,7 +33,7 @@ export default function ProfilePage() {
   const [mounted, setMounted] = useState(false);
   const [mobileSection, setMobileSection] = useState<ProfileSection | null>(null);
   const mobileContentRef = useRef<HTMLDivElement>(null);
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   const setSection = (tab: ProfileSection | null) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -63,7 +65,9 @@ export default function ProfilePage() {
       'password',
       'activity',
       'preferences',
+      'currency',
       'delete-account',
+      'logout',
     ];
 
     if (requestedTab && validTabs.includes(requestedTab)) {
@@ -91,11 +95,17 @@ export default function ProfilePage() {
         {/* Main workspace */}
         <div className={SIDEBAR_OFFSET_CLASS}>
           {/* Desktop Header */}
-          <DesktopHeader title="Profile" />
+          <DesktopHeader
+            title={searchParams.get('tab') === 'currency' ? 'Currency' : 'Profile'}
+            backHref={searchParams.get('tab') === 'currency' ? '/dashboard/profile' : undefined}
+          />
 
           {/* Main content */}
           <main className="px-7 pt-6 pb-10">
-            <ProfileDesktopWorkspace user={user} />
+            <ProfileDesktopWorkspace
+              user={user}
+              onCurrencySelected={() => router.replace('/dashboard/profile', { scroll: false })}
+            />
           </main>
         </div>
       </div>
@@ -103,32 +113,44 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-darkmode text-white flex flex-col overflow-hidden">
-      <div className="sticky top-0 z-40 bg-darkmode/95 backdrop-blur-md">
+    <div className="h-dvh bg-darkmode text-white flex flex-col overflow-hidden">
+      <div className="fixed inset-x-0 top-0 z-40 bg-darkmode/95 backdrop-blur-md">
         <div className="max-w-md mx-auto px-6 pt-safe-top">
           <ProfileHeader
             showBackButton={mobileSection !== null}
+            title={mobileSection
+              ? mobileSection
+                .split('-')
+                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ')
+              : 'My Profile'}
             onBackClick={() => setSection(null)}
           />
         </div>
       </div>
 
-      <main ref={mobileContentRef} className="flex-1 overflow-y-auto">
+      <div aria-hidden="true" className="h-[calc(56px+env(safe-area-inset-top,0px))] shrink-0" />
+
+      <main ref={mobileContentRef} className="min-h-0 flex-1 overflow-y-auto">
         <div className="max-w-md mx-auto px-6 pt-6 pb-28">
           {mobileSection === null ? (
             <>
-              <ProfileIdentity user={user} />
+              <ProfileIdentity user={user} onCurrencyClick={() => setSection('currency')} />
               <div className="mt-12">
                 <ProfileActions
                   activeTab=""
                   onTabChange={(tab) => setSection(tab as ProfileSection)}
-                  onLogout={logout}
                 />
               </div>
             </>
           ) : (
             <section className="w-full">
-              <ProfileDesktopContent activeTab={mobileSection} user={user} />
+              <ProfileDesktopContent
+                activeTab={mobileSection}
+                user={user}
+                onCurrencyClick={() => setSection('currency')}
+                onCurrencySelected={() => setSection(null)}
+              />
             </section>
           )}
         </div>

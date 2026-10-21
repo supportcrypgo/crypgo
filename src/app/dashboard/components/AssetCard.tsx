@@ -3,6 +3,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Asset } from './types';
 import Image from 'next/image';
+import { useDisplayCurrency } from '@/context/DisplayCurrencyContext';
+import CurrencyLoadingShimmer from './CurrencyLoadingShimmer';
 
 interface AssetCardProps {
   asset: Asset;
@@ -52,6 +54,7 @@ function drawTrendLine(
 }
 
 export default function AssetCard({ asset }: AssetCardProps) {
+  const { formatFromUsd, convertFromUsd } = useDisplayCurrency();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isPositive = asset.change24h >= 0;
 
@@ -69,7 +72,7 @@ export default function AssetCard({ asset }: AssetCardProps) {
     drawTrendLine(ctx, width, height, asset.change24h);
   }, [asset.change24h]);
 
-  const priceStr = `$${asset.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const priceStr = formatFromUsd(asset.price);
   const changeStr = `${asset.change24h >= 0 ? '+' : ''}${asset.change24h.toFixed(2)}%`;
 
   return (
@@ -106,7 +109,11 @@ export default function AssetCard({ asset }: AssetCardProps) {
 
       {/* Price */}
       <div className="mt-2">
-        <p className="text-xl font-bold text-white">{priceStr}</p>
+        <p className="text-xl font-bold text-white">
+          {convertFromUsd(asset.price) === null
+            ? <CurrencyLoadingShimmer className="h-5 w-28" />
+            : priceStr}
+        </p>
       </div>
 
       {/* Sparkline + 24h change */}

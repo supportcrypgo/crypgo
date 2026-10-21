@@ -3,10 +3,10 @@
 import React from 'react';
 import { useTransactions } from '../context/TransactionContext';
 import { DollarSign, ArrowUpRight, CheckCircle, TrendingUp } from 'lucide-react';
+import CurrencyValue from '@/app/dashboard/components/CurrencyValue';
 
 export default function MobileTransactionSummary() {
   const { summaryMetrics, volumeByType, loading } = useTransactions();
-
   if (loading) {
     return (
       <div className="grid grid-cols-2 gap-3">
@@ -25,7 +25,7 @@ export default function MobileTransactionSummary() {
   const topMetrics = [
     {
       label: 'Total Volume',
-      value: `$${summaryMetrics.totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: <CurrencyValue amount={summaryMetrics.totalVolume} className="text-sm font-bold text-green-400" shimmerClassName="h-3.5 w-24" />,
       icon: <DollarSign className="w-4 h-4 text-green-400" />,
       color: 'text-green-400',
     },
@@ -43,7 +43,7 @@ export default function MobileTransactionSummary() {
     },
     {
       label: 'Avg. Trade Value',
-      value: `$${(summaryMetrics.totalVolume / (summaryMetrics.totalTransactions || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: <CurrencyValue amount={summaryMetrics.totalVolume / (summaryMetrics.totalTransactions || 1)} className="text-sm font-bold text-purple-400" shimmerClassName="h-3.5 w-24" />,
       icon: <TrendingUp className="w-4 h-4 text-purple-400" />,
       color: 'text-purple-400',
     },
@@ -93,7 +93,7 @@ export default function MobileTransactionSummary() {
                 <span className="text-xs text-charcoalGray capitalize">{donutLabels[i]}</span>
               </div>
               <span className="text-xs text-white font-medium">
-                ${v.volume.toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 1 })}
+                <CurrencyValue amount={v.volume} compact className="text-xs text-white font-medium" shimmerClassName="h-3 w-16" />
               </span>
             </div>
           ))}

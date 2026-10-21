@@ -39,7 +39,7 @@ class CampaignAdmin(ModelAdmin):
     search_fields = ['name', 'subject']
     readonly_fields = ['total_leads', 'sent_count', 'opened_count', 'clicked_count',
                        'bounced_count', 'failed_count', 'started_at', 'completed_at',
-                       'created_at', 'updated_at']
+                       'created_at', 'updated_at', 'selected_recipients_only']
     list_per_page = 25
 
     fieldsets = (
@@ -47,8 +47,8 @@ class CampaignAdmin(ModelAdmin):
             'fields': ('name', 'subject', 'template', 'status', 'priority', 'is_archived'),
         }),
         ('Crypgo audience', {
-            'fields': (),
-            'description': 'Recipients are synchronized from the current active Crypgo users before sending.',
+            'fields': ('selected_recipients_only',),
+            'description': 'Broadcast campaigns synchronize all active Crypgo users. Targeted sends use only the accounts selected at creation.',
         }),
         ('Scheduling', {
             'fields': ('scheduled_at', 'started_at', 'completed_at'),
@@ -67,6 +67,11 @@ class CampaignAdmin(ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
+            path(
+                'send-to-users/',
+                self.admin_site.admin_view(self.send_to_users_view),
+                name='campaigns_campaign_send_to_users',
+            ),
             path(
                 '<int:campaign_id>/send-now/',
                 self.admin_site.admin_view(self.send_campaign_view),
@@ -123,14 +128,171 @@ class CampaignAdmin(ModelAdmin):
         if campaign.is_archived:
             return False, f"Campaign '{campaign.name}' is archived."
 
-        synced, sync_message = self._sync_crypgo_users(campaign)
-        if not synced:
-            return False, sync_message
+        if not campaign.selected_recipients_only:
+            synced, sync_message = self._sync_crypgo_users(campaign)
+            if not synced:
+                return False, sync_message
 
         started, message = launch_campaign_worker(campaign.pk)
         return started, message if started else f"Campaign '{campaign.name}' was not started: {message}"
 
+    def _export_crypgo_accounts(self, campaign_ref, user_ids=None):
+        if not settings.CRYPGO_SERVICE_KEY:
+            raise RuntimeError('Crypgo account export is not configured.')
+
+        payload = {}
+        if user_ids is not None:
+            payload['user_ids'] = user_ids
+        body = json.dumps(payload, separators=(',', ':')).encode('utf-8')
+        signature = hmac.new(
+            settings.CRYPGO_SERVICE_KEY.encode('utf-8'),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+        response = requests.post(
+            f'{settings.CRYPGO_API_URL.rstrip("/")}/api/internal/campaigns/{campaign_ref}/accounts/export/',
+            data=body,
+            headers={
+                'Content-Type': 'application/json',
+                'X-Bot-Signature': signature,
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        accounts = response.json().get('accounts')
+        if not isinstance(accounts, list):
+            raise ValueError('Crypgo account export returned an invalid response.')
+        for account in accounts:
+            if not isinstance(account, dict) or not all(
+                isinstance(account.get(field), str) and account[field]
+                for field in ('external_user_id', 'email')
+            ):
+                raise ValueError('Crypgo account export returned an incomplete account.')
+            if user_ids is not None and not account.get('dashboard_url'):
+                raise ValueError('Crypgo account export returned no campaign access URL.')
+        return accounts
+
+    def send_to_users_view(self, request):
+        from apps.templates.models import EmailTemplate
+
+        accounts = []
+        directory_error = ''
+        selected_ids = []
+        selected_template_id = request.POST.get('template_id', '')
+        if request.method == 'GET':
+            try:
+                accounts = self._export_crypgo_accounts('targeted-directory')
+            except (requests.RequestException, ValueError, TypeError, RuntimeError) as error:
+                logger.exception('Could not load Crypgo accounts for targeted email.')
+                directory_error = f'Unable to load Crypgo accounts: {error}'
+
+        if request.method == 'POST':
+            selected_ids = request.POST.getlist('user_ids')
+            try:
+                user_ids = list(dict.fromkeys(int(value) for value in selected_ids))
+            except (TypeError, ValueError):
+                user_ids = []
+            if not user_ids or any(user_id <= 0 for user_id in user_ids):
+                self.message_user(
+                    request,
+                    'Select at least one valid Crypgo account before sending.',
+                    messages.ERROR,
+                )
+            else:
+                template = get_object_or_404(
+                    EmailTemplate,
+                    pk=request.POST.get('template_id'),
+                    is_active=True,
+                )
+                campaign = Campaign.objects.create(
+                    name=f'Selected send - {template.name} - {timezone.localtime():%Y-%m-%d %H:%M}',
+                    subject=template.subject,
+                    template=template,
+                    status='draft',
+                    selected_recipients_only=True,
+                    created_by=request.user.get_username(),
+                    scheduled_at=timezone.now(),
+                )
+                try:
+                    selected_accounts = self._export_crypgo_accounts(
+                        campaign.pk,
+                        user_ids,
+                    )
+                    returned_ids = {
+                        int(account['external_user_id'])
+                        for account in selected_accounts
+                    }
+                    if returned_ids != set(user_ids):
+                        raise ValueError(
+                            'One or more selected accounts are no longer active. No email was queued.'
+                        )
+                    CampaignLead.objects.bulk_create([
+                        CampaignLead(
+                            campaign=campaign,
+                            source='crypgo_user',
+                            external_user_id=account['external_user_id'],
+                            recipient_email=account['email'],
+                            recipient_first_name=account.get('first_name', ''),
+                            recipient_last_name=account.get('last_name', ''),
+                            recipient_account_emails=[account['email']],
+                            dashboard_url=account['dashboard_url'],
+                        )
+                        for account in selected_accounts
+                    ])
+                    campaign.total_leads = campaign_recipient_count(campaign)
+                    campaign.save(update_fields=['total_leads', 'updated_at'])
+                except (requests.RequestException, KeyError, TypeError, ValueError, RuntimeError) as error:
+                    logger.exception(
+                        'Could not prepare targeted campaign %s.',
+                        campaign.pk,
+                    )
+                    campaign.delete()
+                    self.message_user(
+                        request,
+                        f'Could not prepare the selected send: {error}',
+                        messages.ERROR,
+                    )
+                else:
+                    started, message = launch_campaign_worker(campaign.pk)
+                    self.message_user(
+                        request,
+                        message,
+                        messages.SUCCESS if started else messages.ERROR,
+                    )
+                    if started:
+                        return HttpResponseRedirect(
+                            reverse('admin:campaigns_campaign_changelist')
+                        )
+
+        if not accounts and not directory_error:
+            try:
+                accounts = self._export_crypgo_accounts('targeted-directory')
+            except (requests.RequestException, ValueError, TypeError, RuntimeError) as error:
+                logger.exception('Could not load Crypgo accounts for targeted email.')
+                directory_error = f'Unable to load Crypgo accounts: {error}'
+        return self._render_targeted_send_page(request, {
+            'title': 'Send to selected Crypgo accounts',
+            'opts': self.model._meta,
+            'templates': EmailTemplate.objects.filter(is_active=True).order_by('name'),
+            'accounts': accounts,
+            'directory_error': directory_error,
+            'selected_user_ids': selected_ids,
+            'selected_template_id': selected_template_id,
+        })
+
+    def _render_targeted_send_page(self, request, context):
+        from django.template.response import TemplateResponse
+
+        return TemplateResponse(
+            request,
+            'admin/campaigns/send_to_users.html',
+            self.admin_site.each_context(request) | context,
+        )
+
     def _sync_crypgo_users(self, campaign):
+        if campaign.selected_recipients_only:
+            return False, 'This targeted campaign is locked to its selected accounts.'
+
         if settings.CRYPGO_CAMPAIGN_OWNER_EMAIL:
             campaign.save(update_fields=['updated_at'])
             return True, 'Campaign configured to issue links for the selected owner account.'

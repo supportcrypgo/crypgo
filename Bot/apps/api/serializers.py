@@ -30,7 +30,7 @@ class CampaignSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['total_leads', 'sent_count', 'opened_count', 'clicked_count',
                            'bounced_count', 'failed_count', 'started_at', 'completed_at',
-                           'created_at', 'updated_at']
+                           'created_at', 'updated_at', 'selected_recipients_only']
 
 
 class CampaignStartSerializer(serializers.Serializer):

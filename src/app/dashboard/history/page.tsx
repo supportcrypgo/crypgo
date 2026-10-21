@@ -35,7 +35,7 @@ export default function TransactionHistoryPage() {
       {/* Main workspace (offset by sidebar width) */}
       <div className={SIDEBAR_OFFSET_CLASS}>
         {/* Desktop Header */}
-        <DesktopHeader title="Transaction History" />
+        <DesktopHeader title="History" />
 
         {/* Content area with main table + right sidebar */}
         <main className="px-7 pt-6 pb-10">
@@ -74,7 +74,7 @@ export default function TransactionHistoryPage() {
     // Mobile view
     <div className="min-h-screen bg-darkmode text-white">
       {/* Header */}
-      <MobileHeader onMenuClick={() => setMenuOpen(!menuOpen)} />
+      <MobileHeader title="History" onMenuClick={() => setMenuOpen(!menuOpen)} />
 
       {/* Drawer overlay */}
       {menuOpen && (

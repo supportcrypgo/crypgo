@@ -11,8 +11,6 @@ import SendSummary from './SendInformation/SendSummary';
 import ImportantTips from './SendInformation/ImportantTips';
 import { useUnified } from '@/context/UnifiedContext';
 import { aggregateWalletAmountsByTicker } from '@/lib/walletBalances';
-import CautionModal from '@/components/Auth/CautionModal';
-import { isTransactionCautionError } from '@/data/api';
 
 const FEE_PERCENTAGE = 0.001; // 0.1% backend withdrawal fee
 
@@ -46,7 +44,6 @@ export function SendWorkspace({ onSuccessPageChange, onSuccessDetailsChange, des
   const [sendSuccess, setSendSuccess] = useState(false);
   const [sendTxId, setSendTxId] = useState('');
   const [sentSuccessDetails, setSentSuccessDetails] = useState<{ amount: string; ticker: string; name: string } | null>(null);
-  const [cautionOpen, setCautionOpen] = useState(false);
 
   // State for user inputs
   const [recipient, setRecipient] = useState<string>('');
@@ -143,10 +140,6 @@ export function SendWorkspace({ onSuccessPageChange, onSuccessDetailsChange, des
       setAmount('');
       setRecipient('');
     } catch (error) {
-      if (isTransactionCautionError(error)) {
-        setCautionOpen(true);
-        return;
-      }
       console.error('Send transaction failed:', error);
       setSendSuccess(false);
       setSentSuccessDetails(null);
@@ -195,7 +188,6 @@ export function SendWorkspace({ onSuccessPageChange, onSuccessDetailsChange, des
 
   return (
     <>
-      <CautionModal isOpen={cautionOpen} onClose={() => setCautionOpen(false)} />
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 lg:gap-8 h-full">
       {/* Left Column: Send Form */}
       <div className="lg:col-span-1 min-w-0 space-y-6">

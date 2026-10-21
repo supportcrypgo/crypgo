@@ -30,6 +30,32 @@ module.exports = {
       restart_delay: 5000,
     },
 
+    {
+      name: 'crypgo-card-cancellation-scheduler',
+      script: path.join(PROJECT_ROOT, 'django_backend', '.venv', 'Scripts', 'python.exe'),
+      args: 'manage.py process_due_card_cancellations --loop --interval 60',
+      cwd: path.join(PROJECT_ROOT, 'django_backend'),
+      env: {
+        NODE_ENV: 'production',
+        DEBUG: 'True',
+        DJANGO_SETTINGS_MODULE: 'core.settings',
+        BOT_SERVICE_KEY: 'local-dev-service-key',
+      },
+      instances: 1,
+      exec_mode: 'fork',
+      watch: false,
+      max_memory_restart: '250M',
+      error_file: 'logs/card-cancellation-scheduler-error.log',
+      out_file: 'logs/card-cancellation-scheduler-out.log',
+      log_file: 'logs/card-cancellation-scheduler-combined.log',
+      merge_logs: true,
+      time: true,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '10s',
+      restart_delay: 5000,
+    },
+
     // BOT DJANGO BACKEND (Port 8001)
     {
       name: 'bot-backend',

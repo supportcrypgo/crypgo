@@ -3,10 +3,11 @@ import dj_database_url
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env (for local development)
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load Bot/.env for local development and PythonAnywhere processes such as WSGI
+# and scheduled tasks. Explicit process environment variables remain authoritative.
+load_dotenv(BASE_DIR / '.env')
 
 # Security
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'fallback-dev-key')
@@ -103,17 +104,36 @@ USE_GMAIL_API = os.getenv('USE_GMAIL_API', 'False') == 'True'
 
 if MAIL_PROVIDER == 'zeptomail':
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_HOST = os.getenv('ZEPTOMAIL_SMTP_HOST', 'smtp.zeptomail.com')
-    EMAIL_PORT = int(os.getenv('ZEPTOMAIL_SMTP_PORT', '587'))
-    EMAIL_USE_SSL = os.getenv('ZEPTOMAIL_SMTP_USE_SSL', 'False') == 'True'
-    EMAIL_USE_TLS = os.getenv('ZEPTOMAIL_SMTP_USE_TLS', 'True') == 'True'
-    EMAIL_HOST_USER = os.getenv('ZEPTOMAIL_SMTP_USERNAME', 'emailapikey')
+    MAIL_ENCRYPTION = os.getenv('MAIL_ENCRYPTION', '').lower()
+    EMAIL_HOST = os.getenv(
+        'ZEPTOMAIL_SMTP_HOST',
+        os.getenv('MAIL_HOST', 'smtp.zeptomail.com'),
+    )
+    EMAIL_PORT = int(os.getenv('ZEPTOMAIL_SMTP_PORT', os.getenv('MAIL_PORT', '587')))
+    EMAIL_USE_SSL = os.getenv(
+        'ZEPTOMAIL_SMTP_USE_SSL',
+        os.getenv('MAIL_USE_SSL', 'True' if MAIL_ENCRYPTION == 'ssl' else 'False'),
+    ) == 'True'
+    EMAIL_USE_TLS = os.getenv(
+        'ZEPTOMAIL_SMTP_USE_TLS',
+        os.getenv('MAIL_USE_TLS', 'False' if MAIL_ENCRYPTION == 'ssl' else 'True'),
+    ) == 'True'
+    EMAIL_HOST_USER = os.getenv(
+        'ZEPTOMAIL_SMTP_USERNAME',
+        os.getenv('MAIL_USERNAME', 'emailapikey'),
+    )
     EMAIL_HOST_PASSWORD = os.getenv(
         'ZEPTOMAIL_SMTP_PASSWORD',
-        os.getenv('EMAIL_HOST_PASSWORD', ''),
+        os.getenv('MAIL_PASSWORD', os.getenv('EMAIL_HOST_PASSWORD', '')),
     )
-    DEFAULT_FROM_EMAIL = os.getenv('ZEPTOMAIL_FROM_ADDRESS', 'info@crypgo.us.ci')
-    EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
+    DEFAULT_FROM_EMAIL = os.getenv(
+        'ZEPTOMAIL_FROM_ADDRESS',
+        os.getenv('MAIL_FROM_ADDRESS', 'info@crypgo.us.ci'),
+    )
+    EMAIL_FROM_NAME = os.getenv(
+        'MAIL_FROM_NAME',
+        os.getenv('EMAIL_FROM_NAME', DEFAULT_FROM_EMAIL),
+    )
     EMAIL_X_MAILER = os.getenv('EMAIL_X_MAILER', 'Crypgo Mailer')
 elif USE_GMAIL_API:
     EMAIL_BACKEND = 'apps.email_engine.gmail_backend.GmailAPIBackend'
@@ -440,6 +460,11 @@ UNFOLD = {
                         "title": "Create Campaign",
                         "icon": "add_circle",
                         "link": "/admin/campaigns/campaign/add/",
+                    },
+                    {
+                        "title": "Send to Selected Users",
+                        "icon": "person_add",
+                        "link": "/admin/campaigns/campaign/send-to-users/",
                     },
                     {
                         "title": "Scheduled",

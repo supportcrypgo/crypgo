@@ -171,13 +171,8 @@ export function PreferencesContent({ user }: { user: UnifiedUser }) {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
-      {/* Header */}
       <div>
-        <h2 className="text-2xl font-semibold flex items-center gap-3">
-          <Bell className="w-6 h-6" />
-          Notification Preferences
-        </h2>
-        <p className="mt-2 text-muted-foreground">
+        <p className="text-muted-foreground">
           Choose what notifications you want to receive and how. Changes save automatically.
         </p>
       </div>

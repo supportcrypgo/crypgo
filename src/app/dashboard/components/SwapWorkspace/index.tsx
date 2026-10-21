@@ -5,7 +5,6 @@ import { useUnified } from '@/context/UnifiedContext';
 import { SwapExecutionPanel } from './SwapExecutionPanel';
 import { SwapIntelligencePanel } from './SwapIntelligencePanel';
 import { useSwapWorkspace } from './useSwapWorkspace';
-import CautionModal from '@/components/Auth/CautionModal';
 
 interface SwapWorkspaceProps {
   onSuccessPageChange?: (visible: boolean) => void;
@@ -38,7 +37,6 @@ export function SwapWorkspace({
     isSwapping,
     swapResult,
     error,
-    cautionOpen,
     isCalculating,
     quote,
     receiveAmount,
@@ -50,7 +48,6 @@ export function SwapWorkspace({
     handleSwap,
     handleSuccessClose,
     handleRetry,
-    closeCaution,
   } = useSwapWorkspace();
 
   React.useEffect(() => {
@@ -76,7 +73,6 @@ export function SwapWorkspace({
 
   return (
     <>
-      <CautionModal isOpen={cautionOpen} onClose={closeCaution} />
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(420px,1.25fr)_minmax(300px,0.8fr)] gap-4 max-w-[1400px] mx-auto h-full">
       {/* Column 1 - Execution */}
       <SwapExecutionPanel

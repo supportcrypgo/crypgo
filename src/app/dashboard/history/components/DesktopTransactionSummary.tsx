@@ -9,10 +9,10 @@ import {
   TrendingUp,
   PieChart,
 } from 'lucide-react';
+import CurrencyValue from '@/app/dashboard/components/CurrencyValue';
 
 export default function DesktopTransactionSummary() {
   const { summaryMetrics, volumeByType, loading } = useTransactions();
-
   if (loading) {
     return (
       <div className="grid grid-cols-4 gap-4 mt-6">
@@ -29,7 +29,7 @@ export default function DesktopTransactionSummary() {
   const cards = [
     {
       label: 'Total Volume',
-      value: `$${summaryMetrics.totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: <CurrencyValue amount={summaryMetrics.totalVolume} className="text-xl font-bold text-green-400" shimmerClassName="h-5 w-28" />,
       icon: <DollarSign className="w-5 h-5 text-green-400" />,
       color: 'text-green-400',
       bg: 'bg-green-500/10',
@@ -50,7 +50,7 @@ export default function DesktopTransactionSummary() {
     },
     {
       label: 'Avg. Trade Value',
-      value: `$${(summaryMetrics.totalVolume / (summaryMetrics.totalTransactions || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      value: <CurrencyValue amount={summaryMetrics.totalVolume / (summaryMetrics.totalTransactions || 1)} className="text-xl font-bold text-purple-400" shimmerClassName="h-5 w-28" />,
       icon: <TrendingUp className="w-5 h-5 text-purple-400" />,
       color: 'text-purple-400',
       bg: 'bg-purple-500/10',
@@ -88,7 +88,7 @@ export default function DesktopTransactionSummary() {
             <div key={v.type} className="flex flex-col gap-1">
               <span className="text-xs text-charcoalGray capitalize">{v.type}</span>
               <span className="text-sm font-semibold text-white">
-                ${v.volume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <CurrencyValue amount={v.volume} className="text-sm font-semibold text-white" shimmerClassName="h-3.5 w-20" />
               </span>
               <div className="w-full bg-deepSlate rounded-full h-1.5">
                 <div

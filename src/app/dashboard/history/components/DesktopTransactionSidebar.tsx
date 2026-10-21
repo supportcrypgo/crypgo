@@ -14,6 +14,7 @@ import {
   PieChart,
 } from 'lucide-react';
 import { useUnified } from '@/context/UnifiedContext';
+import CurrencyValue from '@/app/dashboard/components/CurrencyValue';
 
 function getTypeIcon(type: string) {
   switch (type) {
@@ -51,7 +52,7 @@ export default function DesktopTransactionSidebar() {
           <div className="flex items-center justify-between">
             <span className="text-sm text-charcoalGray">Total Balance</span>
             <span className="text-sm font-bold text-white">
-              ${walletSummary.totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <CurrencyValue amount={walletSummary.totalBalance} className="text-sm font-bold text-white" shimmerClassName="h-3.5 w-20" />
             </span>
           </div>
           {topAssets.length === 0 ? (
@@ -92,7 +93,7 @@ export default function DesktopTransactionSidebar() {
               <span className="text-xs text-charcoalGray">Total Volume</span>
             </div>
             <span className="text-xs font-semibold text-white">
-              ${summaryMetrics.totalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <CurrencyValue amount={summaryMetrics.totalVolume} className="text-xs font-semibold text-white" shimmerClassName="h-3 w-20" />
             </span>
           </div>
           <div className="flex items-center justify-between">
@@ -115,7 +116,7 @@ export default function DesktopTransactionSidebar() {
               <span className="text-xs text-charcoalGray">Avg. Trade</span>
             </div>
             <span className="text-xs font-semibold text-white">
-              ${(summaryMetrics.totalVolume / (summaryMetrics.totalTransactions || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <CurrencyValue amount={summaryMetrics.totalVolume / (summaryMetrics.totalTransactions || 1)} className="text-xs font-semibold text-white" shimmerClassName="h-3 w-20" />
             </span>
           </div>
         </div>
@@ -133,7 +134,7 @@ export default function DesktopTransactionSidebar() {
               <div className="flex items-center justify-between">
                 <span className="text-xs text-charcoalGray capitalize">{v.type}</span>
                 <span className="text-xs font-semibold text-white">
-                  ${v.volume.toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 1 })}
+                  <CurrencyValue amount={v.volume} compact className="text-xs font-semibold text-white" shimmerClassName="h-3 w-16" />
                 </span>
               </div>
               <div className="w-full bg-deepSlate rounded-full h-1.5">

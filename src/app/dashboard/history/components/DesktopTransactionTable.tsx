@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useTransactions } from '../context/TransactionContext';
 import { Transaction } from '../types';
+import CurrencyValue from '@/app/dashboard/components/CurrencyValue';
 import {
   ArrowUpRight,
   ArrowDownLeft,
@@ -205,9 +206,14 @@ export default function DesktopTransactionTable() {
 
                 {/* Amount */}
                 <td className="py-4 px-3 text-right">
-                  <span className={`text-sm font-semibold ${tx.amountPositive ? 'text-green-400' : 'text-red-400'}`}>
-                    {tx.amountPositive ? '+' : '-'}{Math.abs(tx.amount).toLocaleString()}
-                  </span>
+                  <div className="flex flex-col items-end">
+                    <span className={`text-sm font-semibold ${tx.amountPositive ? 'text-green-400' : 'text-red-400'}`}>
+                      {tx.amountPositive ? '+' : '-'}{Math.abs(tx.amount).toLocaleString()}
+                    </span>
+                    <span className="mt-1 text-xs text-charcoalGray">
+                      <CurrencyValue amount={tx.totalValue} className="text-xs text-charcoalGray" shimmerClassName="h-3 w-20" />
+                    </span>
+                  </div>
                 </td>
 
                 {/* Counterparty */}

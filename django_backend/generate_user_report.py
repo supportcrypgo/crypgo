@@ -187,18 +187,40 @@ def get_report_usd_prices(tickers):
     return prices
 
 
-def get_transaction_fiat_display(transaction, spot_prices):
-    """Format recorded or derived USD transaction value, marking spot estimates."""
+REPORT_CURRENCY_SYMBOLS = {
+    'USD': '$',
+    'EUR': '€',
+    'GBP': '£',
+    'NGN': '₦',
+    'BRL': 'R$ ',
+    'JPY': '¥',
+    'AUD': 'A$ ',
+    'CAD': 'C$ ',
+}
+
+
+def format_report_currency(amount, currency):
+    """Format a converted fiat amount using the account's selected currency."""
+    symbol = REPORT_CURRENCY_SYMBOLS.get(currency, f'{currency} ')
+    fraction_digits = 0 if currency == 'JPY' else 2
+    return f'{symbol}{amount:,.{fraction_digits}f}'
+
+
+def get_transaction_fiat_display(transaction, spot_prices, currency='USD', currency_rate=Decimal('1')):
+    """Format transaction values converted from USD, marking spot estimates."""
     if transaction.fiat_amount is not None:
-        return f"${Decimal(str(transaction.fiat_amount)):,.2f}"
+        amount = Decimal(str(transaction.fiat_amount)) * currency_rate
+        return format_report_currency(amount, currency)
 
     amount = Decimal(str(transaction.amount))
     if transaction.price_at_time is not None:
-        return f"${amount * Decimal(str(transaction.price_at_time)):,.2f}"
+        converted_amount = amount * Decimal(str(transaction.price_at_time)) * currency_rate
+        return format_report_currency(converted_amount, currency)
 
     spot_price = spot_prices.get(transaction.asset.upper())
     if spot_price is not None:
-        return f"~${amount * spot_price:,.2f}"
+        converted_amount = amount * spot_price * currency_rate
+        return f'~{format_report_currency(converted_amount, currency)}'
 
     return "\u2014"
 
@@ -213,9 +235,20 @@ def get_report_transaction_type(transaction_type, display_label):
 # ============================================================
 # PDF Generation
 # ============================================================
-def generate_user_report_bytes(user):
+def generate_user_report_bytes(
+    user,
+    currency_rate=Decimal('1'),
+    exchange_rate_as_of=None,
+    display_currency=None,
+):
     """Generate and return a PDF report for an already-resolved user."""
-    
+    currency = (display_currency or getattr(user, 'display_currency', 'USD') or 'USD').upper()
+    currency_rate = Decimal(str(currency_rate))
+    if not currency_rate.is_finite() or currency_rate <= 0:
+        raise ValueError('The report currency conversion rate must be a positive finite number.')
+    if currency != 'USD' and not exchange_rate_as_of:
+        raise ValueError('A dated exchange rate is required for non-USD report currencies.')
+
     assets = WalletAsset.objects.filter(user=user)
     transactions = Transaction.objects.filter(user=user).order_by('-created_at')
     
@@ -516,10 +549,10 @@ def generate_user_report_bytes(user):
     if separator and base_local_part:
         report_email = f'{base_local_part}@{domain}'
     user_email_para = Paragraph(f"<b>Email:</b> {report_email}", style_user_info_title)
-    currency_para = Paragraph(f"<b>Currency:</b> USD", style_user_info_title)
-    total_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else f'${total_usd:,.2f}'
-    available_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else f'${available_usd:,.2f}'
-    pending_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else f'${pending_usd:,.2f}'
+    currency_para = Paragraph(f"<b>Currency:</b> {currency}", style_user_info_title)
+    total_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else format_report_currency(total_usd * currency_rate, currency)
+    available_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else format_report_currency(available_usd * currency_rate, currency)
+    pending_label = 'Unavailable' if missing_asset_prices or not MARKET_PRICE_AS_OF else format_report_currency(pending_usd * currency_rate, currency)
     value_para = Paragraph(f"<b>Value:</b> {total_label}", style_user_info_title)
     available_value_para = Paragraph(f"<b>Available:</b> {available_label}", style_user_info_title)
     pending_value_para = Paragraph(f"<b>Pending:</b> {pending_label}", style_user_info_title)
@@ -570,8 +603,8 @@ def generate_user_report_bytes(user):
                 Paragraph("Balance", style_table_header),
                 Paragraph("Available", style_table_header),
                 Paragraph("Pending", style_table_header),
-                Paragraph("Unit Price", style_table_header),
-                Paragraph("Fiat Value", style_table_header),
+                Paragraph(f"Unit Price ({currency})", style_table_header),
+                Paragraph(f"Fiat Value ({currency})", style_table_header),
             ]]
             for asset in assets_with_balance:
                 ticker = asset.ticker.upper()
@@ -579,8 +612,8 @@ def generate_user_report_bytes(user):
                 available_quantity = Decimal(str(asset.available_quantity))
                 pending_quantity = Decimal(str(asset.locked_quantity))
                 unit_price = prices.get(ticker)
-                unit_price_label = f'${unit_price:,.2f}' if unit_price is not None else 'Unavailable'
-                fiat_value_label = f'${quantity * unit_price:,.2f}' if unit_price is not None else 'Unavailable'
+                unit_price_label = format_report_currency(unit_price * currency_rate, currency) if unit_price is not None else 'Unavailable'
+                fiat_value_label = format_report_currency(quantity * unit_price * currency_rate, currency) if unit_price is not None else 'Unavailable'
                 holding_rows.append([
                     Paragraph(ticker, style_table_cell_left),
                     Paragraph(f"{quantity:,.8f}", style_table_cell_left),
@@ -617,13 +650,18 @@ def generate_user_report_bytes(user):
             ))
             price_caption = (
                 (
-                    'USD valuations use fixed manual prices and are not live. '
+                    f'{currency} valuations use fixed manual USD crypto prices and are not live. '
                     if MARKET_PRICE_SOURCE == 'manual_override' else
-                    'Estimated USD valuations use the available market-price snapshot. '
+                    f'Estimated {currency} valuations use the available market-price snapshot. '
                 )
                 + f'Prices were last set {MARKET_PRICE_AS_OF}.'
+                + (
+                    f' Fiat conversion: 1 USD = {currency_rate:,.6f} {currency}, '
+                    f'rate updated {exchange_rate_as_of}.'
+                    if currency != 'USD' else ''
+                )
                 if MARKET_PRICE_AS_OF else
-                'USD valuations are unavailable because the manual price snapshot is unavailable.'
+                f'{currency} valuations are unavailable because the manual price snapshot is unavailable.'
             )
             story.append(Paragraph(
                 price_caption,
@@ -644,7 +682,7 @@ def generate_user_report_bytes(user):
         Paragraph("Type", style_table_header),
         Paragraph("Asset", style_table_header),
         Paragraph("Amount", style_table_header),
-        Paragraph("Fiat (USD)", style_table_header),
+        Paragraph(f"Fiat ({currency})", style_table_header),
     ])
     
     for tx in transactions:
@@ -655,7 +693,10 @@ def generate_user_report_bytes(user):
             Paragraph(get_report_transaction_type(tx.transaction_type, tx.get_transaction_type_display()), style_table_cell),
             Paragraph(tx.asset, style_table_cell),
             Paragraph(f"{tx.asset} {tx.amount}", style_table_cell),
-            Paragraph(get_transaction_fiat_display(tx, prices), style_table_cell),
+            Paragraph(
+                get_transaction_fiat_display(tx, prices, currency, currency_rate),
+                style_table_cell,
+            ),
         ])
     
     tx_table = Table(
@@ -693,7 +734,13 @@ def generate_user_report_bytes(user):
     
     story.append(tx_table)
     story.append(Paragraph(
-        "Fiat uses recorded transaction values when available; otherwise it is calculated from the stored transaction price. Values marked ~ use fixed manual report prices and are not live.",
+        (
+            'Transaction fiat values use recorded USD values when available; otherwise they are calculated '
+            'from the stored transaction price. '
+            if currency == 'USD' else
+            f'Transaction fiat values are converted from USD to {currency} at the report exchange rate. '
+        )
+        + 'Values marked ~ use fixed manual USD report prices and are not live.',
         ParagraphStyle('TransactionFiatNote', parent=styles['Normal'], fontName='Times-Roman', fontSize=8, leading=10, textColor=GRAY_DARK, spaceBefore=4, spaceAfter=0),
     ))
     story.append(Spacer(1, 24))
@@ -743,9 +790,9 @@ if __name__ == "__main__":
 
     if args.stdout or args.stdout_base64:
         with redirect_stdout(sys.stderr):
-            report_bytes = generate_user_report_bytes(user)
+            report_bytes = generate_user_report_bytes(user, display_currency='USD')
     else:
-        report_bytes = generate_user_report_bytes(user)
+        report_bytes = generate_user_report_bytes(user, display_currency='USD')
 
     if args.stdout:
         sys.stdout.buffer.write(report_bytes)

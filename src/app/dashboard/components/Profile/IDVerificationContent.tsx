@@ -1,28 +1,32 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ShieldCheck, Upload, FileText, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { ShieldCheck, Upload, FileText, AlertCircle, CheckCircle, Clock, User } from 'lucide-react';
 import type { UnifiedUser } from '@/types/unified';
 import { kycApi, type KYCDocument as ApiKYCDocument } from '@/data/api';
+import { useAuth } from '@/hooks/useAuth';
 
 interface KYCDocument {
   id: number | string;
-  type: 'id_front' | 'id_back' | 'proof_address';
+  type: 'id_front' | 'id_back' | 'proof_address' | 'selfie';
   name: string;
   status: 'pending' | 'approved' | 'rejected' | 'not_submitted';
   file?: File;
   preview?: string;
   uploadedAt?: string;
   rejectionReason?: string;
+  extractionStatus?: 'complete' | 'unavailable';
 }
 
 const DOCUMENT_TYPES: { type: KYCDocument['type']; name: string; icon: React.ReactNode; description: string }[] = [
   { type: 'id_front', name: 'Government ID - Front', icon: <FileText className="w-5 h-5" />, description: 'Front of a valid government-issued ID' },
   { type: 'id_back', name: 'Government ID - Back', icon: <FileText className="w-5 h-5" />, description: 'Back of the same government-issued ID' },
   { type: 'proof_address', name: 'Proof of Address', icon: <ShieldCheck className="w-5 h-5" />, description: 'Recent document showing your name and address' },
+  { type: 'selfie', name: 'Selfie', icon: <User className="w-5 h-5" />, description: 'A clear selfie for identity matching' },
 ];
 
 function mapApiDocument(document: ApiKYCDocument): KYCDocument {
+  const extractedData = document.extracted_data ?? {};
   return {
     id: document.id,
     type: document.document_type as KYCDocument['type'],
@@ -30,10 +34,15 @@ function mapApiDocument(document: ApiKYCDocument): KYCDocument {
     status: document.status,
     uploadedAt: document.uploaded_at,
     rejectionReason: document.rejection_reason ?? document.screening_reason ?? undefined,
+    extractionStatus:
+      document.document_type === 'id_front' || document.document_type === 'proof_address'
+        ? extractedData.extraction_status === 'complete' ? 'complete' : 'unavailable'
+        : undefined,
   };
 }
 
 export function IDVerificationContent({ user }: { user: UnifiedUser }) {
+  const { refreshUser } = useAuth();
   const [documents, setDocuments] = useState<KYCDocument[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement>>({});
@@ -89,6 +98,9 @@ export function IDVerificationContent({ user }: { user: UnifiedUser }) {
           )));
         };
         reader.readAsDataURL(file);
+        void refreshUser().catch((refreshError) => {
+          console.error('Failed to refresh profile after KYC document upload:', refreshError);
+        });
       })
       .catch((error) => {
         alert(error instanceof Error ? error.message : 'Document upload failed.');
@@ -130,6 +142,7 @@ export function IDVerificationContent({ user }: { user: UnifiedUser }) {
   const allVerified = documents.every(d => d.status === 'approved');
   const anyPending = documents.some(d => d.status === 'pending');
   const anyRejected = documents.some(d => d.status === 'rejected');
+  const identityNeedsManualReview = allVerified && !user.identityDetailsVerified;
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -138,20 +151,32 @@ export function IDVerificationContent({ user }: { user: UnifiedUser }) {
         <h2 className="text-2xl font-semibold">Identity Verification</h2>
         <p className="mt-2 text-muted-foreground">
           Complete identity verification to unlock higher limits and access all features.
+          We scan your ID and proof of address locally for region and date of birth. Those details stay hidden
+          until all required documents are approved.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-white/5 bg-muted/20 p-4 text-sm text-muted-foreground">
+        {user.identityDetailsVerified
+          ? 'Your region and date of birth have been verified from your identity documents.'
+          : 'Your current region and date of birth stay hidden until all required documents are approved. If automatic extraction cannot read either value, staff must review the documents and update the verified details.'}
       </div>
 
       {/* Status Badge */}
       <div className="hidden md:block p-4 rounded-xl bg-muted/20 border border-white/5">
         <div className="flex items-center gap-3">
-          <ShieldCheck className={`w-6 h-6 ${allVerified ? 'text-green-500' : anyPending ? 'text-yellow-500' : anyRejected ? 'text-red-500' : 'text-muted-foreground'}`} />
+          <ShieldCheck className={`w-6 h-6 ${allVerified && !identityNeedsManualReview ? 'text-green-500' : anyPending || identityNeedsManualReview ? 'text-yellow-500' : anyRejected ? 'text-red-500' : 'text-muted-foreground'}`} />
           <div>
             <p className="font-medium">
-              {allVerified ? 'Fully Verified' : anyPending ? 'Verification Pending' : anyRejected ? 'Verification Rejected' : 'Not Verified'}
+              {allVerified
+                ? identityNeedsManualReview ? 'Documents Approved — Identity Details Pending' : 'Fully Verified'
+                : anyPending ? 'Verification Pending' : anyRejected ? 'Verification Rejected' : 'Not Verified'}
             </p>
             <p className="text-sm text-muted-foreground">
-              {allVerified 
-                ? 'All documents verified. You have full access to all features.'
+              {allVerified
+                ? identityNeedsManualReview
+                  ? 'Documents are approved, but automatic extraction did not provide region and date of birth. Those fields remain hidden until staff review them.'
+                  : 'All documents verified. You have full access to all features.'
                 : anyPending 
                   ? 'Your documents are under review. This typically takes 24-48 hours.'
                   : anyRejected
@@ -210,6 +235,14 @@ export function IDVerificationContent({ user }: { user: UnifiedUser }) {
                         Rejection reason: {doc.rejectionReason}
                       </p>
                     </div>
+                  )}
+
+                  {doc?.extractionStatus && (
+                    <p className={`mt-3 text-xs ${doc.extractionStatus === 'complete' ? 'text-muted-foreground' : 'text-amber-400'}`}>
+                      {doc.extractionStatus === 'complete'
+                        ? 'Automatic scan complete. Extracted identity details are awaiting document review.'
+                        : 'Automatic scan could not read this file. Upload a clear image or text-based PDF; unreadable details remain hidden.'}
+                    </p>
                   )}
 
                   {(!doc || doc.status === 'not_submitted' || doc.status === 'rejected') && (

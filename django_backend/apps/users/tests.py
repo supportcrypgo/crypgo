@@ -1,5 +1,7 @@
 import hashlib
 import hmac
+import json
+import re
 from datetime import timedelta
 from email.message import Message
 from io import BytesIO
@@ -8,18 +10,19 @@ import tempfile
 from typing import Any, cast
 
 from django.core.cache import cache
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
-from .management.commands.seed_named_user_history import build_transaction_address
 from decimal import Decimal
 from unittest.mock import patch
 
-from .models import AccountSelectionChallenge, CampaignAccessToken, CustomUser, DeletionHistory, MagicLinkToken, PasswordResetToken, SharedInboxGroup, SharedInboxLinkToken, Transaction, UserActivityLog, WalletAddress, WalletAsset
+from .models import AccountSelectionChallenge, CampaignAccessToken, CustomUser, DeletionHistory, FirstLoginPasswordSetupChallenge, MagicLinkToken, PasswordResetToken, SharedInboxGroup, SharedInboxLinkToken, Transaction, UserActivityLog, WalletAddress, WalletAsset
 from .serializers import LoginSerializer
+from .transaction_address import build_transaction_address
 
 
 class EmailNormalizationTests(TestCase):
@@ -58,6 +61,103 @@ class EmailNormalizationTests(TestCase):
         self.assertNotIn('phone', cast(Any, RegisterSerializer()).get_fields())
 
 
+class GmailRegistrationLimitTests(TestCase):
+    limit_message = (
+        'This Gmail address has reached Crypgo’s two-account limit. '
+        'Please sign in to access your existing accounts.'
+    )
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def register(self, email):
+        return self.client.post(
+            '/api/auth/register/',
+            {'email': email, 'password': 'Password123!'},
+            format='json',
+        )
+
+    def test_gmail_registration_allows_two_accounts_then_blocks_more(self):
+        first = self.register('limit-test@gmail.com')
+        second = self.register('limit-test+second@gmail.com')
+
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(second.status_code, 201, second.content)
+
+        for email in ('limit-test@gmail.com', 'limit-test+third@gmail.com'):
+            with self.subTest(email=email):
+                response = self.register(email)
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(response.json()['email'], [self.limit_message])
+
+        self.assertEqual(
+            CustomUser.objects.filter(email__istartswith='limit-test').count(),
+            2,
+        )
+
+    def test_linked_shared_inbox_accounts_count_toward_limit(self):
+        first = CustomUser.objects.create_user(
+            username='linked-gmail-first',
+            email='linked-gmail@gmail.com',
+            password='Password123!',
+        )
+        second = CustomUser.objects.create_user(
+            username='linked-gmail-second',
+            email='linked-alt-address@gmail.com',
+            password='Password123!',
+        )
+        group = SharedInboxGroup.objects.create(inbox_email=first.email)
+        group.users.add(first, second)
+
+        response = self.register('linked-gmail+third@gmail.com')
+
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()['email'], [self.limit_message])
+
+    def test_non_gmail_plus_aliases_are_not_limited_by_gmail_rule(self):
+        for email in ('limit-test@example.com', 'limit-test+second@example.com'):
+            response = self.register(email)
+            self.assertEqual(response.status_code, 201, response.content)
+
+        response = self.register('limit-test+third@example.com')
+
+        self.assertEqual(response.status_code, 201, response.content)
+
+
+class DisplayCurrencyPreferenceTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            username='currency-user',
+            email='currency@example.com',
+            password='Password123!',
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_display_currency_is_returned_and_saved_to_user(self):
+        response = self.client.put(
+            '/api/users/me/',
+            {'display_currency': 'jpy'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['display_currency'], 'JPY')
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.display_currency, 'JPY')
+
+    def test_display_currency_rejects_invalid_codes(self):
+        response = self.client.put(
+            '/api/users/me/',
+            {'display_currency': 'US'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400, response.content)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.display_currency, 'USD')
+
+
 class LoginActivityAuditTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -82,7 +182,8 @@ class LoginActivityAuditTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(response.json()['user']['transaction_guard_enabled'])
-        self.assertEqual(response.cookies['refresh_token']['max-age'], 900)
+        self.assertEqual(response.cookies['access_token']['max-age'], 10800)
+        self.assertEqual(response.cookies['refresh_token']['max-age'], 10800)
         activity = UserActivityLog.objects.get(user=self.user, action='login')
         self.assertEqual(activity.status, 'success')
         self.assertEqual(activity.ip_address, '203.0.113.24')
@@ -104,10 +205,10 @@ class LoginActivityAuditTests(TestCase):
         self.assertEqual(logged_activity['device'], 'iPhone')
         self.assertEqual(logged_activity['ip_address'], '203.0.113.24')
 
-    def test_refresh_cannot_extend_session_past_fifteen_minutes(self):
+    def test_refresh_cannot_extend_session_past_three_hours(self):
         now = int(timezone.now().timestamp())
         refresh = RefreshToken.for_user(self.user)
-        refresh['iat'] = now - 14 * 60
+        refresh['iat'] = now - 179 * 60
         refresh['exp'] = now + 7 * 24 * 60 * 60
         self.client.cookies['refresh_token'] = str(refresh)
 
@@ -115,12 +216,12 @@ class LoginActivityAuditTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.content)
         access = AccessToken(response.json()['access_token'])
-        self.assertLessEqual(int(access['exp']), int(refresh['iat']) + 15 * 60)
+        self.assertLessEqual(int(access['exp']), int(refresh['iat']) + 3 * 60 * 60)
 
-    def test_legacy_seven_day_refresh_token_expires_after_fifteen_minutes(self):
+    def test_legacy_seven_day_refresh_token_expires_after_three_hours(self):
         now = int(timezone.now().timestamp())
         refresh = RefreshToken.for_user(self.user)
-        refresh['iat'] = now - 16 * 60
+        refresh['iat'] = now - 181 * 60
         refresh['exp'] = now + 7 * 24 * 60 * 60
         self.client.cookies['refresh_token'] = str(refresh)
 
@@ -129,9 +230,239 @@ class LoginActivityAuditTests(TestCase):
         self.assertEqual(response.status_code, 401)
 
 
+@override_settings(
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    DEFAULT_FROM_EMAIL='info@crypgo.us.ci',
+    PASSWORD_HASHERS=('django.contrib.auth.hashers.MD5PasswordHasher',),
+)
+class FirstLoginPasswordSetupTests(TestCase):
+    proposed_password = 'NewSecurePass!482'
+
+    def setUp(self):
+        self.client = APIClient()
+        cache.clear()
+        self.user = CustomUser.objects.create_user(
+            username='first-setup-user',
+            email='first-setup@example.com',
+            password='OldPassword123!',
+            password_setup_required=True,
+            first_name='Ada',
+            last_name='Lovelace',
+        )
+
+    def begin_setup(self, email=None):
+        response = self.client.post(
+            '/api/auth/login/',
+            {
+                'email': email or self.user.email,
+                'password': 'the-password-I-want',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()['requires_password_setup'])
+        self.assertNotIn('access_token', response.json())
+        self.assertNotIn('access_token', response.cookies)
+        return response.json()['setup_token']
+
+    def test_email_code_then_confirmation_sets_password_and_only_prompts_once(self):
+        from django.core import mail
+
+        response = self.client.post(
+            '/api/auth/login/',
+            {'email': self.user.email, 'password': 'the-password-I-want'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(payload['requires_password_setup'])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [self.user.email])
+        self.assertEqual(mail.outbox[0].subject, 'Your Crypgo password setup code')
+        self.assertIn('Hello Ada Lovelace,', mail.outbox[0].body)
+        self.assertIn('This code expires in 15 minutes.', mail.outbox[0].body)
+        self.assertIn('Crypgo Support', mail.outbox[0].body)
+        self.assertEqual(mail.outbox[0].alternatives, [])
+        self.assertFalse(self.user.check_password(self.proposed_password))
+
+        code_match = re.search(r'Verification code: (\d{6})', mail.outbox[0].body)
+        self.assertIsNotNone(code_match)
+        wrong_code = '000000' if code_match.group(1) != '000000' else '000001'
+        verify_response = self.client.post(
+            '/api/auth/login/first-password/verify-code/',
+            {'setup_token': payload['setup_token'], 'code': wrong_code},
+            format='json',
+        )
+        self.assertEqual(verify_response.status_code, 400)
+
+        verify_response = self.client.post(
+            '/api/auth/login/first-password/verify-code/',
+            {'setup_token': payload['setup_token'], 'code': code_match.group(1)},
+            format='json',
+        )
+        self.assertEqual(verify_response.status_code, 200, verify_response.content)
+
+        complete_response = self.client.post(
+            '/api/auth/login/first-password/complete/',
+            {'setup_token': payload['setup_token'], 'password': self.proposed_password},
+            format='json',
+        )
+        self.assertEqual(complete_response.status_code, 200, complete_response.content)
+        self.assertIn('access_token', complete_response.json())
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.proposed_password))
+        self.assertFalse(self.user.password_setup_required)
+
+        next_login = self.client.post(
+            '/api/auth/login/',
+            {'email': self.user.email, 'password': self.proposed_password},
+            format='json',
+        )
+        self.assertEqual(next_login.status_code, 200, next_login.content)
+        self.assertNotIn('requires_password_setup', next_login.json())
+        self.assertIn('access_token', next_login.json())
+
+    def test_password_cannot_be_changed_until_email_code_is_verified(self):
+        setup_token = self.begin_setup()
+        response = self.client.post(
+            '/api/auth/login/first-password/complete/',
+            {'setup_token': setup_token, 'password': self.proposed_password},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400, response.content)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.password_setup_required)
+        self.assertFalse(self.user.check_password(self.proposed_password))
+
+    def test_five_incorrect_codes_lock_the_setup_challenge(self):
+        from django.core import mail
+
+        setup_token = self.begin_setup()
+        for _ in range(5):
+            response = self.client.post(
+                '/api/auth/login/first-password/verify-code/',
+                {'setup_token': setup_token, 'code': '000000'},
+                format='json',
+            )
+            self.assertEqual(response.status_code, 400)
+
+        challenge = FirstLoginPasswordSetupChallenge.objects.get()
+        self.assertIsNotNone(challenge.used_at)
+        code_match = re.search(r'Verification code: (\d{6})', mail.outbox[0].body)
+        response = self.client.post(
+            '/api/auth/login/first-password/verify-code/',
+            {'setup_token': setup_token, 'code': code_match.group(1)},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_linked_accounts_share_password_and_choose_account_after_confirmation(self):
+        self.user.email = 'first-setup@gmail.com'
+        self.user.save(update_fields=['email'])
+        second = CustomUser.objects.create_user(
+            username='first-setup-second',
+            email='first-setup+1@gmail.com',
+            password='OldPassword123!',
+            password_setup_required=True,
+        )
+        group = SharedInboxGroup.objects.create(inbox_email=self.user.email)
+        group.users.add(self.user, second)
+
+        login_response = self.client.post(
+            '/api/auth/login/',
+            {'email': self.user.email, 'password': 'my-new-pass'},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, 200, login_response.content)
+        self.assertTrue(login_response.json()['requires_password_setup'])
+        from django.core import mail
+        code_match = re.search(r'Verification code: (\d{6})', mail.outbox[0].body)
+
+        verify_response = self.client.post(
+            '/api/auth/login/first-password/verify-code/',
+            {
+                'setup_token': login_response.json()['setup_token'],
+                'code': code_match.group(1),
+            },
+            format='json',
+        )
+        self.assertEqual(verify_response.status_code, 200, verify_response.content)
+        complete_response = self.client.post(
+            '/api/auth/login/first-password/complete/',
+            {
+                'setup_token': login_response.json()['setup_token'],
+                'password': self.proposed_password,
+            },
+            format='json',
+        )
+        self.assertEqual(complete_response.status_code, 200, complete_response.content)
+        self.assertTrue(complete_response.json()['requires_account_selection'])
+        self.assertNotIn('access_token', complete_response.json())
+        self.user.refresh_from_db()
+        second.refresh_from_db()
+        self.assertTrue(self.user.check_password(self.proposed_password))
+        self.assertTrue(second.check_password(self.proposed_password))
+        self.assertFalse(self.user.password_setup_required)
+        self.assertFalse(second.password_setup_required)
+
+        selected = self.client.post(
+            '/api/auth/login/select-account/',
+            {
+                'selection_token': complete_response.json()['selection_token'],
+                'account_id': second.pk,
+            },
+            format='json',
+        )
+        self.assertEqual(selected.status_code, 200, selected.content)
+        self.assertEqual(selected.json()['user']['id'], second.pk)
+
+
+@override_settings(PASSWORD_HASHERS=('django.contrib.auth.hashers.MD5PasswordHasher',))
+class FirstLoginPasswordResetCommandTests(TestCase):
+    def test_command_dry_run_preserves_password_and_confirm_resets_customers_only(self):
+        customer = CustomUser.objects.create_user(
+            username='reset-customer',
+            email='reset-customer@example.com',
+            password='OldPassword123!',
+        )
+        already_flagged = CustomUser.objects.create_user(
+            username='reset-flagged',
+            email='reset-flagged@example.com',
+            password='OldPassword123!',
+            password_setup_required=True,
+        )
+        already_flagged.set_unusable_password()
+        already_flagged.save(update_fields=['password'])
+        staff = CustomUser.objects.create_user(
+            username='reset-staff',
+            email='reset-staff@example.com',
+            password='AdminPassword123!',
+            is_staff=True,
+        )
+
+        call_command('require_first_login_password_setup')
+        customer.refresh_from_db()
+        self.assertTrue(customer.check_password('OldPassword123!'))
+        self.assertFalse(customer.password_setup_required)
+
+        call_command('require_first_login_password_setup', confirm=True)
+
+        customer.refresh_from_db()
+        already_flagged.refresh_from_db()
+        staff.refresh_from_db()
+        self.assertFalse(customer.has_usable_password())
+        self.assertTrue(customer.password_setup_required)
+        self.assertFalse(already_flagged.has_usable_password())
+        self.assertTrue(already_flagged.password_setup_required)
+        self.assertTrue(staff.check_password('AdminPassword123!'))
+        self.assertFalse(staff.password_setup_required)
+
+
 class SharedInboxLoginTests(TestCase):
     def setUp(self):
         self.client = APIClient()
+        cache.clear()
         self.first = CustomUser.objects.create_user(
             username='shared-first',
             email='sirmattfrewer@gmail.com',
@@ -506,11 +837,22 @@ class PasswordResetAccountSelectionTests(TestCase):
         from .services import send_reset_password_email
 
         self.assertTrue(send_reset_password_email(self.second, self.reset_token))
+        self.assertIn(self.second.username, send_mail_mock.call_args.kwargs['message'])
+        self.assertIn(self.reset_token.token, send_mail_mock.call_args.kwargs['message'])
+        self.assertNotIn('html_message', send_mail_mock.call_args.kwargs)
         self.assertEqual(
             send_mail_mock.call_args.kwargs['from_email'],
             'Crypgo <support.crypgo@gmail.com>',
         )
         self.assertEqual(send_mail_mock.call_args.kwargs['recipient_list'], [self.first.email])
+
+    @patch('apps.users.services.send_mail', return_value=1)
+    def test_transaction_caution_email_is_plain_text_only(self, send_mail_mock):
+        from .services import send_transaction_caution_email
+
+        self.assertTrue(send_transaction_caution_email(self.first))
+        self.assertIn(self.first.username, send_mail_mock.call_args.kwargs['message'])
+        self.assertNotIn('html_message', send_mail_mock.call_args.kwargs)
 
     @patch('apps.users.services.send_mail', return_value=1)
     def test_password_reset_email_routes_non_gmail_alias_to_canonical_inbox(self, send_mail_mock):
@@ -903,7 +1245,7 @@ class UserReportLayoutTests(TestCase):
             )
 
         report_text = cast(str, document[0].get_text())
-        self.assertIn('USD valuations use fixed manual prices and are not live', report_text)
+        self.assertIn('USD valuations use fixed manual USD crypto prices and are not live', report_text)
         self.assertIn('$83,000.00', report_text)
         self.assertIn('$166,000.00', report_text)
         self.assertIn('$2,500.00', report_text)
@@ -957,6 +1299,109 @@ class UserReportLayoutTests(TestCase):
             ),
             '~$200.00',
         )
+        self.assertEqual(
+            get_transaction_fiat_display(
+                SimpleNamespace(fiat_amount=Decimal('20'), amount=Decimal('2'), price_at_time=None, asset='BTC'),
+                {'BTC': Decimal('100')},
+                currency='BRL',
+                currency_rate=Decimal('5'),
+            ),
+            'R$ 100.00',
+        )
+
+    def test_non_usd_report_converts_holdings_and_discloses_exchange_rate(self):
+        from generate_user_report import generate_user_report_bytes
+        import pymupdf
+
+        user = CustomUser.objects.create_user(
+            username='brl-report-user',
+            email='brl-report@example.com',
+            password='Password123!',
+            display_currency='BRL',
+        )
+        WalletAsset.objects.update_or_create(
+            user=user,
+            ticker='BTC',
+            defaults={
+                'name': 'Bitcoin',
+                'quantity': Decimal('2'),
+                'available_quantity': Decimal('1.5'),
+                'locked_quantity': Decimal('0.5'),
+            },
+        )
+
+        with (
+            patch('generate_user_report.get_report_usd_prices', return_value={'BTC': Decimal('100')}),
+            patch('generate_user_report.MARKET_PRICE_AS_OF', 'June 28, 2025 at 00:00 UTC'),
+            patch('generate_user_report.MARKET_PRICE_SOURCE', 'manual_override'),
+        ):
+            document = pymupdf.open(
+                stream=generate_user_report_bytes(
+                    user,
+                    currency_rate=Decimal('5'),
+                    exchange_rate_as_of='June 28, 2025 at 00:00 UTC',
+                ),
+                filetype='pdf',
+            )
+
+        report_text = ' '.join(cast(str, document[0].get_text()).split())
+        self.assertIn('Currency: BRL', report_text)
+        self.assertIn('Unit Price (BRL)', report_text)
+        self.assertIn('Fiat Value (BRL)', report_text)
+        self.assertIn('R$ 500.00', report_text)
+        self.assertIn('R$ 1,000.00', report_text)
+        self.assertIn('Value: R$ 1,000.00', report_text)
+        self.assertIn('1 USD = 5.000000 BRL', report_text)
+        self.assertIn('rate updated June 28, 2025 at 00:00 UTC', report_text)
+
+    def test_report_download_requires_a_valid_rate_for_saved_non_usd_currency(self):
+        user = CustomUser.objects.create_user(
+            username='rate-required-report-user',
+            email='rate-required-report@example.com',
+            password='Password123!',
+            display_currency='BRL',
+        )
+        client = APIClient()
+        client.force_authenticate(user)
+
+        response = client.get('/api/users/report/')
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn('display_currency_rate', response.json())
+
+    def test_report_download_converts_to_saved_display_currency(self):
+        import pymupdf
+
+        user = CustomUser.objects.create_user(
+            username='converted-report-user',
+            email='converted-report@example.com',
+            password='Password123!',
+            display_currency='BRL',
+        )
+        WalletAsset.objects.update_or_create(
+            user=user,
+            ticker='BTC',
+            defaults={
+                'name': 'Bitcoin',
+                'quantity': Decimal('1'),
+                'available_quantity': Decimal('1'),
+                'locked_quantity': Decimal('0'),
+            },
+        )
+        client = APIClient()
+        client.force_authenticate(user)
+
+        response = client.get('/api/users/report/', {
+            'display_currency_rate': '5',
+            'display_currency_rate_as_of': 'Sat, 28 Jun 2025 00:00:00 +0000',
+        })
+
+        self.assertEqual(response.status_code, 200, response.content)
+        document = pymupdf.open(stream=response.content, filetype='pdf')
+        report_text = ' '.join(cast(str, document[0].get_text()).split())
+        self.assertIn('Currency: BRL', report_text)
+        self.assertIn('Fiat Value (BRL)', report_text)
+        self.assertIn('R$ 415,000.00', report_text)
+        self.assertIn('1 USD = 5.000000 BRL', report_text)
 
     def test_report_omits_account_phone_and_item_heading_prefixes(self):
         from generate_user_report import generate_user_report_bytes
@@ -1213,7 +1658,7 @@ class TransactionGuardTests(TestCase):
         self.client.force_authenticate(user=self.user)
 
     @patch('apps.users.services.send_mail')
-    def test_two_successes_are_allowed_then_later_attempts_are_blocked_and_emailed(self, send_mail):
+    def test_transfer_and_swap_are_not_limited_by_transaction_caution_guard(self, send_mail):
         first = self.client.post(
             '/api/wallet/transfer/',
             {'recipient': self.recipient.email, 'asset': 'BTC', 'amount': '1'},
@@ -1224,12 +1669,12 @@ class TransactionGuardTests(TestCase):
             {'from_asset': 'BTC', 'to_asset': 'ETH', 'amount': '1'},
             format='json',
         )
-        blocked = self.client.post(
+        third = self.client.post(
             '/api/wallet/transfer/',
             {'recipient': self.recipient.email, 'asset': 'BTC', 'amount': '1'},
             format='json',
         )
-        blocked_again = self.client.post(
+        fourth = self.client.post(
             '/api/wallet/swap/',
             {'from_asset': 'BTC', 'to_asset': 'ETH', 'amount': '1'},
             format='json',
@@ -1237,16 +1682,14 @@ class TransactionGuardTests(TestCase):
 
         self.assertEqual(first.status_code, 200, first.content)
         self.assertEqual(second.status_code, 200, second.content)
-        self.assertEqual(blocked.status_code, 409, blocked.content)
-        self.assertEqual(cast(Any, blocked).data['code'], 'TRANSACTION_CAUTION_REQUIRED')
-        self.assertEqual(blocked_again.status_code, 409, blocked_again.content)
-        self.assertEqual(send_mail.call_count, 2)
-        self.assertEqual(send_mail.call_args_list[0].kwargs['recipient_list'], [self.user.email])
+        self.assertEqual(third.status_code, 200, third.content)
+        self.assertEqual(fourth.status_code, 200, fourth.content)
+        send_mail.assert_not_called()
         self.user.refresh_from_db()
-        self.assertEqual(self.user.transaction_guard_success_count, 2)
-        self.assertEqual(Transaction.objects.filter(user=self.user).count(), 2)
+        self.assertEqual(self.user.transaction_guard_success_count, 0)
+        self.assertEqual(Transaction.objects.filter(user=self.user).count(), 4)
         self.wallet.refresh_from_db()
-        self.assertEqual(self.wallet.available_quantity, Decimal('8.00000000'))
+        self.assertEqual(self.wallet.available_quantity, Decimal('6.00000000'))
 
 
 class SeededTransactionAddressTests(TestCase):
@@ -1259,6 +1702,31 @@ class SeededTransactionAddressTests(TestCase):
         self.assertTrue(first.startswith('bc1q'))
         self.assertNotIn('Unknown', first)
         self.assertNotEqual(first, third)
+
+    def test_transaction_address_changes_with_account_asset_or_direction(self):
+        base = build_transaction_address('user@example.com', 'BTC', 1, 'receive')
+
+        self.assertNotEqual(
+            base,
+            build_transaction_address('other@example.com', 'BTC', 1, 'receive'),
+        )
+        self.assertNotEqual(
+            base,
+            build_transaction_address('user@example.com', 'ETH', 1, 'receive'),
+        )
+        self.assertNotEqual(
+            base,
+            build_transaction_address('user@example.com', 'BTC', 1, 'send'),
+        )
+
+    def test_transaction_address_uses_asset_specific_display_formats(self):
+        self.assertTrue(
+            build_transaction_address('user@example.com', 'ETH', 1, 'receive').startswith('0x')
+        )
+        self.assertEqual(
+            len(build_transaction_address('user@example.com', 'SOL', 1, 'receive')),
+            44,
+        )
 
 
 class CampaignAccessTokenTests(TestCase):
@@ -1495,3 +1963,84 @@ class CampaignRecipientExportTests(TestCase):
             sum(item['email'] == base.email for item in recipients),
             1,
         )
+
+
+@override_settings(BOT_SERVICE_KEY='test-bot-service-key')
+class CampaignAccountExportTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.first = CustomUser.objects.create_user(
+            username='target-export-first',
+            email='target@example.com',
+            password='Password123!',
+            first_name='Target',
+            last_name='First',
+        )
+        self.second = CustomUser.objects.create_user(
+            username='target-export-second',
+            email='target+second@example.com',
+            password='Password123!',
+            first_name='Target',
+            last_name='Second',
+        )
+
+    def signed_export(self, campaign_ref, payload):
+        body = json.dumps(payload, separators=(',', ':')).encode('utf-8')
+        signature = hmac.new(
+            b'test-bot-service-key',
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+        return self.client.post(
+            f'/api/internal/campaigns/{campaign_ref}/accounts/export/',
+            data=body,
+            content_type='application/json',
+            HTTP_X_BOT_SIGNATURE=signature,
+        )
+
+    def test_signed_export_lists_individual_accounts_without_creating_access_links(self):
+        response = self.signed_export('targeted-directory', {})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        accounts = response.json()['accounts']
+        self.assertEqual(
+            {account['external_user_id'] for account in accounts},
+            {str(self.first.pk), str(self.second.pk)},
+        )
+        self.assertEqual(
+            {account['email'] for account in accounts},
+            {self.first.email, self.second.email},
+        )
+        self.assertTrue(all('dashboard_url' not in account for account in accounts))
+        self.assertFalse(CampaignAccessToken.objects.exists())
+
+    def test_signed_export_returns_only_selected_account_with_access_link(self):
+        response = self.signed_export(
+            'targeted-campaign-42',
+            {'user_ids': [self.second.pk]},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        accounts = response.json()['accounts']
+        self.assertEqual(len(accounts), 1)
+        self.assertEqual(accounts[0]['external_user_id'], str(self.second.pk))
+        self.assertEqual(accounts[0]['email'], self.second.email)
+        self.assertIn('/auth/campaign-access?token=', accounts[0]['dashboard_url'])
+        token = CampaignAccessToken.objects.get(user=self.second)
+        self.assertEqual(token.campaign_ref, 'targeted-campaign-42')
+        self.assertFalse(CampaignAccessToken.objects.filter(user=self.first).exists())
+
+    def test_signed_export_rejects_empty_or_invalid_account_selection(self):
+        for user_ids in ([], [0], ['not-an-id']):
+            with self.subTest(user_ids=user_ids):
+                response = self.signed_export('targeted-campaign-42', {'user_ids': user_ids})
+                self.assertEqual(response.status_code, 400, response.content)
+
+    def test_signed_export_does_not_issue_links_for_inactive_or_unknown_selection(self):
+        response = self.signed_export(
+            'targeted-campaign-42',
+            {'user_ids': [self.first.pk, 999999]},
+        )
+
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertFalse(CampaignAccessToken.objects.exists())

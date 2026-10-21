@@ -2,6 +2,8 @@ import React from 'react';
 import type { Metadata } from 'next';
 import DashboardAuthGuard from '@/components/Auth/DashboardAuthGuard';
 import DashboardReturnCautionGate from '@/components/Auth/DashboardReturnCautionGate';
+import { CardDeliveryAddressProvider } from './components/CardDeliveryAddressProvider';
+import { DisplayCurrencyProvider } from '@/context/DisplayCurrencyContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,9 +19,13 @@ export default function DashboardLayout({
 }) {
   return (
     <DashboardAuthGuard>
-      <DashboardReturnCautionGate>
-        {children}
-      </DashboardReturnCautionGate>
+      <DisplayCurrencyProvider>
+        <CardDeliveryAddressProvider>
+          <DashboardReturnCautionGate>
+            {children}
+          </DashboardReturnCautionGate>
+        </CardDeliveryAddressProvider>
+      </DisplayCurrencyProvider>
     </DashboardAuthGuard>
   );
 }

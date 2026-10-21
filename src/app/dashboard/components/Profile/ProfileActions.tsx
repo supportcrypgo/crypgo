@@ -5,9 +5,9 @@ import {
   ShieldCheck,
   KeyRound,
   Clock,
+  Settings,
   LogOut,
   ChevronRight,
-  Trash2,
 } from 'lucide-react';
 
 interface ActionItem {
@@ -19,16 +19,15 @@ interface ActionItem {
 interface ProfileActionsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  onLogout?: () => void;
 }
 
-export default function ProfileActions({ activeTab, onTabChange, onLogout }: ProfileActionsProps) {
+export default function ProfileActions({ activeTab, onTabChange }: ProfileActionsProps) {
   const actions: ActionItem[] = [
     { icon: <User className="w-5 h-5" />, label: 'Profile', tab: 'profile' },
     { icon: <ShieldCheck className="w-5 h-5" />, label: 'ID Verification', tab: 'id-verify' },
     { icon: <KeyRound className="w-5 h-5" />, label: 'Reset Password', tab: 'password' },
     { icon: <Clock className="w-5 h-5" />, label: 'Activity Log', tab: 'activity' },
-    { icon: <Trash2 className="w-5 h-5" />, label: 'Delete Account', tab: 'delete-account' },
+    { icon: <Settings className="w-5 h-5" />, label: 'Preferences', tab: 'preferences' },
   ];
 
   return (
@@ -60,19 +59,17 @@ export default function ProfileActions({ activeTab, onTabChange, onLogout }: Pro
           </button>
         ))}
 
-        {onLogout && (
-          <button
-            type="button"
-            onClick={onLogout}
-            className="flex w-full items-center h-[76px] px-5 text-left hover:bg-muted/30 transition-colors md:border-t md:border-muted/50"
-          >
-            <div className="w-12 h-12 rounded-full bg-muted/30 flex items-center justify-center text-muted-foreground">
-              <LogOut className="w-5 h-5" />
-            </div>
-            <span className="ml-4 text-base font-medium">Log out</span>
-            <ChevronRight className="w-5 h-5 text-muted-foreground/50 ml-auto" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => onTabChange('logout')}
+          className="flex w-full items-center h-[76px] px-5 text-left hover:bg-muted/30 transition-colors md:border-t md:border-muted/50"
+        >
+          <div className="w-12 h-12 rounded-full bg-muted/30 flex items-center justify-center text-muted-foreground">
+            <LogOut className="w-5 h-5" />
+          </div>
+          <span className="ml-4 text-base font-medium">Log out</span>
+          <ChevronRight className="w-5 h-5 text-muted-foreground/50 ml-auto" />
+        </button>
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Clock,
   User,
+  CreditCard,
   LogOut,
   Wallet,
   Send,
@@ -36,6 +37,13 @@ const homeItem: SidebarItem = {
   label: 'Home',
   icon: <LayoutDashboard className="w-5 h-5" />,
   href: '/dashboard',
+};
+
+const cardsItem: SidebarItem = {
+  id: 'cards',
+  label: 'Cards',
+  icon: <CreditCard className="w-5 h-5" />,
+  href: '/dashboard/cards',
 };
 
 const walletItems: SidebarItem[] = [
@@ -84,6 +92,18 @@ export default function DesktopSidebar() {
         >
           {homeItem.icon}
           <span>{homeItem.label}</span>
+        </Link>
+
+        <Link
+          href={cardsItem.href}
+          className={`mb-4 w-full flex items-center gap-3 px-5 py-3 rounded-xl transition-all text-sm ${
+            isActive(cardsItem.href)
+              ? 'bg-deepSlate text-primary font-semibold'
+              : 'text-charcoalGray hover:text-white hover:bg-deepSlate/50'
+          }`}
+        >
+          {cardsItem.icon}
+          <span>{cardsItem.label}</span>
         </Link>
 
         <div className="mb-2 flex items-center gap-2 px-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-charcoalGray/70">

@@ -62,6 +62,10 @@ class Campaign(models.Model):
         default=False,
         help_text="Archived campaigns are hidden from normal workflows",
     )
+    selected_recipients_only = models.BooleanField(
+        default=False,
+        help_text="Send only to the Crypgo accounts explicitly selected for this campaign.",
+    )
     
     # Stats
     total_leads = models.IntegerField(default=0)

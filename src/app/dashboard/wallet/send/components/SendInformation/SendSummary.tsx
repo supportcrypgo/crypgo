@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { SendAssetInfo, NetworkOption } from '../types';
+import { useDisplayCurrency } from '@/context/DisplayCurrencyContext';
 
 interface SendSummaryProps {
   asset: SendAssetInfo;
@@ -25,6 +26,7 @@ export default function SendSummary({
   balance,
 }: SendSummaryProps) {
   const [copied, setCopied] = useState(false);
+  const { formatFromUsd } = useDisplayCurrency();
 
   // Truncate recipient address for display
   const displayAddress = recipient.length > 24
@@ -129,7 +131,7 @@ export default function SendSummary({
                   {amount ? `${amount.toLocaleString()} ${asset.ticker}` : '—'}
                 </p>
                 {amount > 0 && (
-                  <p className="text-xs text-charcoalGray">≈ ${getUsdValue(asset.ticker, amount).toFixed(2)} USD</p>
+                  <p className="text-xs text-charcoalGray">≈ {formatFromUsd(getUsdValue(asset.ticker, amount))}</p>
                 )}
               </div>
             </div>
@@ -153,7 +155,7 @@ export default function SendSummary({
                   <p className="text-sm font-semibold text-white">
                     {totalAmount.toLocaleString()} {asset.ticker}
                   </p>
-                  <p className="text-xs text-charcoalGray">≈ ${getUsdValue(asset.ticker, totalAmount).toFixed(2)} USD</p>
+                  <p className="text-xs text-charcoalGray">≈ {formatFromUsd(getUsdValue(asset.ticker, totalAmount))}</p>
                 </div>
               )}
             </div>

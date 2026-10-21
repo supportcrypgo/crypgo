@@ -3,16 +3,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import Logo from "@/components/Layout/Header/Logo";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { authApi } from "@/data/api";
-const SignUp = () => {
+const SignUp = ({ showLogo = true }: { showLogo?: boolean }) => {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
 
-  const handleSubmit = (e: any) => {
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     setLoading(true);
+    setRegistrationError(null);
     const data = new FormData(e.currentTarget);
     const email = String(data.get("email") || "");
     const password = String(data.get("password") || "");
@@ -21,19 +23,23 @@ const SignUp = () => {
       .then(() => {
         toast.success("Successfully registered");
         setLoading(false);
-        router.push("/?signin=1");
+        router.push("/auth/sign-in");
       })
       .catch((err) => {
-        toast.error(err.message);
+        setRegistrationError(
+          err instanceof Error ? err.message : "Registration failed. Please try again.",
+        );
         setLoading(false);
       });
   };
 
   return (
     <>
-      <div className="mb-10 text-center mx-auto inline-block max-w-[160px]">
-        <Logo />
-      </div>
+      {showLogo && (
+        <div className="mb-10 text-center mx-auto inline-block max-w-[160px]">
+          <Logo />
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="mb-[22px]">
@@ -42,8 +48,14 @@ const SignUp = () => {
             placeholder="Email"
             name="email"
             required
+            onChange={() => setRegistrationError(null)}
             className="w-full rounded-md border border-dark_border border-opacity-60 border-solid bg-transparent px-5 py-3 text-base text-dark outline-none transition placeholder:text-grey focus:border-primary focus-visible:shadow-none text-white dark:focus:border-primary"
           />
+          {registrationError && (
+            <p role="alert" className="mt-2 text-sm text-red-400">
+              {registrationError}
+            </p>
+          )}
         </div>
         <div className="mb-[22px]">
           <input
@@ -77,7 +89,7 @@ const SignUp = () => {
 
       <p className="text-body-secondary text-white text-base">
         Already have an account?
-        <Link href="/" className="pl-2 text-primary hover:underline">
+        <Link href="/auth/sign-in" className="pl-2 text-primary hover:underline">
           Sign In
         </Link>
       </p>

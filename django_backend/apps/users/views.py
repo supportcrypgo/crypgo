@@ -1,24 +1,34 @@
+from datetime import date, timezone as datetime_timezone
 from typing import Any, cast
 import ipaddress
+import smtplib
+from email.utils import formataddr, parsedate_to_datetime
+import math
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics, permissions, serializers
 from rest_framework.request import Request
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.authentication import BaseAuthentication, get_authorization_header
+from rest_framework.exceptions import AuthenticationFailed
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password
 from django.utils import timezone
 from django.conf import settings
 from .models import (
-    CustomUser,
+    CardActivationCode, CardApplication, CardApplicationAsset, CardApplicationNumber,
+    CardDeliveryAddress, CardIssuer, CustomUser,
     PasswordResetToken, MagicLinkToken, CampaignAccessToken, AccountSelectionChallenge,
-    SharedInboxGroup, SharedInboxLinkToken, WalletAsset, UserHistoricalSnapshot, UserSession, KYCDocument,
+    FirstLoginPasswordSetupChallenge, SharedInboxGroup, SharedInboxLinkToken,
+    WalletAsset, UserHistoricalSnapshot, UserSession, KYCDocument,
     UserActivityLog, Transaction,
     Notification, PushSubscription, DeviceFingerprint, WalletAddress,
     TransactionTranslation, InternalTransfer,
 )
 from .serializers import (
-    LoginSerializer, RegisterSerializer, ChangePasswordSerializer,
+    CardApplicationSerializer, CardDeliveryAddressSerializer, LoginSerializer, RegisterSerializer, ChangePasswordSerializer,
     EmailPreferenceSerializer, ForgotPasswordSerializer, ResetPasswordUpdateSerializer,
     WalletAssetSerializer, UserCreateSerializer, WalletAssetUpdateSerializer,
     UserHistoricalSnapshotSerializer, UserSerializer, UserSessionSerializer,
@@ -31,22 +41,27 @@ from .serializers import (
     TwoFASetupSerializer,
     TwoFAVerifySerializer, TwoFADisableSerializer, AvatarUploadSerializer, DeleteAccountSerializer,
 )
+from .serializers import SUPPORTED_WALLET_ASSETS
 from .wallet_address import build_wallet_address
 from .kyc_screening import screen_document
 from .services import (
     send_reset_password_email, send_magic_link_email, build_campaign_access_url,
     begin_guarded_transaction, record_guarded_transaction, send_transaction_caution_email,
+    send_card_application_approval_email,
 )
-from .email_identity import normalize_shared_inbox
+from .email_identity import delivery_email_for_user, normalize_shared_inbox
 import logging
 import time
 import hashlib
 import hmac
 import requests
 from decimal import Decimal
-from datetime import timedelta
+from datetime import date, timedelta
 from django.db import transaction, models
+from django.db.utils import IntegrityError
 from django.core.mail import send_mail
+from django.core.paginator import Paginator
+from django.core import signing
 from django.utils.crypto import get_random_string
 
 logger = logging.getLogger(__name__)
@@ -154,6 +169,47 @@ def get_ip_location(ip_address: str | None) -> str:
         return ''
 
 
+def send_login_notification_email(user: CustomUser) -> None:
+    profile = shared_profile_data(user)
+    full_name = ' '.join(
+        part.strip()
+        for part in (profile.get('first_name', ''), profile.get('last_name', ''))
+        if isinstance(part, str) and part.strip()
+    )
+    recipient_name = (
+        full_name
+        or user.username
+        or user.email.partition('@')[0]
+        or 'there'
+    )
+    login_time = timezone.localtime().strftime('%B %d, %Y at %I:%M %p %Z')
+    subject = 'Crypgo Login Notification'
+    message = (
+        f'Hi {recipient_name},\n\n'
+        f'Your Crypgo account was accessed on {login_time}.\n\n'
+        'If you signed in at that time, you can ignore this email. If you’re concerned '
+        'that someone else may have accessed your account, visit https://crypgo.us.ci/ '
+        'to change your password.\n\n'
+        'For assistance, email our 24-hour support team at support@crypgo.us.ci, or '
+        'select Help & Support in the app.\n\n'
+        'Thanks,\n'
+        'Crypgo'
+    )
+    from_email = formataddr(('Crypgo', settings.DEFAULT_FROM_EMAIL))
+    try:
+        sent_count = send_mail(
+            subject,
+            message,
+            from_email,
+            [user.email],
+            fail_silently=False,
+        )
+        if sent_count != 1:
+            logger.error('Login notification email was not sent for user %s', user.pk)
+    except Exception:
+        logger.exception('Failed to send login notification email for user %s', user.pk)
+
+
 def issue_auth_response(user, request: Request, authentication_method: str = 'password'):
     from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -190,11 +246,14 @@ def issue_auth_response(user, request: Request, authentication_method: str = 'pa
     response.set_cookie('access_token', access_token, httponly=True,
                         secure=cookie_settings.get('AUTH_COOKIE_SECURE', False),
                         samesite=cookie_settings.get('AUTH_COOKIE_SAMESITE', 'Lax'),
-                        max_age=15 * 60, path='/')
+                        max_age=int(cookie_settings.get('ACCESS_TOKEN_LIFETIME', timedelta(hours=3)).total_seconds()),
+                        path='/')
     response.set_cookie('refresh_token', refresh_token, httponly=True,
                         secure=cookie_settings.get('AUTH_COOKIE_SECURE', False),
                         samesite=cookie_settings.get('AUTH_COOKIE_SAMESITE', 'Lax'),
-                        max_age=int(cookie_settings.get('REFRESH_TOKEN_LIFETIME', timedelta(minutes=15)).total_seconds()), path='/')
+                        max_age=int(cookie_settings.get('REFRESH_TOKEN_LIFETIME', timedelta(hours=3)).total_seconds()), path='/')
+    if authentication_method in {'password', 'magic_link', 'login'}:
+        send_login_notification_email(user)
     return response
 
 
@@ -224,11 +283,261 @@ class IsAdminUser(permissions.BasePermission):
         return request.user.is_authenticated and request.user.is_staff
 
 
-def build_user_report_response(user):
+class CardReviewIdentity:
+    pk = 'card-review-admin'
+    is_authenticated = True
+    is_card_review_admin = True
+
+
+class CardReviewTokenAuthentication(BaseAuthentication):
+    token_salt = 'apps.users.card-review-admin'
+
+    def authenticate(self, request):
+        parts = get_authorization_header(request).split()
+        if not parts or parts[0].lower() != b'cardreview':
+            return None
+        if len(parts) != 2:
+            raise AuthenticationFailed('Invalid card review credentials.')
+
+        try:
+            payload = signing.loads(
+                parts[1].decode('ascii'),
+                salt=self.token_salt,
+                max_age=getattr(settings, 'CARD_REVIEW_TOKEN_MAX_AGE_SECONDS', 8 * 60 * 60),
+            )
+        except (signing.BadSignature, UnicodeDecodeError):
+            raise AuthenticationFailed('Card review session expired. Enter the access code again.')
+
+        if payload.get('scope') != 'card-review-admin':
+            raise AuthenticationFailed('Invalid card review credentials.')
+        return CardReviewIdentity(), parts[1].decode('ascii')
+
+    def authenticate_header(self, request):
+        return 'CardReview'
+
+
+class IsCardReviewAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return bool(getattr(request.user, 'is_card_review_admin', False))
+
+
+class CardReviewApprovalEmailError(Exception):
+    pass
+
+
+class CardReviewLoginView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'card_review_login'
+
+    def post(self, request: Request):
+        access_code_hash = getattr(settings, 'CARD_REVIEW_ACCESS_CODE_HASH', '')
+        if not access_code_hash:
+            logger.error('Card review access is unavailable because no access-code hash is configured.')
+            return Response(
+                {'error': 'Card review access is not configured.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        code = request.data.get('code')
+        if not isinstance(code, str) or not check_password(code, access_code_hash):
+            return Response(
+                {'error': 'The access code is incorrect.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        token = signing.dumps(
+            {'scope': 'card-review-admin'},
+            salt=CardReviewTokenAuthentication.token_salt,
+        )
+        return Response({
+            'token': token,
+            'expires_in': getattr(settings, 'CARD_REVIEW_TOKEN_MAX_AGE_SECONDS', 8 * 60 * 60),
+        })
+
+
+class CardReviewApplicationsView(APIView):
+    authentication_classes = [CardReviewTokenAuthentication]
+    permission_classes = [IsCardReviewAdmin]
+    page_size = 4
+
+    def get(self, request: Request):
+        try:
+            page_number = int(request.query_params.get('page', '1'))
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'Page must be a positive integer.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if page_number < 1:
+            return Response(
+                {'error': 'Page must be a positive integer.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        applications = (
+            CardApplication.objects.filter(
+                status__in=[
+                    CardApplication.STATUS_ACTIVATION_PENDING,
+                    CardApplication.STATUS_CANCELED,
+                ],
+            )
+            .select_related('user', 'delivery_address')
+            .order_by('-cancellation_email_sent_at', '-created_at', '-pk')
+        )
+        paginator = Paginator(applications, self.page_size)
+        page = paginator.get_page(page_number)
+        return Response({
+            'count': paginator.count,
+            'page': page.number,
+            'page_size': self.page_size,
+            'page_count': paginator.num_pages,
+            'applications': [
+                {
+                    'id': application.pk,
+                    'first_name': application.user.first_name,
+                    'last_name': application.user.last_name,
+                    'cardholder_name': (
+                        ' '.join(
+                            part for part in (
+                                application.user.first_name.strip(),
+                                application.user.last_name.strip(),
+                            ) if part
+                        )
+                        or application.user.username
+                        or application.user.email.partition('@')[0]
+                        or 'CRYPGO USER'
+                    ),
+                    'email': application.user.email,
+                    'source_asset': application.source_asset,
+                    'card_number': application.card_number,
+                    'expiry': application.expiry_date.strftime('%m/%y'),
+                    'canceled_at': application.cancellation_email_sent_at,
+                    'status': application.status,
+                    'created_at': application.created_at,
+                    'address': CardDeliveryAddressSerializer(
+                        application.delivery_address,
+                    ).data if hasattr(application, 'delivery_address') else None,
+                }
+                for application in page.object_list
+            ],
+        })
+
+
+class CardReviewApplicationApproveView(APIView):
+    authentication_classes = [CardReviewTokenAuthentication]
+    permission_classes = [IsCardReviewAdmin]
+
+    def post(self, request: Request, pk: int):
+        try:
+            with transaction.atomic():
+                application = (
+                    CardApplication.objects.select_for_update()
+                    .select_related('user')
+                    .filter(
+                        pk=pk,
+                        status__in=[
+                            CardApplication.STATUS_ACTIVATION_PENDING,
+                            CardApplication.STATUS_CANCELED,
+                        ],
+                    )
+                    .first()
+                )
+                if application is None:
+                    return Response(
+                        {'error': 'Canceled card application not found.'},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                if (
+                    application.status == CardApplication.STATUS_ACTIVATION_PENDING
+                    and application.cancellation_due_at is not None
+                    and application.cancellation_due_at <= timezone.now()
+                ):
+                    return Response(
+                        {'error': 'The cancellation period has ended. This application can be approved after it appears in canceled applications.'},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                if CardApplicationAsset.objects.filter(
+                    user_id=application.user_id,
+                    ticker=application.source_asset,
+                ).exclude(application_id=application.pk).exists():
+                    return Response(
+                        {'error': 'This user has since reserved that asset for another application. Review that application before approving this one.'},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                CardApplicationAsset.objects.get_or_create(
+                    user_id=application.user_id,
+                    ticker=application.source_asset,
+                    defaults={'application': application},
+                )
+
+                if application.approval_email_sent_at is None:
+                    if not send_card_application_approval_email(application):
+                        raise CardReviewApprovalEmailError
+                    application.approval_email_sent_at = timezone.now()
+
+                application.status = CardApplication.STATUS_APPROVED
+                application.cancellation_due_at = None
+                application.save(update_fields=[
+                    'status',
+                    'cancellation_due_at',
+                    'approval_email_sent_at',
+                    'updated_at',
+                ])
+        except CardReviewApprovalEmailError:
+            return Response(
+                {'error': 'The approval email could not be sent. The application status was not changed.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except IntegrityError:
+            return Response(
+                {'error': 'This user has since reserved that asset for another application. Review that application before approving this one.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response({'status': CardApplication.STATUS_APPROVED})
+
+
+def build_user_report_response(user, request):
     from django.utils.text import slugify
     from generate_user_report import generate_user_report_bytes
 
-    report_bytes = generate_user_report_bytes(user)
+    currency = (user.display_currency or 'USD').upper()
+    currency_rate = Decimal('1')
+    exchange_rate_as_of = None
+    if currency != 'USD':
+        raw_rate = request.query_params.get('display_currency_rate')
+        raw_rate_as_of = request.query_params.get('display_currency_rate_as_of')
+        try:
+            currency_rate = Decimal(raw_rate or '')
+            if not currency_rate.is_finite() or currency_rate <= 0:
+                raise ValueError
+        except (ArithmeticError, ValueError):
+            raise serializers.ValidationError({
+                'display_currency_rate': 'A positive, finite exchange rate is required for your selected currency.',
+            })
+
+        try:
+            parsed_rate_as_of = parsedate_to_datetime(raw_rate_as_of or '')
+            if parsed_rate_as_of.tzinfo is None:
+                raise ValueError
+            exchange_rate_as_of = parsed_rate_as_of.astimezone(datetime_timezone.utc).strftime(
+                '%B %d, %Y at %H:%M UTC'
+            )
+        except (TypeError, ValueError, OverflowError):
+            raise serializers.ValidationError({
+                'display_currency_rate_as_of': 'A valid exchange-rate update time is required for your selected currency.',
+            })
+
+    report_bytes = generate_user_report_bytes(
+        user,
+        currency_rate=currency_rate,
+        exchange_rate_as_of=exchange_rate_as_of,
+        display_currency=currency,
+    )
     report_date = timezone.now().strftime('%Y-%m-%d')
     user_identifier = slugify(user.email) or str(user.pk)
     response = HttpResponse(report_bytes, content_type='application/pdf')
@@ -244,7 +553,7 @@ class UserReportDownloadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request):
-        return build_user_report_response(request.user)
+        return build_user_report_response(request.user, request)
 
 
 class AdminUserReportDownloadView(APIView):
@@ -254,7 +563,7 @@ class AdminUserReportDownloadView(APIView):
 
     def get(self, request: Request, user_id: int):
         target_user = get_object_or_404(User, pk=user_id)
-        return build_user_report_response(target_user)
+        return build_user_report_response(target_user, request)
 
 
 # ---------- Auth Login/Registration ----------
@@ -303,6 +612,77 @@ class LoginView(APIView):
                 for candidate in shared_group.users.filter(is_active=True)
             })
         candidates = sorted(candidates_by_id.values(), key=lambda candidate: candidate.pk)
+        if any(candidate.password_setup_required for candidate in candidates):
+            setup_users_by_id = {}
+            for candidate in candidates:
+                for linked_user in get_password_reset_accounts(candidate):
+                    setup_users_by_id[linked_user.pk] = linked_user
+            setup_users = sorted(setup_users_by_id.values(), key=lambda candidate: candidate.pk)
+            delivery_email = delivery_email_for_user(setup_users[0])
+            now = timezone.now()
+            FirstLoginPasswordSetupChallenge.objects.filter(
+                inbox_email__iexact=delivery_email,
+                used_at__isnull=True,
+                expires_at__gt=now,
+            ).update(used_at=now)
+            challenge, raw_challenge, code = FirstLoginPasswordSetupChallenge.generate_challenge(
+                setup_users,
+                delivery_email,
+            )
+            try:
+                account_name = ' '.join(
+                    part for part in (
+                        setup_users[0].first_name.strip(),
+                        setup_users[0].last_name.strip(),
+                    )
+                    if part
+                ) or setup_users[0].username
+                sent_count = send_mail(
+                    subject='Your Crypgo password setup code',
+                    message=(
+                        f'Hello {account_name},\n\n'
+                        'We received a request to set up a password for your Crypgo account. '
+                        'Enter the verification code below to confirm your email and continue:\n\n'
+                        f'Verification code: {code}\n\n'
+                        'This code expires in 15 minutes. After verifying your email, you will '
+                        'be asked to confirm the password you chose. Your password will not '
+                        'change until you confirm.\n\n'
+                        "If you did not request this, you can ignore this email. No changes "
+                        'will be made to your password.\n\n'
+                        'Regards,\n'
+                        'Crypgo Support'
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[delivery_email],
+                    fail_silently=False,
+                )
+            except (smtplib.SMTPException, OSError) as error:
+                challenge.delete()
+                logger.exception(
+                    'Could not send first-login password setup code to %s.',
+                    delivery_email,
+                )
+                return Response(
+                    {'error': 'Unable to send the verification code. Please try again.'},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+            if sent_count != 1:
+                challenge.delete()
+                logger.error(
+                    'First-login password setup email was not accepted for %s.',
+                    delivery_email,
+                )
+                return Response(
+                    {'error': 'Unable to send the verification code. Please try again.'},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+            return Response({
+                'requires_password_setup': True,
+                'setup_token': raw_challenge,
+                'email_hint': delivery_email,
+                'expires_at': challenge.expires_at,
+            }, status=status.HTTP_200_OK)
+
         matching_users = [candidate for candidate in candidates if candidate.check_password(password)]
         if not matching_users:
             return Response({'error': 'Invalid email or password.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -321,6 +701,132 @@ class LoginView(APIView):
                 'expires_at': challenge.expires_at,
             }, status=status.HTTP_200_OK)
         return issue_auth_response(matching_users[0], request, 'password')
+
+
+class FirstLoginPasswordSetupCodeVerifyView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = 'login'
+
+    def post(self, request: Request):
+        payload = get_request_data(request)
+        raw_token = payload.get('setup_token')
+        code = payload.get('code')
+        if not isinstance(raw_token, str) or not raw_token or not isinstance(code, str):
+            return Response(
+                {'error': 'Setup token and verification code are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+        with transaction.atomic():
+            challenge = FirstLoginPasswordSetupChallenge.objects.select_for_update().filter(
+                token_hash=token_hash,
+            ).first()
+            if challenge is None or not challenge.is_valid():
+                return Response(
+                    {'error': 'This verification code is invalid or expired. Please sign in again.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if challenge.verified_at:
+                return Response({'verified': True}, status=status.HTTP_200_OK)
+            if not challenge.check_code(code):
+                challenge.attempts += 1
+                if challenge.attempts >= 5:
+                    challenge.used_at = timezone.now()
+                challenge.save(update_fields=['attempts', 'used_at'])
+                return Response(
+                    {'error': 'The verification code is incorrect or expired.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            challenge.verified_at = timezone.now()
+            challenge.save(update_fields=['verified_at'])
+
+        return Response({'verified': True}, status=status.HTTP_200_OK)
+
+
+class FirstLoginPasswordSetupCompleteView(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = 'login'
+
+    def post(self, request: Request):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+
+        payload = get_request_data(request)
+        raw_token = payload.get('setup_token')
+        password = payload.get('password')
+        if not isinstance(raw_token, str) or not raw_token or not isinstance(password, str):
+            return Response(
+                {'error': 'Setup token and password are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+        with transaction.atomic():
+            challenge = FirstLoginPasswordSetupChallenge.objects.select_for_update().filter(
+                token_hash=token_hash,
+            ).first()
+            if (
+                challenge is None
+                or not challenge.is_valid()
+                or challenge.verified_at is None
+            ):
+                return Response(
+                    {'error': 'Verify your email code before setting a password.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            users = list(
+                challenge.users.select_for_update().order_by('pk')
+            )
+            if not users or not any(user.password_setup_required for user in users):
+                return Response(
+                    {'error': 'Password setup is no longer required. Please sign in.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            password_errors = []
+            for user in users:
+                try:
+                    validate_password(password, user=user)
+                except ValidationError as error:
+                    password_errors.extend(error.messages)
+            if password_errors:
+                return Response(
+                    {'error': ' '.join(dict.fromkeys(password_errors))},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            for user in users:
+                user.set_password(password)
+                user.password_setup_required = False
+                user.save(update_fields=['password', 'password_setup_required'])
+
+            challenge.used_at = timezone.now()
+            challenge.save(update_fields=['used_at'])
+            active_users = [user for user in users if user.is_active]
+            if len(active_users) > 1:
+                account_challenge, raw_account_challenge = AccountSelectionChallenge.generate_challenge(
+                    active_users,
+                    AccountSelectionChallenge.Purpose.LOGIN,
+                    context={'password_setup_completed': True},
+                )
+                return Response({
+                    'requires_account_selection': True,
+                    'selection_token': raw_account_challenge,
+                    'accounts': [
+                        build_account_choice(user, index, inbox_email=normalize_shared_inbox(user.email))
+                        for index, user in enumerate(active_users)
+                    ],
+                    'expires_at': account_challenge.expires_at,
+                }, status=status.HTTP_200_OK)
+
+        if not active_users:
+            return Response(
+                {'error': 'No active account is available. Please contact support.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return issue_auth_response(active_users[0], request, 'password')
 
 
 def get_shared_inbox_accounts(email: str) -> list[CustomUser]:
@@ -791,6 +1297,60 @@ def export_campaign_recipients(request, campaign_ref):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def export_campaign_accounts(request, campaign_ref):
+    """Export individual Crypgo accounts for a Bot-admin targeted email."""
+    signature = request.headers.get('X-Bot-Signature', '')
+    expected = hmac.new(
+        settings.BOT_SERVICE_KEY.encode('utf-8'), request.body, hashlib.sha256
+    ).hexdigest()
+    if not settings.BOT_SERVICE_KEY or not hmac.compare_digest(signature, expected):
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = get_request_data(request)
+    user_ids = payload.get('user_ids')
+    if user_ids is not None and (
+        not isinstance(user_ids, list)
+        or not user_ids
+        or any(not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0 for user_id in user_ids)
+    ):
+        return Response(
+            {'error': 'user_ids must be a non-empty list of positive integers.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    users = User.objects.filter(is_active=True).exclude(
+        email__iexact='admin@crypgo.com'
+    ).exclude(
+        is_staff=True
+    ).exclude(
+        is_superuser=True
+    )
+    if user_ids is not None:
+        users = users.filter(pk__in=set(user_ids))
+    users = list(users.order_by('pk'))
+    if user_ids is not None and {user.pk for user in users} != set(user_ids):
+        return Response(
+            {'error': 'One or more selected accounts are no longer active.'},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    accounts = []
+    for user in users:
+        account = {
+            'external_user_id': str(user.pk),
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+        }
+        if user_ids is not None:
+            account['dashboard_url'] = build_campaign_access_url(user, str(campaign_ref))
+        accounts.append(account)
+
+    return Response({'accounts': accounts})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def create_campaign_access_link(request, campaign_ref):
     """Issue one independent campaign link for a Bot lead."""
     signature = request.headers.get('X-Bot-Signature', '')
@@ -984,7 +1544,7 @@ class RefreshTokenView(APIView):
         try:
             token = RefreshToken(refresh_token)
             refresh_lifetime = getattr(settings, 'SIMPLE_JWT', {}).get(
-                'REFRESH_TOKEN_LIFETIME', timedelta(minutes=15)
+                'REFRESH_TOKEN_LIFETIME', timedelta(hours=3)
             )
             session_expires_at = int(token['iat']) + int(refresh_lifetime.total_seconds())
             now = int(timezone.now().timestamp())
@@ -1554,6 +2114,12 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
     def put(self, request, *args, **kwargs):
         user = self.get_object()
         data = request.data.copy()
+        protected_identity_fields = {'country', 'location', 'date_of_birth', 'dateOfBirth'}
+        if protected_identity_fields.intersection(data.keys()):
+            return Response(
+                {'error': 'Region and date of birth are updated through identity document verification.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         field_map = {
             'firstName': 'first_name',
             'lastName': 'last_name',
@@ -1582,6 +2148,774 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
             if related_user_ids:
                 CustomUser.objects.filter(pk__in=related_user_ids).update(**updates)
         return Response(shared_profile_data(user))
+
+    def patch(self, request, *args, **kwargs):
+        return self.put(request, *args, **kwargs)
+
+
+def _create_card_application(user, source_asset=''):
+    with transaction.atomic():
+        application = CardApplication.objects.create(
+            user=user,
+            source_asset=source_asset,
+        )
+        for _ in range(10):
+            try:
+                with transaction.atomic():
+                    CardApplicationNumber.objects.create(application=application)
+                break
+            except IntegrityError:
+                continue
+        else:
+            raise RuntimeError('Could not allocate a unique card application number.')
+        if source_asset:
+            CardApplicationAsset.objects.create(
+                user=user,
+                ticker=source_asset,
+                application=application,
+            )
+    return application
+
+
+def _import_legacy_card_application(user):
+    issuer = CardIssuer.objects.filter(user=user).first()
+    if issuer is None:
+        return None
+
+    issued_at = issuer.issued_at or timezone.now()
+    expiry_date = issuer.expiry_date or date(
+        issued_at.year + 5,
+        issued_at.month,
+        1,
+    )
+    with transaction.atomic():
+        application = CardApplication.objects.create(
+            user=user,
+            source_asset=issuer.source_asset,
+            status=(
+                CardApplication.STATUS_ACTIVATION_PENDING
+                if issuer.activation_pending
+                else CardApplication.STATUS_DRAFT
+            ),
+            issued_at=issued_at,
+            expiry_date=expiry_date,
+        )
+        CardApplicationNumber.objects.create(
+            number=issuer.card_issuer_number,
+            application=application,
+        )
+        if issuer.source_asset:
+            CardApplicationAsset.objects.create(
+                user=user,
+                ticker=issuer.source_asset,
+                application=application,
+            )
+        CardDeliveryAddress.objects.filter(
+            user=user,
+            application__isnull=True,
+        ).update(application=application)
+        CardActivationCode.objects.filter(
+            user=user,
+            application__isnull=True,
+        ).update(application=application)
+    return application
+
+
+def _resolve_card_application(user, application_id=None, create_if_missing=False):
+    applications = (
+        CardApplication.objects.filter(user=user)
+        .exclude(status=CardApplication.STATUS_CANCELED)
+        .order_by('created_at', 'pk')
+    )
+    if application_id is not None:
+        try:
+            application_id = int(application_id)
+        except (TypeError, ValueError):
+            return None, 'application_id must be a valid application identifier.'
+        application = applications.filter(pk=application_id).first()
+        return (application, None) if application else (None, 'Card application not found.')
+
+    if applications.count() == 1:
+        return applications.first(), None
+    if applications.count() > 1:
+        return None, 'application_id is required when you have multiple applications.'
+    legacy_application = _import_legacy_card_application(user)
+    if legacy_application is not None:
+        return legacy_application, None
+    if create_if_missing:
+        application = _create_card_application(user)
+        CardDeliveryAddress.objects.filter(
+            user=user,
+            application__isnull=True,
+        ).update(application=application)
+        CardActivationCode.objects.filter(
+            user=user,
+            application__isnull=True,
+        ).update(application=application)
+        return application, None
+    return None, 'No card application was found.'
+
+
+def _application_error(message):
+    code = status.HTTP_404_NOT_FOUND if message == 'Card application not found.' else status.HTTP_400_BAD_REQUEST
+    return Response({'error': message}, status=code)
+
+
+def _duplicate_card_asset_response(user, ticker):
+    existing_reservation = CardApplicationAsset.objects.filter(
+        user=user,
+        ticker=ticker,
+    ).select_related('application').first()
+    if (
+        existing_reservation is not None
+        and existing_reservation.application is not None
+        and existing_reservation.application.status == CardApplication.STATUS_ACTIVATION_PENDING
+    ):
+        return Response(
+            {
+                'error': 'You already have a pending card application. Choose a different asset.',
+                'code': 'CARD_APPLICATION_ALREADY_PENDING',
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+    return Response(
+        {'error': 'This source asset has already been used by one of your applications.'},
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
+class CardApplicationsView(APIView):
+    """List the authenticated user's card applications or create a new one."""
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'user_me'
+
+    def get(self, request: Request):
+        used_assets = set(
+            CardApplicationAsset.objects.filter(user=request.user)
+            .values_list('ticker', flat=True)
+        )
+        return Response({
+            'applications': CardApplicationSerializer(
+                CardApplication.objects.filter(user=request.user)
+                .exclude(status=CardApplication.STATUS_CANCELED)
+                .order_by('-created_at', '-pk'),
+                many=True,
+            ).data,
+            'available_source_assets': [
+                ticker for ticker in SUPPORTED_WALLET_ASSETS if ticker not in used_assets
+            ],
+        })
+
+    def post(self, request: Request):
+        serializer = CardApplicationSerializer(data={
+            'source_asset': request.data.get('source_asset', ''),
+        })
+        serializer.is_valid(raise_exception=True)
+        source_asset = serializer.validated_data['source_asset']
+        address_data = request.data.get('address')
+        address_serializer = None
+        if address_data is not None:
+            address_serializer = CardDeliveryAddressSerializer(data=address_data)
+            address_serializer.is_valid(raise_exception=True)
+
+        try:
+            with transaction.atomic():
+                application = _create_card_application(request.user, source_asset)
+                if address_serializer is not None:
+                    CardDeliveryAddress.objects.create(
+                        user=request.user,
+                        application=application,
+                        **address_serializer.validated_data,
+                    )
+        except IntegrityError:
+            if source_asset:
+                return _duplicate_card_asset_response(request.user, source_asset)
+            raise
+        except RuntimeError:
+            logger.exception('Could not allocate a card application number for user %s', request.user.pk)
+            return Response(
+                {'error': 'A card application could not be created. Please try again.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(CardApplicationSerializer(application).data, status=status.HTTP_201_CREATED)
+
+
+class CardApplicationDetailView(APIView):
+    """Read, update, or delete an application owned by the authenticated user."""
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'user_me'
+
+    def get_object(self, request, pk):
+        return (
+            CardApplication.objects.filter(user=request.user, pk=pk)
+            .exclude(status=CardApplication.STATUS_CANCELED)
+            .first()
+        )
+
+    def get(self, request: Request, pk: int):
+        application = self.get_object(request, pk)
+        if application is None:
+            return Response({'error': 'Card application not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(CardApplicationSerializer(application).data)
+
+    def patch(self, request: Request, pk: int):
+        application = self.get_object(request, pk)
+        if application is None:
+            return Response({'error': 'Card application not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        source_asset = request.data.get('source_asset')
+        address_data = request.data.get('address')
+        if source_asset is None and address_data is None:
+            return Response({'error': 'Provide source_asset or address to update.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if source_asset is not None:
+            source_serializer = CardApplicationSerializer(
+                application,
+                data={'source_asset': source_asset},
+                partial=True,
+            )
+            source_serializer.is_valid(raise_exception=True)
+            source_asset = source_serializer.validated_data['source_asset']
+
+        address_serializer = None
+        if address_data is not None:
+            has_delivery_address = CardDeliveryAddress.objects.filter(
+                application=application,
+            ).exists()
+            address_serializer = CardDeliveryAddressSerializer(
+                data=address_data,
+                partial=has_delivery_address,
+            )
+            address_serializer.is_valid(raise_exception=True)
+
+        try:
+            with transaction.atomic():
+                if source_asset is not None and source_asset != application.source_asset:
+                    CardApplicationAsset.objects.create(
+                        user=request.user,
+                        ticker=source_asset,
+                        application=application,
+                    )
+                    application.source_asset = source_asset
+                    application.save(update_fields=['source_asset', 'updated_at'])
+                if address_serializer is not None:
+                    CardDeliveryAddress.objects.update_or_create(
+                        application=application,
+                        defaults={
+                            'user': request.user,
+                            **address_serializer.validated_data,
+                        },
+                    )
+        except IntegrityError:
+            if source_asset is not None:
+                return _duplicate_card_asset_response(request.user, source_asset)
+            raise
+
+        application.refresh_from_db()
+        return Response(CardApplicationSerializer(application).data)
+
+    def delete(self, request: Request, pk: int):
+        application = self.get_object(request, pk)
+        if application is None:
+            return Response({'error': 'Card application not found.'}, status=status.HTTP_404_NOT_FOUND)
+        legacy_number = application.card_number
+        with transaction.atomic():
+            application.delete()
+            if legacy_number is not None:
+                CardIssuer.objects.filter(
+                    user=request.user,
+                    card_issuer_number=legacy_number,
+                ).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CardApplicationApprovalNoticeDismissView(APIView):
+    """Persist that the owner dismissed their card-approval success screen."""
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'user_me'
+
+    def post(self, request: Request, pk: int):
+        application = CardApplication.objects.filter(
+            user=request.user,
+            pk=pk,
+            status=CardApplication.STATUS_APPROVED,
+        ).first()
+        if application is None:
+            return Response(
+                {'error': 'Approved card application not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if application.approval_notice_dismissed_at is None:
+            application.approval_notice_dismissed_at = timezone.now()
+            application.save(update_fields=[
+                'approval_notice_dismissed_at',
+                'updated_at',
+            ])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CardIssuerView(APIView):
+    """Compatibility API for the existing single-card application flow."""
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'user_me'
+
+    def get(self, request: Request):
+        application, error = _resolve_card_application(
+            request.user,
+            request.query_params.get('application_id'),
+        )
+        if error:
+            return _application_error(error)
+        user = cast(CustomUser, request.user)
+        return Response({
+            'card_issuer_number': application.card_number,
+            'cardholder_name': (
+                ' '.join(part for part in (user.first_name.strip(), user.last_name.strip()) if part)
+                or user.username or user.email.partition('@')[0] or 'CRYPGO USER'
+            ),
+            'expiry': application.expiry_date.strftime('%m/%y'),
+            'is_non_functional': True,
+            'activation_pending': application.status == CardApplication.STATUS_ACTIVATION_PENDING,
+            'source_asset': application.source_asset or None,
+            'application_id': application.pk,
+        })
+
+    def patch(self, request: Request):
+        source_asset = request.data.get('source_asset')
+        if not isinstance(source_asset, str):
+            return Response({'error': 'Select a valid source asset.'}, status=status.HTTP_400_BAD_REQUEST)
+        source_asset = source_asset.strip().upper()
+        if source_asset not in SUPPORTED_WALLET_ASSETS:
+            return Response({'error': 'Select a supported source asset.'}, status=status.HTTP_400_BAD_REQUEST)
+        application, error = _resolve_card_application(
+            request.user,
+            request.data.get('application_id'),
+            create_if_missing=True,
+        )
+        if error:
+            return _application_error(error)
+        if application.source_asset != source_asset:
+            try:
+                with transaction.atomic():
+                    CardApplicationAsset.objects.create(
+                        user=request.user,
+                        ticker=source_asset,
+                        application=application,
+                    )
+                    application.source_asset = source_asset
+                    application.save(update_fields=['source_asset', 'updated_at'])
+            except IntegrityError:
+                return _duplicate_card_asset_response(request.user, source_asset)
+        return Response({'source_asset': source_asset}, status=status.HTTP_200_OK)
+
+    def delete(self, request: Request):
+        application, error = _resolve_card_application(
+            request.user,
+            request.query_params.get('application_id'),
+        )
+        if error:
+            return _application_error(error)
+        if application.status != CardApplication.STATUS_ACTIVATION_PENDING:
+            return Response(
+                {'error': 'No pending card application was found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        legacy_number = application.card_number
+        with transaction.atomic():
+            application.delete()
+            if legacy_number is not None:
+                CardIssuer.objects.filter(
+                    user=request.user,
+                    card_issuer_number=legacy_number,
+                ).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CardDeliveryAddressView(APIView):
+    """Compatibility address API; application_id is required when multiple applications exist."""
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'user_me'
+
+    def get(self, request: Request):
+        application_id = request.query_params.get('application_id')
+        if application_id is None and not CardApplication.objects.filter(user=request.user).exists():
+            return Response({'has_address': False, 'address': None})
+        if application_id is None and CardApplication.objects.filter(user=request.user).count() > 1:
+            return Response({
+                'has_address': CardDeliveryAddress.objects.filter(
+                    user=request.user,
+                    application__isnull=False,
+                ).exists(),
+                'address': None,
+            })
+        application, error = _resolve_card_application(
+            request.user,
+            application_id,
+        )
+        if error:
+            if error == 'No card application was found.':
+                return Response({'has_address': False, 'address': None})
+            return _application_error(error)
+        address = CardDeliveryAddress.objects.filter(application=application).first()
+        if address is None:
+            # Attach a pre-application address created by the previous API version.
+            address = CardDeliveryAddress.objects.filter(
+                user=request.user,
+                application__isnull=True,
+            ).first()
+            if address is not None:
+                address.application = application
+                address.save(update_fields=['application'])
+        if address is None:
+            return Response({'has_address': False, 'address': None})
+        return Response({
+            'has_address': True,
+            'address': CardDeliveryAddressSerializer(address).data,
+        })
+
+    def put(self, request: Request):
+        application, error = _resolve_card_application(
+            request.user,
+            request.data.get('application_id'),
+            create_if_missing=True,
+        )
+        if error:
+            return _application_error(error)
+        serializer = CardDeliveryAddressSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        address, _ = CardDeliveryAddress.objects.update_or_create(
+            application=application,
+            defaults={'user': request.user, **serializer.validated_data},
+        )
+        return Response({
+            'has_address': True,
+            'address': CardDeliveryAddressSerializer(address).data,
+            'application_id': application.pk,
+        })
+
+
+class CardActivationCodeRequestView(APIView):
+    """Issue and email a unique, single-use card activation code."""
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'card_activation_request'
+    resend_cooldown_seconds = 30
+
+    def get_resend_cooldown(self, issued_at, now):
+        remaining = self.resend_cooldown_seconds - (now - issued_at).total_seconds()
+        return max(0, math.ceil(remaining))
+
+    def get_throttles(self):
+        active_codes = CardActivationCode.objects.filter(
+            user=self.request.user,
+            consumed_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+        application_id = self.request.data.get('application_id')
+        if type(application_id) is int and application_id > 0:
+            active_codes = active_codes.filter(application_id=application_id)
+        if (
+            self.request.method == 'POST'
+            and self.request.user.is_authenticated
+            and self.request.data.get('resend', False) is False
+            and active_codes.exists()
+        ):
+            return [
+                throttle
+                for throttle in super().get_throttles()
+                if not isinstance(throttle, ScopedRateThrottle)
+            ]
+        return super().get_throttles()
+
+    def post(self, request: Request):
+        user = cast(CustomUser, request.user)
+        application, error = _resolve_card_application(
+            user,
+            request.data.get('application_id'),
+            create_if_missing=True,
+        )
+        if error:
+            return _application_error(error)
+        if application.status != CardApplication.STATUS_DRAFT:
+            return Response(
+                {'error': 'This card application has already been submitted.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        resend = request.data.get('resend', False)
+        if not isinstance(resend, bool):
+            return Response(
+                {'error': 'The resend value must be true or false.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not CardDeliveryAddress.objects.filter(application=application).exists():
+            return Response(
+                {'error': 'Save your card delivery address before requesting an activation code.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        code = ''
+        token = None
+        with transaction.atomic():
+            User.objects.select_for_update().get(pk=user.pk)
+            active_code = CardActivationCode.objects.filter(
+                user=user,
+                application=application,
+                consumed_at__isnull=True,
+                expires_at__gt=now,
+            ).order_by('-issued_at').first()
+            latest_code = CardActivationCode.objects.filter(
+                user=user,
+                application=application,
+            ).order_by('-issued_at').first()
+            resend_available_in = (
+                self.get_resend_cooldown(latest_code.issued_at, now)
+                if latest_code is not None
+                else 0
+            )
+            if resend and resend_available_in:
+                return Response(
+                    {
+                        'detail': 'Please wait before requesting another code.',
+                        'resend_available_in': resend_available_in,
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            if active_code is not None and not resend:
+                return Response(
+                    {
+                        'detail': 'Please check your email.',
+                        'sent': False,
+                        'resend_available_in': self.get_resend_cooldown(
+                            active_code.issued_at,
+                            now,
+                        ),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            CardActivationCode.objects.filter(
+                user=user,
+                application=application,
+                consumed_at__isnull=True,
+                expires_at__gt=now,
+            ).update(consumed_at=now)
+
+            for _ in range(10):
+                code = get_random_string(
+                    6,
+                    allowed_chars='0123456789',
+                )
+                code_hash = hmac.new(
+                    str(settings.SECRET_KEY).encode('utf-8'),
+                    code.encode('ascii'),
+                    hashlib.sha256,
+                ).hexdigest()
+                try:
+                    with transaction.atomic():
+                        token = CardActivationCode.objects.create(
+                            user=user,
+                            application=application,
+                            code_hash=code_hash,
+                            expires_at=now + timedelta(minutes=15),
+                        )
+                    break
+                except IntegrityError:
+                    continue
+
+        if token is None:
+            logger.error('Unable to allocate a unique card activation code for user %s', user.pk)
+            return Response(
+                {'error': 'A verification code could not be generated. Please try again.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        subject = 'Complete your card activation'
+        recipient_name = (
+            user.get_full_name().strip()
+            or user.username
+            or user.email.partition('@')[0]
+            or 'there'
+        )
+        message = (
+            f'Hi {recipient_name},\n\n'
+            'To complete your Crypgo card activation, enter this verification code '
+            'on the activation screen:\n\n'
+            f'{code}\n\n'
+            'This code expires in 15 minutes. Keep it private; Crypgo will never ask you '
+            'to share it.\n\n'
+            'If you didn’t request this card activation code, you can ignore this email. '
+            'If you’re concerned that someone may have accessed your account, visit '
+            'https://crypgo.us.ci/ and change your password.\n\n'
+            'Thanks,\n'
+            'Crypgo'
+        )
+        try:
+            sent_count = send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+                fail_silently=False,
+            )
+            if sent_count != 1:
+                raise RuntimeError('Email backend did not confirm activation code delivery.')
+        except Exception:
+            CardActivationCode.objects.filter(pk=token.pk, consumed_at__isnull=True).update(
+                consumed_at=timezone.now(),
+            )
+            logger.exception('Failed to email card activation code to user %s', user.pk)
+            return Response(
+                {'error': 'The verification email could not be sent. Please try again later.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {
+                'detail': 'Please check your email.',
+                'sent': True,
+                'resend_available_in': self.get_resend_cooldown(
+                    token.issued_at,
+                    timezone.now(),
+                ),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class CardActivationCodeVerifyView(APIView):
+    """Consume a valid activation code once for its intended account."""
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'card_activation_verify'
+
+    def post(self, request: Request):
+        code = request.data.get('code')
+        if not isinstance(code, str) or len(code) != 6 or not code.isdigit():
+            return Response(
+                {'error': 'Enter a valid six-digit activation code.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        code_hash = hmac.new(
+            str(settings.SECRET_KEY).encode('utf-8'),
+            code.encode('ascii'),
+            hashlib.sha256,
+        ).hexdigest()
+        activation_codes = CardActivationCode.objects.filter(
+            user=request.user,
+            code_hash=code_hash,
+            consumed_at__isnull=True,
+            expires_at__gt=timezone.now(),
+        )
+        application_id = request.data.get('application_id')
+        if application_id is not None:
+            if type(application_id) is not int or application_id <= 0:
+                return Response(
+                    {'error': 'The application_id must be a valid application identifier.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            activation_codes = activation_codes.filter(application_id=application_id)
+        with transaction.atomic():
+            activation_code = CardActivationCode.objects.select_for_update().filter(
+                pk__in=activation_codes.values('pk'),
+            ).first()
+            if activation_code is None:
+                return Response(
+                    {'error': 'The activation code is invalid or expired.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            application = activation_code.application
+            if application is None:
+                return Response(
+                    {'error': 'The card application for this activation code no longer exists.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if application.status != CardApplication.STATUS_DRAFT:
+                return Response(
+                    {'error': 'This card application has already been submitted.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            verified_at = timezone.now()
+            activation_code.consumed_at = verified_at
+            activation_code.save(update_fields=['consumed_at'])
+            application.status = CardApplication.STATUS_ACTIVATION_PENDING
+            application.cancellation_due_at = verified_at + timedelta(hours=23)
+            application.save(update_fields=[
+                'status',
+                'cancellation_due_at',
+                'updated_at',
+            ])
+
+        processing_ticket = signing.dumps(
+            {
+                'user_id': request.user.pk,
+                'activation_code_id': activation_code.pk,
+                'application_id': activation_code.application_id,
+            },
+            salt='users.card-activation.processing',
+        )
+        return Response(
+            {
+                'verified': True,
+                'processing_ticket': processing_ticket,
+                'application_id': activation_code.application_id,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class CardActivationProcessingAccessView(APIView):
+    """Confirm the requester verified an emailed activation code before showing processing."""
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'card_activation_verify'
+
+    def post(self, request: Request):
+        ticket = request.data.get('ticket')
+        if not isinstance(ticket, str) or not ticket:
+            return Response(
+                {'error': 'A valid activation verification is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            payload = signing.loads(
+                ticket,
+                salt='users.card-activation.processing',
+                max_age=15 * 60,
+            )
+        except signing.BadSignature:
+            return Response(
+                {'error': 'The activation verification is invalid or expired.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if (
+            not isinstance(payload, dict)
+            or type(payload.get('user_id')) is not int
+            or payload.get('user_id') != request.user.pk
+            or type(payload.get('activation_code_id')) is not int
+            or type(payload.get('application_id')) is not int
+        ):
+            return Response(
+                {'error': 'The activation verification is invalid or expired.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        is_valid = CardActivationCode.objects.filter(
+            pk=payload['activation_code_id'],
+            user=request.user,
+            application_id=payload['application_id'],
+            consumed_at__isnull=False,
+            expires_at__gt=timezone.now(),
+        ).exists()
+        if not is_valid:
+            return Response(
+                {'error': 'The activation verification is invalid or expired.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({'authorized': True}, status=status.HTTP_200_OK)
 
 
 # ---------- Authenticated Wallet ----------
@@ -1907,6 +3241,19 @@ class MyKYCDocumentCreateView(generics.CreateAPIView):
             status='success',
             metadata={'document_id': doc.pk, 'document_type': document_type}
         )
+        user = cast(CustomUser, request.user)
+        user.kyc_status = 'rejected' if document_status == 'rejected' else 'pending'
+        user.identity_details_verified = False
+        user.kyc_submitted_at = timezone.now()
+        user.kyc_rejection_reason = (
+            screening['screening_reason'] if document_status == 'rejected' else None
+        )
+        user.save(update_fields=[
+            'kyc_status',
+            'identity_details_verified',
+            'kyc_submitted_at',
+            'kyc_rejection_reason',
+        ])
 
         serializer = KYCDocumentSerializer(doc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -2052,7 +3399,43 @@ class AdminKYCDocumentReviewView(APIView):
                 user.kyc_status = 'verified'
                 user.kyc_reviewed_at = timezone.now()
                 user.kyc_reviewed_by = request.user
-                user.save(update_fields=['kyc_status', 'kyc_reviewed_at', 'kyc_reviewed_by'])
+                front_document = KYCDocument.objects.filter(
+                    user=user,
+                    document_type='id_front',
+                    status='approved',
+                ).first()
+                address_document = KYCDocument.objects.filter(
+                    user=user,
+                    document_type='proof_address',
+                    status='approved',
+                ).first()
+                dob_value = (
+                    front_document.extracted_data.get('date_of_birth_candidate')
+                    if front_document and isinstance(front_document.extracted_data, dict)
+                    else None
+                )
+                region_value = (
+                    address_document.extracted_data.get('region_candidate')
+                    if address_document and isinstance(address_document.extracted_data, dict)
+                    else None
+                )
+                update_fields = ['kyc_status', 'kyc_reviewed_at', 'kyc_reviewed_by']
+                try:
+                    if isinstance(dob_value, str) and isinstance(region_value, str) and region_value.strip():
+                        user.date_of_birth = date.fromisoformat(dob_value)
+                        user.country = region_value.strip()
+                        user.identity_details_verified = True
+                        update_fields.extend([
+                            'date_of_birth',
+                            'country',
+                            'identity_details_verified',
+                        ])
+                except ValueError:
+                    logger.warning(
+                        'KYC OCR identity values were invalid for user id %s; identity fields remain hidden.',
+                        user.pk,
+                    )
+                user.save(update_fields=update_fields)
             
         elif action == 'reject':
             document.status = 'rejected'
@@ -2067,7 +3450,14 @@ class AdminKYCDocumentReviewView(APIView):
             user.kyc_rejection_reason = rejection_reason
             user.kyc_reviewed_at = timezone.now()
             user.kyc_reviewed_by = request.user
-            user.save(update_fields=['kyc_status', 'kyc_rejection_reason', 'kyc_reviewed_at', 'kyc_reviewed_by'])
+            user.identity_details_verified = False
+            user.save(update_fields=[
+                'kyc_status',
+                'kyc_rejection_reason',
+                'kyc_reviewed_at',
+                'kyc_reviewed_by',
+                'identity_details_verified',
+            ])
         else:
             return Response({'error': 'Invalid action. Use "approve" or "reject".'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2379,14 +3769,6 @@ class TransferView(APIView):
             destination_address = validated_data.get('destination_address') or str(recipient).strip()
             fee = amount * Decimal('0.001')
             with transaction.atomic():
-                locked_user, blocked = begin_guarded_transaction(user)
-                if blocked:
-                    send_transaction_caution_email(locked_user)
-                    return Response({
-                        'code': 'TRANSACTION_CAUTION_REQUIRED',
-                        'message': 'This transaction was blocked by your account safety limit.',
-                    }, status=status.HTTP_409_CONFLICT)
-
                 wallet.available_quantity -= (amount + fee)
                 wallet.quantity -= (amount + fee)
                 wallet.save(update_fields=['available_quantity', 'quantity'])
@@ -2408,7 +3790,6 @@ class TransferView(APIView):
                     status='success',
                     metadata={'amount': str(amount), 'asset': asset, 'txid': tx.txid, 'address': destination_address},
                 )
-                record_guarded_transaction(locked_user)
 
             return Response({
                 'success': True,
@@ -2417,14 +3798,6 @@ class TransferView(APIView):
             })
 
         with transaction.atomic():
-            locked_user, blocked = begin_guarded_transaction(user)
-            if blocked:
-                send_transaction_caution_email(locked_user)
-                return Response({
-                    'code': 'TRANSACTION_CAUTION_REQUIRED',
-                    'message': 'This transaction was blocked by your account safety limit.',
-                }, status=status.HTTP_409_CONFLICT)
-
             # Get or create recipient wallet
             recipient_wallet, _ = WalletAsset.objects.get_or_create(
                 user=recipient,
@@ -2492,7 +3865,6 @@ class TransferView(APIView):
                 status='success',
                 metadata={'amount': str(amount), 'asset': asset, 'recipient': recipient.email, 'txid': sender_tx.txid},
             )
-            record_guarded_transaction(locked_user)
 
         return Response({
             'success': True,
@@ -2614,14 +3986,6 @@ class SwapCryptoView(APIView):
         to_amount = usd_value / to_price
         
         with transaction.atomic():
-            locked_user, blocked = begin_guarded_transaction(user)
-            if blocked:
-                send_transaction_caution_email(locked_user)
-                return Response({
-                    'code': 'TRANSACTION_CAUTION_REQUIRED',
-                    'message': 'This transaction was blocked by your account safety limit.',
-                }, status=status.HTTP_409_CONFLICT)
-
             # Deduct from asset
             wallet.available_quantity -= amount
             wallet.quantity -= amount
@@ -2660,7 +4024,6 @@ class SwapCryptoView(APIView):
                 status='success',
                 metadata={'from_asset': from_asset, 'from_amount': str(amount), 'to_asset': to_asset, 'to_amount': str(to_amount)},
             )
-            record_guarded_transaction(locked_user)
         
         return Response({
             'success': True,

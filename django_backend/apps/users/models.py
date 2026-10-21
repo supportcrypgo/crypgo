@@ -1,13 +1,27 @@
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.conf import settings
 import secrets
 import base64
 import hashlib
-from datetime import timedelta
+import hmac
+from datetime import date, timedelta
 from decimal import Decimal
+
+
+def generate_card_issuer_number():
+    """Return a payment-ineligible card issuer identifier."""
+    prefix = ''.join(secrets.SystemRandom().sample('123456789', 4))
+    remaining_groups = []
+    for _ in range(3):
+        while True:
+            group = f'{secrets.randbelow(10**4):04d}'
+            if group.count('0') <= 1:
+                remaining_groups.append(group)
+                break
+    return f"{prefix}{''.join(remaining_groups)}"
 
 
 class CustomUserManager(BaseUserManager):
@@ -40,6 +54,11 @@ class CustomUser(AbstractUser):
     objects = CustomUserManager()
     email = models.EmailField(unique=True)
     is_active = models.BooleanField(default=True)
+    password_setup_required = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text='Require email-verified first-login password setup.',
+    )
     date_joined = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -55,6 +74,7 @@ class CustomUser(AbstractUser):
     
     # Email notification preferences (JSON field)
     email_preferences = models.JSONField(default=dict, blank=True)
+    display_currency = models.CharField(max_length=3, default='USD')
 
     transaction_guard_enabled = models.BooleanField(default=False)
     transaction_guard_started_at = models.DateTimeField(blank=True, null=True)
@@ -72,6 +92,7 @@ class CustomUser(AbstractUser):
         choices=KYC_STATUS_CHOICES,
         default='none'
     )
+    identity_details_verified = models.BooleanField(default=False)
     kyc_rejection_reason = models.TextField(blank=True, null=True)
     kyc_submitted_at = models.DateTimeField(blank=True, null=True)
     kyc_reviewed_at = models.DateTimeField(blank=True, null=True)
@@ -120,6 +141,194 @@ class CustomUser(AbstractUser):
         if self.email:
             self.email = self.email.strip().lower()
         super().save(*args, **kwargs)
+
+
+class CardIssuer(models.Model):
+    """Non-functional card display details kept separate from authentication data."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='card_issuer',
+    )
+    card_issuer_number = models.CharField(
+        max_length=16,
+        unique=True,
+        default=generate_card_issuer_number,
+        editable=False,
+        help_text="Non-functional card issuer identifier; not a payment card number.",
+    )
+    issued_at = models.DateTimeField(blank=True, null=True, editable=False)
+    expiry_date = models.DateField(blank=True, null=True, editable=False)
+    activation_pending = models.BooleanField(default=False)
+    source_asset = models.CharField(max_length=10, blank=True)
+
+    def save(self, *args, **kwargs):
+        if self.issued_at is None:
+            self.issued_at = timezone.now()
+        if self.expiry_date is None:
+            self.expiry_date = date(
+                self.issued_at.year + 5,
+                self.issued_at.month,
+                1,
+            )
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'Card issuer for user {self.user_id}'
+
+
+class CardApplication(models.Model):
+    STATUS_DRAFT = 'draft'
+    STATUS_ACTIVATION_PENDING = 'activation_pending'
+    STATUS_APPROVED = 'approved'
+    STATUS_CANCELED = 'canceled'
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, 'Draft'),
+        (STATUS_ACTIVATION_PENDING, 'Activation pending'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_CANCELED, 'Canceled'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='card_applications',
+    )
+    source_asset = models.CharField(max_length=10, blank=True)
+    status = models.CharField(
+        max_length=32,
+        choices=STATUS_CHOICES,
+        default=STATUS_DRAFT,
+    )
+    cancellation_due_at = models.DateTimeField(blank=True, null=True)
+    cancellation_email_sent_at = models.DateTimeField(blank=True, null=True)
+    approval_email_sent_at = models.DateTimeField(blank=True, null=True)
+    approval_notice_dismissed_at = models.DateTimeField(blank=True, null=True)
+    issued_at = models.DateTimeField(default=timezone.now, editable=False)
+    expiry_date = models.DateField(blank=True, null=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if self.expiry_date is None:
+            self.expiry_date = date(self.issued_at.year + 5, self.issued_at.month, 1)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        using = kwargs.get('using') or self._state.db
+        with transaction.atomic(using=using):
+            CardApplicationAsset.objects.using(using).filter(application=self).delete()
+            return super().delete(*args, **kwargs)
+
+    @property
+    def card_number(self):
+        try:
+            return self.number_record.number
+        except CardApplicationNumber.DoesNotExist:
+            return None
+
+    def __str__(self):
+        return f'Card application {self.pk} for user {self.user_id}'
+
+
+class CardApplicationNumber(models.Model):
+    """Permanent registry; deleting an application never releases its card number."""
+
+    number = models.CharField(
+        max_length=16,
+        unique=True,
+        default=generate_card_issuer_number,
+        editable=False,
+    )
+    application = models.OneToOneField(
+        CardApplication,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='number_record',
+    )
+    allocated_at = models.DateTimeField(auto_now_add=True)
+
+
+class CardApplicationAsset(models.Model):
+    """Reserve an asset for the lifetime of a user's card application."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='card_application_assets',
+    )
+    ticker = models.CharField(max_length=10)
+    application = models.ForeignKey(
+        CardApplication,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reserved_assets',
+    )
+    reserved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'ticker'],
+                name='unique_card_application_asset_per_user',
+            ),
+        ]
+
+
+class CardDeliveryAddress(models.Model):
+    """A saved physical address belonging to one card application."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='card_delivery_address',
+    )
+    application = models.OneToOneField(
+        CardApplication,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='delivery_address',
+    )
+    secondary_unit = models.CharField(max_length=100, blank=True)
+    street_address = models.CharField(max_length=255)
+    city = models.CharField(max_length=100)
+    state = models.CharField(max_length=100)
+    zip_code = models.CharField(max_length=20)
+    country = models.CharField(max_length=2)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Card delivery address for user {self.user_id}'
+
+
+class CardActivationCode(models.Model):
+    """Single-use, short-lived verification codes issued for card activation."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='card_activation_codes',
+    )
+    application = models.ForeignKey(
+        CardApplication,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='activation_codes',
+    )
+    code_hash = models.CharField(max_length=64, unique=True, editable=False)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f'Card activation code record {self.pk}'
 
 
 class WalletAsset(models.Model):
@@ -383,6 +592,54 @@ class AccountSelectionChallenge(models.Model):
         )
         challenge.users.set(users)
         return challenge, raw_token
+
+    def is_valid(self):
+        return self.used_at is None and timezone.now() < self.expires_at
+
+
+class FirstLoginPasswordSetupChallenge(models.Model):
+    """Short-lived email-code challenge for setting a reset user's new password."""
+
+    token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    inbox_email = models.EmailField()
+    code_hash = models.CharField(max_length=64)
+    users = models.ManyToManyField(
+        CustomUser,
+        related_name='first_login_password_setup_challenges',
+    )
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    verified_at = models.DateTimeField(blank=True, null=True)
+    used_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = 'first_login_password_setup_challenges'
+
+    @classmethod
+    def generate_challenge(cls, users, inbox_email):
+        raw_token = secrets.token_urlsafe(32)
+        code = f'{secrets.randbelow(1_000_000):06d}'
+        challenge = cls.objects.create(
+            token_hash=hashlib.sha256(raw_token.encode('utf-8')).hexdigest(),
+            inbox_email=inbox_email,
+            code_hash=hmac.new(
+                settings.SECRET_KEY.encode('utf-8'),
+                code.encode('utf-8'),
+                hashlib.sha256,
+            ).hexdigest(),
+            expires_at=timezone.now() + timedelta(minutes=15),
+        )
+        challenge.users.set(users)
+        return challenge, raw_token, code
+
+    def check_code(self, code):
+        expected = hmac.new(
+            settings.SECRET_KEY.encode('utf-8'),
+            code.encode('utf-8'),
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(self.code_hash, expected)
 
     def is_valid(self):
         return self.used_at is None and timezone.now() < self.expires_at

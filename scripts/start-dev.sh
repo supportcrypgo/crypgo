@@ -92,6 +92,7 @@ cleanup() {
     
     # Kill background processes
     pkill -f "manage.py runserver" || true
+    pkill -f "manage.py process_due_card_cancellations" || true
     pkill -f "next dev" || true
     
     log SUCCESS "Services stopped"
@@ -147,6 +148,11 @@ start_crypgo() {
     CRYPTOGO_PID=$!
     
     services+=("Crypgo: $CRYPTOGO_PID")
+
+    # Start the card application cancellation worker
+    ./.venv/Scripts/python.exe manage.py process_due_card_cancellations --loop --interval 60 > "$LOG_DIR/card-cancellation-scheduler.log" 2>&1 &
+    CARD_CANCELLATION_PID=$!
+    services+=("Card cancellation scheduler: $CARD_CANCELLATION_PID")
     
     # Wait for it to be ready
     if wait_for_service "$CRYPTOGO_URL" "Crypgo"; then

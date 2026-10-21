@@ -168,6 +168,7 @@ class CampaignModelTest(TestCase):
         with tempfile.TemporaryDirectory() as log_dir:
             with override_settings(CAMPAIGN_WORKER_LOG_DIR=log_dir):
                 with (
+                    patch.object(admin, '_sync_crypgo_users', return_value=(True, 'Synced')),
                     patch('apps.campaigns.worker.get_campaign_python_executable', return_value='/home/bot/venv/bin/python'),
                     patch('apps.campaigns.worker.subprocess.Popen') as popen,
                     patch.object(admin, 'message_user') as message_user,
@@ -188,6 +189,97 @@ class CampaignModelTest(TestCase):
         command = ' '.join(popen.call_args.args[0])
         self.assertTrue(any(str(run.pk) in command for run in CampaignRun.objects.all()))
         self.assertTrue(message_user.called)
+
+    def test_targeted_send_creates_a_campaign_with_only_the_selected_account(self):
+        admin = CampaignAdmin(Campaign, AdminSite())
+        request = RequestFactory().post(
+            '/admin/campaigns/campaign/send-to-users/',
+            {'template_id': str(self.template.pk), 'user_ids': '42'},
+        )
+        request.user = self.admin_user
+        account = {
+            'external_user_id': '42',
+            'email': 'selected@example.com',
+            'first_name': 'Selected',
+            'last_name': 'Recipient',
+            'dashboard_url': 'https://app.example.com/auth/campaign-access?token=selected',
+        }
+
+        with (
+            patch.object(admin, '_export_crypgo_accounts', return_value=[account]) as export_accounts,
+            patch('apps.campaigns.admin.launch_campaign_worker', return_value=(True, 'Worker started')),
+            patch.object(admin, 'message_user'),
+        ):
+            response = admin.send_to_users_view(request)
+
+        self.assertEqual(response.status_code, 302)
+        targeted_campaign = Campaign.objects.get(selected_recipients_only=True)
+        self.assertEqual(targeted_campaign.template, self.template)
+        self.assertEqual(targeted_campaign.total_leads, 1)
+        recipient = CampaignLead.objects.get(campaign=targeted_campaign)
+        self.assertEqual(recipient.external_user_id, '42')
+        self.assertEqual(recipient.recipient_email, 'selected@example.com')
+        self.assertEqual(recipient.recipient_account_emails, ['selected@example.com'])
+        export_accounts.assert_called_once_with(targeted_campaign.pk, [42])
+
+    def test_targeted_send_page_renders_individual_account_choices(self):
+        admin = CampaignAdmin(Campaign, AdminSite())
+        request = RequestFactory().get('/admin/campaigns/campaign/send-to-users/')
+        request.user = self.admin_user
+        accounts = [
+            {
+                'external_user_id': '42',
+                'email': 'selected@example.com',
+                'first_name': 'Selected',
+                'last_name': 'Recipient',
+            },
+        ]
+
+        with patch.object(admin, '_export_crypgo_accounts', return_value=accounts):
+            response = admin.send_to_users_view(request)
+            response.render()
+
+        page = response.content.decode()
+        self.assertNotIn('One-to-one campaign delivery', page)
+        self.assertNotIn('Send to selected users', page)
+        self.assertNotIn('There are no active email templates available.', page)
+        self.assertIn('name="template_id" required', page)
+        self.assertNotIn('name="template_id" required disabled', page)
+        self.assertIn('selected@example.com', page)
+        self.assertIn('Test Template', page)
+        self.assertIn('name="user_ids"', page)
+
+    def test_targeted_campaign_resend_does_not_sync_all_crypgo_users(self):
+        targeted_campaign = Campaign.objects.create(
+            name='Targeted retry',
+            subject='Selected',
+            template=self.template,
+            selected_recipients_only=True,
+        )
+        admin = CampaignAdmin(Campaign, AdminSite())
+
+        with (
+            patch.object(admin, '_sync_crypgo_users', side_effect=AssertionError('must not sync all users')),
+            patch('apps.campaigns.admin.launch_campaign_worker', return_value=(True, 'Worker started')),
+        ):
+            started, message = admin._queue_campaign_send(targeted_campaign)
+
+        self.assertTrue(started)
+        self.assertEqual(message, 'Worker started')
+
+    def test_targeted_campaign_cannot_be_expanded_by_manual_audience_sync(self):
+        targeted_campaign = Campaign.objects.create(
+            name='Targeted only',
+            subject='Selected',
+            template=self.template,
+            selected_recipients_only=True,
+        )
+        admin = CampaignAdmin(Campaign, AdminSite())
+
+        synced, message = admin._sync_crypgo_users(targeted_campaign)
+
+        self.assertFalse(synced)
+        self.assertIn('locked to its selected accounts', message)
 
     def test_send_campaign_worker_failure_does_not_leave_campaign_running(self):
         admin = CampaignAdmin(Campaign, AdminSite())

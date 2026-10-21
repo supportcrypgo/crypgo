@@ -5,6 +5,7 @@ A comprehensive Django-based email marketing automation system with Unfold admin
 ## Features
 
 - **Campaign Management** - Create, schedule, and manage email campaigns
+- **Targeted Crypgo Sends** - Choose a saved template and select individual active Crypgo accounts from the Bot admin
 - **Lead Management** - Import, segment, and manage email lists with soft-delete support
 - **Email Templates** - Rich text editor (TinyMCE) with placeholder variables
 - **Email Tracking** - Open rates, click tracking, bounce handling
@@ -69,6 +70,13 @@ python manage.py runserver
 ```
 
 Access the admin panel at `http://127.0.0.1:8000/admin/`
+
+For a one-off message to chosen Crypgo accounts, open **Campaigns → Send to
+Selected Users** in the admin sidebar. Select an active template, tick only the
+intended accounts, and queue the send. This creates a separate targeted
+campaign and does not synchronize the full Crypgo audience. Accounts sharing
+an inbox appear separately; selecting multiple accounts for the same inbox
+groups delivery to one email, consistent with normal Crypgo campaign handling.
 
 ## Project Structure
 
@@ -147,6 +155,27 @@ Apply the Bot database migration with `python manage.py migrate` before
 resuming campaigns. Campaign email logs record which sender account was used.
 Password-reset emails sent by the Django API remain fixed to
 `support.crypgo@gmail.com`.
+
+### ZeptoMail SMTP
+Set these values in the Bot project's `Bot/.env` on PythonAnywhere. This file
+is read by both the web app and Django management commands/scheduled tasks, and
+must not be committed:
+
+```dotenv
+MAIL_PROVIDER=zeptomail
+MAIL_HOST=smtp.zeptomail.com
+MAIL_PORT=587
+MAIL_ENCRYPTION=tls
+MAIL_USERNAME=emailapikey
+MAIL_PASSWORD=<generated-zeptomail-smtp-password>
+MAIL_FROM_ADDRESS=info@crypgo.us.ci
+MAIL_FROM_NAME=info@crypgo.us.ci
+```
+
+Use a verified ZeptoMail sender address. After changing the file, reload the
+PythonAnywhere web app; scheduled commands will use the settings the next time
+they start. Gmail remains the default if `MAIL_PROVIDER` is not set to
+`zeptomail`. Existing `ZEPTOMAIL_SMTP_*` setting names are also supported.
 
 ### SendGrid
 1. Create API key in SendGrid dashboard

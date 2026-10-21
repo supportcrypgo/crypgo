@@ -41,6 +41,27 @@ function deriveTxMetrics(txs: UnifiedTransaction[]) {
   };
 }
 
+function enrichTransactionsWithLivePrices(
+  transactions: UnifiedTransaction[],
+  prices: Prices | null,
+): UnifiedTransaction[] {
+  return transactions.map((transaction) => {
+    const priceKey = TICKER_TO_COINGECKO_KEY[transaction.asset];
+    const currentPrice = priceKey && prices
+      ? Number(prices[priceKey as keyof Prices]?.usd)
+      : 0;
+
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+      return transaction;
+    }
+
+    return {
+      ...transaction,
+      totalValue: Math.abs(Number(transaction.amount)) * currentPrice,
+    };
+  });
+}
+
 // ---------- context shape ----------
 export interface UnifiedContextValue {
   user: UnifiedUser | null;
@@ -433,6 +454,10 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const enrichedAssets = enrichWalletAssetsWithLivePrices(walletAssets, prices);
+  const enrichedTransactions = useMemo(
+    () => enrichTransactionsWithLivePrices(transactions, prices),
+    [transactions, prices],
+  );
 
   const value = useMemo<UnifiedContextValue>(() => {
     return {
@@ -445,8 +470,8 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
       walletSummary,
       walletError,
 
-      transactions,
-      txMetrics: deriveTxMetrics(transactions),
+      transactions: enrichedTransactions,
+      txMetrics: deriveTxMetrics(enrichedTransactions),
 
       profiles,
 
@@ -477,9 +502,9 @@ export function UnifiedProvider({ children }: { children: React.ReactNode }) {
     authLoading,
     isLoadingData,
     enrichedAssets,
+    enrichedTransactions,
     walletSummary,
     walletError,
-    transactions,
     profiles,
     executeSendTransaction,
     executeReceiveTransaction,

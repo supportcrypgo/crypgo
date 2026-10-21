@@ -20,8 +20,11 @@ export interface UnifiedUser {
   firstName: string;
   lastName: string;
   email: string;
+  displayCurrency?: string;
   country: string;
   dateOfBirth?: string;
+  identityDetailsVerified?: boolean;
+  kycStatus?: 'none' | 'pending' | 'verified' | 'rejected';
   password: string;
   avatarInitials: string;
   role: UserRole;

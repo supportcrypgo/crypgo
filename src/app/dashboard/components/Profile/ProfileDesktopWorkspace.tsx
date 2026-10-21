@@ -8,9 +8,10 @@ import type { UnifiedUser } from '@/types/unified';
 
 interface DesktopWorkspaceProps {
   user?: UnifiedUser | null;
+  onCurrencySelected: () => void;
 }
 
-export default function ProfileDesktopWorkspace({ user }: DesktopWorkspaceProps) {
+export default function ProfileDesktopWorkspace({ user, onCurrencySelected }: DesktopWorkspaceProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -25,6 +26,7 @@ export default function ProfileDesktopWorkspace({ user }: DesktopWorkspaceProps)
       'password',
       'activity',
       'preferences',
+      'currency',
       'delete-account',
     ];
 
@@ -57,7 +59,12 @@ export default function ProfileDesktopWorkspace({ user }: DesktopWorkspaceProps)
 
       {/* Content Layer */}
       <div className="p-8">
-        <ProfileDesktopContent activeTab={activeTab} user={user} />
+        <ProfileDesktopContent
+          activeTab={activeTab}
+          user={user}
+          onCurrencyClick={() => handleTabChange('currency')}
+          onCurrencySelected={onCurrencySelected}
+        />
       </div>
     </div>
   );

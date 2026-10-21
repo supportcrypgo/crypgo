@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { useTransactions } from '../context/TransactionContext';
 import { Transaction } from '../types';
+import CurrencyValue from '@/app/dashboard/components/CurrencyValue';
 import {
   ArrowUpRight,
   ArrowDownLeft,
@@ -165,7 +166,7 @@ function TransactionCard({ tx }: { tx: Transaction }) {
           </span>
         </div>
         <span className="text-sm text-charcoalGray">
-          ${tx.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <CurrencyValue amount={tx.totalValue} className="text-sm text-charcoalGray" shimmerClassName="h-3.5 w-20" />
         </span>
       </div>
 

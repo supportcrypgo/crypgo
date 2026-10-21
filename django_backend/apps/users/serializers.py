@@ -3,16 +3,85 @@ from typing import cast
 
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from decimal import Decimal
 from .models import (
-    WalletAsset, WalletAddress, UserHistoricalSnapshot, UserSession, KYCDocument, 
+    CardApplication, CardDeliveryAddress, SharedInboxGroup, WalletAsset, WalletAddress, UserHistoricalSnapshot, UserSession, KYCDocument,
     UserActivityLog, Transaction, Notification, PushSubscription,
     DeviceFingerprint, TransactionTranslation, InternalTransfer
 )
+from .email_identity import normalize_shared_inbox
 
 User = get_user_model()
 
 SUPPORTED_WALLET_ASSETS = ['BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'SOL', 'LTC', 'XRP', 'ADA', 'DOT', 'DOGE', 'LINK']
+
+
+class CardDeliveryAddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CardDeliveryAddress
+        fields = [
+            'secondary_unit',
+            'street_address',
+            'city',
+            'state',
+            'zip_code',
+            'country',
+        ]
+
+    def validate_country(self, value):
+        value = value.strip().upper()
+        if len(value) != 2 or not value.isalpha():
+            raise serializers.ValidationError('Enter a valid two-letter country code.')
+        return value
+
+    def validate(self, attrs):
+        for field in ('street_address', 'city', 'state', 'zip_code'):
+            if field in attrs:
+                attrs[field] = attrs[field].strip()
+                if not attrs[field]:
+                    raise serializers.ValidationError({field: 'This field may not be blank.'})
+        if 'secondary_unit' in attrs:
+            attrs['secondary_unit'] = attrs['secondary_unit'].strip()
+        return attrs
+
+
+class CardApplicationSerializer(serializers.ModelSerializer):
+    card_number = serializers.CharField(read_only=True)
+    approval_notice_pending = serializers.SerializerMethodField()
+    address = CardDeliveryAddressSerializer(
+        source='delivery_address',
+        read_only=True,
+    )
+
+    class Meta:
+        model = CardApplication
+        fields = [
+            'id',
+            'card_number',
+            'source_asset',
+            'status',
+            'approval_notice_pending',
+            'cancellation_due_at',
+            'issued_at',
+            'expiry_date',
+            'address',
+        ]
+        read_only_fields = ['id', 'card_number', 'status', 'issued_at', 'expiry_date']
+
+    def get_approval_notice_pending(self, application):
+        return (
+            application.status == CardApplication.STATUS_APPROVED
+            and application.approval_notice_dismissed_at is None
+        )
+
+    def validate_source_asset(self, value):
+        value = value.strip().upper()
+        if not value:
+            return value
+        if value not in SUPPORTED_WALLET_ASSETS:
+            raise serializers.ValidationError('Select a supported source asset.')
+        return value
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -25,8 +94,16 @@ class UserSerializer(serializers.ModelSerializer):
             'date_of_birth', 'country', 'city', 'address', 'avatar_url',
             'role', 'date_joined', 'is_active',
             'kyc_status', 'kyc_rejection_reason', 'two_fa_enabled',
-            'transaction_guard_enabled',
+            'identity_details_verified', 'transaction_guard_enabled',
+            'display_currency',
         ]
+        read_only_fields = ['identity_details_verified']
+
+    def validate_display_currency(self, value):
+        currency = value.strip().upper()
+        if not re.fullmatch(r'[A-Z]{3}', currency):
+            raise serializers.ValidationError('Enter a valid three-letter currency code.')
+        return currency
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
@@ -145,6 +222,7 @@ class LoginSerializer(serializers.Serializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     """Serializer for user registration."""
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True, min_length=8, required=False)
     username = serializers.CharField(required=False, allow_blank=True)
@@ -158,6 +236,28 @@ class RegisterSerializer(serializers.ModelSerializer):
     
     def validate_email(self, value):
         value = value.strip().lower()
+        inbox_email = normalize_shared_inbox(value)
+        if inbox_email and inbox_email.endswith('@gmail.com'):
+            local_part, _, domain = inbox_email.rpartition('@')
+            matching_accounts = User.objects.filter(
+                Q(email__iexact=inbox_email)
+                | Q(
+                    email__istartswith=f'{local_part}+',
+                    email__iendswith=f'@{domain}',
+                )
+            )
+            account_ids = set(matching_accounts.values_list('pk', flat=True))
+            linked_accounts = SharedInboxGroup.objects.filter(
+                Q(inbox_email__iexact=inbox_email) | Q(users__in=matching_accounts)
+            ).values_list('users__pk', flat=True)
+            account_ids.update(linked_accounts)
+
+            if len(account_ids) >= 2:
+                raise serializers.ValidationError(
+                    'This Gmail address has reached Crypgo’s two-account limit. '
+                    'Please sign in to access your existing accounts.'
+                )
+
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return value

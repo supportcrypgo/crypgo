@@ -3,6 +3,8 @@
 import React, { useRef } from 'react';
 import AssetCard from './AssetCard';
 import { Asset } from './types';
+import { useDisplayCurrency } from '@/context/DisplayCurrencyContext';
+import CurrencyLoadingShimmer from './CurrencyLoadingShimmer';
 
 interface AssetCardsProps {
   assets: Asset[];
@@ -87,6 +89,7 @@ function MiniSparklineDesktop({ change24h }: { change24h: number }) {
 }
 
 export default function AssetCards({ assets, isLoading, isDesktop = false }: AssetCardsProps) {
+  const { formatFromUsd, convertFromUsd } = useDisplayCurrency();
   if (isDesktop) {
     return (
       <div className="grid grid-cols-4 gap-3">
@@ -134,7 +137,11 @@ export default function AssetCards({ assets, isLoading, isDesktop = false }: Ass
                   </div>
                 </div>
                 <div className="flex items-end justify-between mt-auto">
-                  <p className="text-lg font-bold text-white">${asset.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  <p className="text-lg font-bold text-white">
+                    {convertFromUsd(asset.price) === null
+                      ? <CurrencyLoadingShimmer className="h-5 w-28" />
+                      : formatFromUsd(asset.price)}
+                  </p>
                   <div className="flex items-center gap-2">
                     <MiniSparklineDesktop change24h={asset.change24h} />
                     <span className={`text-xs font-semibold ${asset.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>

@@ -1,13 +1,17 @@
 'use client';
 
-import { User } from 'lucide-react';
+import { ChevronDown, User } from 'lucide-react';
 import type { UnifiedUser } from '@/types/unified';
+import { useDisplayCurrency } from '@/context/DisplayCurrencyContext';
 
 interface ProfileIdentityProps {
   user?: UnifiedUser | null;
+  onCurrencyClick: () => void;
 }
 
-export default function ProfileIdentity({ user }: ProfileIdentityProps) {
+export default function ProfileIdentity({ user, onCurrencyClick }: ProfileIdentityProps) {
+  const { currency } = useDisplayCurrency();
+
   if (!user) {
     return (
       <div className="flex flex-col items-center text-center text-muted-foreground">
@@ -36,7 +40,17 @@ export default function ProfileIdentity({ user }: ProfileIdentityProps) {
       </div>
 
       {/* Name - 24px gap from avatar */}
-      <h2 className="mt-6 text-3xl font-semibold text-center">
+      <button
+        type="button"
+        onClick={onCurrencyClick}
+        aria-label={`Display currency: ${currency}`}
+        className="mt-4 inline-flex min-h-10 items-center gap-2 px-1 text-sm font-medium text-white transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <span>{currency}</span>
+        <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+      </button>
+
+      <h2 className="mt-1 text-3xl font-semibold text-center md:mt-4">
         {user.firstName} {user.lastName}
       </h2>
 
@@ -47,7 +61,7 @@ export default function ProfileIdentity({ user }: ProfileIdentityProps) {
 
       {/* Location - 10px gap from email */}
       <p className="mt-2.5 text-base text-muted-foreground/70 text-center hidden md:block">
-        {user.country}
+        {user.identityDetailsVerified && currency === 'USD' ? user.country : null}
       </p>
     </div>
   );

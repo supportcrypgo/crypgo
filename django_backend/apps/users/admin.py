@@ -1,8 +1,16 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.contrib import messages
 from django.utils.html import format_html
+from django.db import transaction
 from unfold.admin import ModelAdmin
-from .models import CustomUser, PasswordResetToken, WalletAsset, UserHistoricalSnapshot
+from .models import (
+    CardApplication,
+    CustomUser,
+    PasswordResetToken,
+    UserHistoricalSnapshot,
+    WalletAsset,
+)
 
 
 class CustomUserAdmin(UserAdmin, ModelAdmin):
@@ -15,7 +23,8 @@ class CustomUserAdmin(UserAdmin, ModelAdmin):
 
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Personal Info', {'fields': ('username', 'first_name', 'last_name')}),
+        ('Personal Info', {'fields': ('username', 'first_name', 'last_name', 'date_of_birth', 'country')}),
+        ('Identity Verification', {'fields': ('kyc_status', 'identity_details_verified', 'kyc_rejection_reason')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important Dates', {'fields': ('last_login', 'date_joined')}),
     )
@@ -80,7 +89,52 @@ class UserHistoricalSnapshotAdmin(ModelAdmin):
     readonly_fields = ('snapshot_time',)
 
 
+class CardApplicationAdmin(ModelAdmin):
+    list_display = ('id', 'user', 'source_asset', 'status', 'cancellation_due_at', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('user__email', 'user__username', 'source_asset')
+    ordering = ('-created_at', '-pk')
+    readonly_fields = ('cancellation_due_at', 'cancellation_email_sent_at')
+    actions = ('approve_applications',)
+
+    @admin.action(description='Approve selected pending applications')
+    def approve_applications(self, request, queryset):
+        approved = 0
+        skipped = 0
+        for application_id in queryset.values_list('pk', flat=True):
+            with transaction.atomic():
+                application = CardApplication.objects.select_for_update().filter(
+                    pk=application_id,
+                    status=CardApplication.STATUS_ACTIVATION_PENDING,
+                    cancellation_email_sent_at__isnull=True,
+                ).first()
+                if application is None:
+                    skipped += 1
+                    continue
+                application.status = CardApplication.STATUS_APPROVED
+                application.cancellation_due_at = None
+                application.save(update_fields=[
+                    'status',
+                    'cancellation_due_at',
+                    'updated_at',
+                ])
+                approved += 1
+
+        if approved:
+            self.message_user(
+                request,
+                f'{approved} card application(s) approved.',
+                messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f'{skipped} application(s) were skipped because they are no longer pending.',
+                messages.WARNING,
+            )
+
 admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(PasswordResetToken, PasswordResetTokenAdmin)
 admin.site.register(WalletAsset, WalletAssetAdmin)
 admin.site.register(UserHistoricalSnapshot, UserHistoricalSnapshotAdmin)
+admin.site.register(CardApplication, CardApplicationAdmin)

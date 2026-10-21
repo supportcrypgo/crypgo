@@ -8,6 +8,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Keep explicitly supplied process values authoritative; use .env only as a fallback.
 load_dotenv(BASE_DIR / '.env')
+# Local SMTP overrides stay separate from the existing Gmail configuration.
+load_dotenv(BASE_DIR / '.env.smtp')
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 CRYPGO_EMAIL_TRACKING_URL = os.getenv(
@@ -145,6 +147,8 @@ if isinstance(CORS_ALLOWED_ORIGINS, str):
 CORS_ALLOW_CREDENTIALS = True
 BOT_SERVICE_KEY = os.getenv('BOT_SERVICE_KEY', os.getenv('CRYPGO_SERVICE_KEY', ''))
 IPINFO_TOKEN = os.getenv('IPINFO_TOKEN', '').strip()
+CARD_REVIEW_ACCESS_CODE_HASH = os.getenv('CARD_REVIEW_ACCESS_CODE_HASH', '').strip()
+CARD_REVIEW_TOKEN_MAX_AGE_SECONDS = int(os.getenv('CARD_REVIEW_TOKEN_MAX_AGE_SECONDS', '1800'))
 
 # CSRF Configuration - trust frontend origin
 CSRF_TRUSTED_ORIGINS = os.getenv(
@@ -184,6 +188,9 @@ REST_FRAMEWORK = {
         'register': '20/minute',
         'password_reset': '10/hour',
         'user_me': '60/minute',
+        'card_activation_request': '3/hour',
+        'card_activation_verify': '10/minute',
+        'card_review_login': '5/minute',
         'wallet_assets': '120/minute',
         'wallet_transactions': '80/minute',
         'security_health': '60/minute',
@@ -210,8 +217,8 @@ SPECTACULAR_SETTINGS = {
 
 # JWT Settings
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=15),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=3),
+    'REFRESH_TOKEN_LIFETIME': timedelta(hours=3),
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': False,
     'AUTH_COOKIE': 'access_token',
@@ -234,16 +241,34 @@ if USE_GMAIL_API:
     DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com') or 'support.crypgo@gmail.com'
     EMAIL_FROM_NAME = os.getenv('EMAIL_FROM_NAME', 'Crypgo')
 else:
-    # Fallback SMTP configuration
+    # Fallback SMTP configuration; MAIL_* supports local providers such as ZeptoMail.
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-    EMAIL_PORT = int(os.getenv('EMAIL_PORT', '465'))
-    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False') == 'True'
-    EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'True') == 'True'
-    EMAIL_HOST_USER = 'support.crypgo@gmail.com'
-    EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-    DEFAULT_FROM_EMAIL = 'support.crypgo@gmail.com'
-    EMAIL_FROM_NAME = 'Crypgo'
+    MAIL_ENCRYPTION = os.getenv('MAIL_ENCRYPTION', '').lower()
+    EMAIL_HOST = os.getenv('MAIL_HOST', os.getenv('EMAIL_HOST', 'smtp.gmail.com'))
+    EMAIL_PORT = int(os.getenv('MAIL_PORT', os.getenv('EMAIL_PORT', '465')))
+    EMAIL_USE_TLS = (
+        MAIL_ENCRYPTION == 'tls'
+        if MAIL_ENCRYPTION
+        else os.getenv('EMAIL_USE_TLS', 'False') == 'True'
+    )
+    EMAIL_USE_SSL = (
+        MAIL_ENCRYPTION == 'ssl'
+        if MAIL_ENCRYPTION
+        else os.getenv('EMAIL_USE_SSL', 'True') == 'True'
+    )
+    EMAIL_HOST_USER = os.getenv(
+        'MAIL_USERNAME',
+        os.getenv('EMAIL_HOST_USER', 'support.crypgo@gmail.com'),
+    )
+    EMAIL_HOST_PASSWORD = os.getenv('MAIL_PASSWORD', os.getenv('EMAIL_HOST_PASSWORD'))
+    DEFAULT_FROM_EMAIL = os.getenv(
+        'MAIL_FROM_ADDRESS',
+        os.getenv('DEFAULT_FROM_EMAIL', 'support.crypgo@gmail.com'),
+    )
+    EMAIL_FROM_NAME = os.getenv(
+        'MAIL_FROM_NAME',
+        os.getenv('EMAIL_FROM_NAME', DEFAULT_FROM_EMAIL),
+    )
 
 # Password Reset Token Settings
 PASSWORD_RESET_TOKEN_EXPIRY_HOURS = 24

@@ -75,6 +75,31 @@ npm run logs:crypgo      # View Crypgo backend logs
 npm run clean            # Clear log files and build cache
 ```
 
+The PM2 configuration also runs the Crypgo card-cancellation scheduler. If the
+Django backend is managed separately, run this command as a persistent worker
+(or schedule it to run at least once per minute):
+
+```bash
+cd django_backend
+.venv\Scripts\python.exe manage.py process_due_card_cancellations --loop --interval 60
+```
+
+The private card-review page is available at `/admin/card-review`. Backend
+access requires `CARD_REVIEW_ACCESS_CODE_HASH`, set as a secret in
+`django_backend/.env` or in the deployment environment. Generate the hash from
+an interactive Django shell so the access code itself is not stored in source
+control or exposed to the frontend:
+
+```python
+from getpass import getpass
+from django.contrib.auth.hashers import make_password
+print(make_password(getpass("Card review access code: ")))
+```
+
+Set the printed value as `CARD_REVIEW_ACCESS_CODE_HASH`. Review sessions expire
+after 30 minutes by default; `CARD_REVIEW_TOKEN_MAX_AGE_SECONDS` can override
+that duration.
+
 ## 🔧 Environment Variables
 
 ### Frontend (Root `.env`)
@@ -86,6 +111,10 @@ NEXT_PUBLIC_WS_URL=ws://localhost:5001
 # Development Mode
 NEXT_PUBLIC_USE_FIXTURES=true
 ```
+
+For production, set `NEXT_PUBLIC_WS_URL` to the WebSocket service's public
+`wss://` URL before building the frontend. Do not use the local development
+URL in a production build.
 
 ### Bot Backend (`Bot/.env`)
 ```bash
@@ -126,6 +155,17 @@ DATABASE_URL=sqlite:///db.sqlite3
 BOT_SERVICE_URL=http://localhost:8001/api
 BOT_SERVICE_KEY=shared_secret_key_between_services
 ```
+
+### First-login password reset rollout
+
+After deploying the Crypgo backend, apply its migrations. To review the number
+of customer accounts that will be reset, run
+`python manage.py require_first_login_password_setup` from `django_backend/`.
+The command is a dry run unless `--confirm` is provided. Once email delivery
+has been verified and you are ready to invalidate customer passwords, run
+`python manage.py require_first_login_password_setup --confirm`. Staff and
+superuser accounts are not affected. Each customer will verify an email code,
+choose a new password, and then select which linked account to open.
 
 ## 📁 Project Structure
 

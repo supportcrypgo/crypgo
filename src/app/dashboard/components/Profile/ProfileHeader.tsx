@@ -1,38 +1,55 @@
 'use client';
 
-import { ChevronLeft, Bell } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
+import LiveAgentHelpButton from '../LiveAgentHelpButton';
+import NotificationBell from '../NotificationBell';
 
 interface ProfileHeaderProps {
   showBackButton?: boolean;
   onBackClick?: () => void;
+  title?: string;
 }
 
-export default function ProfileHeader({ showBackButton = false, onBackClick }: ProfileHeaderProps) {
+export default function ProfileHeader({
+  showBackButton = false,
+  onBackClick,
+  title = 'My Profile',
+}: ProfileHeaderProps) {
   return (
     <header className="relative flex items-center justify-between h-14">
-      {showBackButton ? (
-        <button
-          type="button"
-          onClick={onBackClick}
-          className="flex items-center justify-center w-11 h-11 -ml-2 rounded-full hover:bg-muted/50 transition-colors"
-          aria-label="Go back"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-      ) : (
-        <div aria-hidden="true" className="w-11 h-11 -ml-2" />
-      )}
+      <div className="flex min-w-0 items-center gap-2">
+        {showBackButton ? (
+          <>
+            <button
+              type="button"
+              onClick={onBackClick}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-muted/50"
+              aria-label="Go back"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <h1 className="truncate text-base font-semibold">{title}</h1>
+          </>
+        ) : (
+          <Link href="/dashboard" aria-label="Crypgo dashboard" className="shrink-0">
+            <Image
+              src="/images/logo/logo.svg"
+              alt="Crypgo"
+              width={195}
+              height={55}
+              priority
+              style={{ width: 125, height: 'auto' }}
+            />
+          </Link>
+        )}
+      </div>
 
-      <h1 className="absolute left-1/2 -translate-x-1/2 text-xl font-semibold">
-        My Profile
-      </h1>
-
-      <button
-        className="flex items-center justify-center w-11 h-11 -mr-2 rounded-full hover:bg-muted/50 transition-colors"
-        aria-label="Notifications"
-      >
-        <Bell className="w-6 h-6" />
-      </button>
+      <div className="flex items-center gap-0">
+        <NotificationBell />
+        <LiveAgentHelpButton />
+      </div>
     </header>
   );
 }

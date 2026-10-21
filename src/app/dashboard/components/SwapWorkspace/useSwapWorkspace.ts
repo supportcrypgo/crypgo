@@ -6,7 +6,6 @@ import { SWAP_ASSETS, type SwapAsset, type TradeMode, type SwapQuote, type Quick
 import { useUnified } from '@/context/UnifiedContext';
 import { aggregateWalletAmountsByTicker } from '@/lib/walletBalances';
 import { getAssetIconPath } from '@/lib/assetIcons';
-import { isTransactionCautionError } from '@/data/api';
 
 const LIQUIDITY_FEE_RATE = 0.003;
 const DEFAULT_SLIPPAGE = 0.5;
@@ -43,7 +42,6 @@ export function useSwapWorkspace() {
   const [isSwapping, setIsSwapping] = useState(false);
   const [swapResult, setSwapResult] = useState<QuickSwapResult | null>(null);
   const [error, setError] = useState('');
-  const [cautionOpen, setCautionOpen] = useState(false);
 
   useEffect(() => {
     if (availableAssets.length === 0) return;
@@ -145,10 +143,6 @@ export function useSwapWorkspace() {
 
       setSwapResult(result);
     } catch (err) {
-      if (isTransactionCautionError(err)) {
-        setCautionOpen(true);
-        return;
-      }
       setError(err instanceof Error ? err.message : 'Swap failed. Please try again.');
     } finally {
       setIsSwapping(false);
@@ -193,7 +187,6 @@ export function useSwapWorkspace() {
     isSwapping,
     swapResult,
     error,
-    cautionOpen,
     isCalculating,
     quote,
     receiveAmount,
@@ -207,7 +200,6 @@ export function useSwapWorkspace() {
     handleSwap,
     handleSuccessClose,
     handleRetry,
-    closeCaution: () => setCautionOpen(false),
     handleReset,
   };
 }

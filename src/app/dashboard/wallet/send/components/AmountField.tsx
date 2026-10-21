@@ -5,6 +5,7 @@ import { SendAssetInfo, NetworkOption } from './types';
 import { useCryptoPricesGlobal } from '@/context/CryptoPriceContext';
 import { TICKER_TO_COINGECKO_KEY } from '@/lib/priceMapping';
 import type { Prices } from '@/app/dashboard/components/types';
+import { useDisplayCurrency } from '@/context/DisplayCurrencyContext';
 
 interface AmountFieldProps {
   asset: SendAssetInfo;
@@ -22,6 +23,7 @@ export default function AmountField({
   onAmountChange,
 }: AmountFieldProps) {
   const { prices, isLoading } = useCryptoPricesGlobal();
+  const { formatFromUsd } = useDisplayCurrency();
 
   // Convert balance to number
   const balance = parseFloat(asset.balance?.replace(/,/g, '') || '0');
@@ -93,7 +95,7 @@ export default function AmountField({
                 ? 'Loading live price…'
                 : usdValue === null
                   ? 'Live price unavailable'
-                  : `≈ $${usdValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD`}
+                  : `≈ ${formatFromUsd(usdValue)}`}
             </span>
             <button
               type="button"

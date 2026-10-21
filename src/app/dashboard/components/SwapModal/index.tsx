@@ -15,10 +15,9 @@ import AssetSelector from './AssetSelector';
 import SwapCalculation from './SwapCalculation';
 import SwapSummary from './SwapSummary';
 import { useUnified } from '@/context/UnifiedContext';
-import CautionModal from '@/components/Auth/CautionModal';
-import { isTransactionCautionError } from '@/data/api';
 import { aggregateWalletAmountsByTicker } from '@/lib/walletBalances';
 import { getAssetIconPath } from '@/lib/assetIcons';
+import { useDisplayCurrency } from '@/context/DisplayCurrencyContext';
 
 const LIQUIDITY_FEE_RATE = 0.003;
 const DEFAULT_SLIPPAGE = 0.5;
@@ -30,6 +29,7 @@ interface SwapModalProps {
 
 export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
   const { walletAssets, executeSwapTransaction } = useUnified();
+  const { formatFromUsd } = useDisplayCurrency();
 
   // Build asset list with live wallet balances (available/spendable quantity)
   const availableAssets = useMemo<SwapAsset[]>(() => {
@@ -61,7 +61,6 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
   const [isSwapping, setIsSwapping] = useState(false);
   const [swapResult, setSwapResult] = useState<QuickSwapResult | null>(null);
   const [error, setError] = useState('');
-  const [cautionOpen, setCautionOpen] = useState(false);
 
   // Keep pay/receive assets in sync with live balances
   useEffect(() => {
@@ -158,10 +157,6 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
 
       setSwapResult(result);
     } catch (err) {
-      if (isTransactionCautionError(err)) {
-        setCautionOpen(true);
-        return;
-      }
       setError(err instanceof Error ? err.message : 'Swap failed. Please try again.');
     } finally {
       setIsSwapping(false);
@@ -209,7 +204,6 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
 
   return (
     <>
-      <CautionModal isOpen={cautionOpen} onClose={() => setCautionOpen(false)} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in-50 duration-200">
       {/* Mobile-first: full screen on mobile, centered on desktop */}
       <div className="relative w-full max-w-[420px] max-h-[95vh] bg-[#1e293b] border border-primary/20 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 fade-in-50 duration-200">
@@ -323,7 +317,7 @@ export default function SwapModal({ isOpen, onClose }: SwapModalProps) {
                       {formatAmount(quote.receiveAmount, receiveAsset.ticker)}
                     </p>
                     <p className="text-xs text-charcoalGray mt-1">
-                      ≈ ${(quote.receiveAmount * receiveAsset.price).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      ≈ {formatFromUsd(quote.receiveAmount * receiveAsset.price)}
                     </p>
                   </>
                 ) : (

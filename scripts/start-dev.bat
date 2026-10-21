@@ -54,6 +54,9 @@ if !skip_crypgo! equ 0 (
     call :Log SUCCESS "Crypgo backend is running on %CRYPTOGO_URL%"
 )
 
+call powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%start-card-cancellation-scheduler.ps1" -PythonExe "%PROJECT_ROOT%django_backend\.venv\Scripts\python.exe" -DjangoDirectory "%PROJECT_ROOT%django_backend" -LogDirectory "%LOG_DIR%"
+if errorlevel 1 exit /b 1
+
 if !skip_bot! equ 0 (
     call :Log INFO "Starting Bot Django backend..."
     set "DJANGO_SETTINGS_MODULE=bot_project.settings"

@@ -3,23 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { Asset } from './types';
+import { useDisplayCurrency } from '@/context/DisplayCurrencyContext';
+import CurrencyLoadingShimmer from './CurrencyLoadingShimmer';
 
 interface WatchlistRowProps {
   asset: Asset;
 }
 
-const MARKET_CAP_LABELS: Record<string, string> = {
-  BTC: '$15.56B',
-  BNB: '$1.10B',
-  SOL: '$1.30B',
-  ETH: '$6.04B',
-};
-
-const VOLUME_LABELS: Record<string, string> = {
-  BTC: '$2.89B',
-  BNB: '$310.4M',
-  SOL: '$280.7M',
-  ETH: '$1.23B',
+const MARKET_CAP_USD: Record<string, number> = {
+  BTC: 15_560_000_000,
+  BNB: 1_100_000_000,
+  SOL: 1_300_000_000,
+  ETH: 6_040_000_000,
 };
 
 function easeOutCubic(t: number) {
@@ -87,10 +82,11 @@ function AnimatedNumber({
 }
 
 export default function WatchlistRow({ asset }: WatchlistRowProps) {
+  const { formatFromUsd, convertFromUsd } = useDisplayCurrency();
   const changeClass = asset.change24h >= 0 ? 'text-green-400' : 'text-red-400';
   const changePrefix = asset.change24h >= 0 ? '+' : '';
-  const marketCap = MARKET_CAP_LABELS[asset.ticker] ?? `$${asset.value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-  const volume = VOLUME_LABELS[asset.ticker] ?? '$--';
+  const marketCapUsd = MARKET_CAP_USD[asset.ticker] ?? asset.value;
+  const marketCap = formatFromUsd(marketCapUsd, true);
   const changeValue = asset.change24h;
 
   return (
@@ -107,15 +103,18 @@ export default function WatchlistRow({ asset }: WatchlistRowProps) {
         </div>
 
         <div className="hidden md:block w-[180px] shrink-0 text-right">
-          <p className="text-sm font-medium text-charcoalGray leading-none">{marketCap}</p>
+          <p className="text-sm font-medium text-charcoalGray leading-none">
+            {convertFromUsd(marketCapUsd) === null
+              ? <CurrencyLoadingShimmer className="h-3.5 w-20" />
+              : marketCap}
+          </p>
         </div>
 
         <div className="flex flex-col items-end gap-1 shrink-0 min-w-[120px]">
           <p className="text-sm font-semibold text-white whitespace-nowrap tabular-nums">
-            <AnimatedNumber
-              value={asset.price}
-              format={(value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            />
+            {convertFromUsd(asset.price) === null
+              ? <CurrencyLoadingShimmer className="h-3.5 w-24" />
+              : <AnimatedNumber value={asset.price} format={formatFromUsd} />}
           </p>
           <p className={`text-sm font-semibold ${changeClass} whitespace-nowrap tabular-nums`}>
             <AnimatedNumber

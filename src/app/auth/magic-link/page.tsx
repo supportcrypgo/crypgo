@@ -10,7 +10,9 @@ function MagicLinkContent() {
 
   useEffect(() => {
     const token = searchParams.get('token');
-    router.replace(token ? `/?magicToken=${encodeURIComponent(token)}` : '/?signin=1');
+    router.replace(token
+      ? `/auth/sign-in?magicToken=${encodeURIComponent(token)}`
+      : '/auth/sign-in');
   }, [searchParams]);
 
   return null;
