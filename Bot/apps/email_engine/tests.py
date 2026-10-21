@@ -112,7 +112,7 @@ class EmailSenderDeliverabilityTest(TestCase):
                 html_body='<p>Test</p>',
                 campaign=self.campaign,
                 sender_account={
-                    'email': 'info@crypgo.us.ci',
+                    'email': 'support@crypgo.us.ci',
                     'username': 'emailapikey',
                     'password': 'zeptomail-test-password',
                 },
@@ -127,7 +127,7 @@ class EmailSenderDeliverabilityTest(TestCase):
         self.assertFalse(backend.use_ssl)
         self.assertEqual(backend.username, 'emailapikey')
         self.assertEqual(backend.password, 'zeptomail-test-password')
-        self.assertEqual(message.from_email, 'Crypgo <info@crypgo.us.ci>')
+        self.assertEqual(message.from_email, 'Crypgo <support@crypgo.us.ci>')
 
     def test_sender_falls_back_to_there_for_unusable_local_part(self):
         start_len = len(mail.outbox)

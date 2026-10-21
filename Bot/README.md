@@ -168,8 +168,8 @@ MAIL_PORT=587
 MAIL_ENCRYPTION=tls
 MAIL_USERNAME=emailapikey
 MAIL_PASSWORD=<generated-zeptomail-smtp-password>
-MAIL_FROM_ADDRESS=info@crypgo.us.ci
-MAIL_FROM_NAME=info@crypgo.us.ci
+MAIL_FROM_ADDRESS=support@crypgo.us.ci
+MAIL_FROM_NAME=Crypgo
 ```
 
 Use a verified ZeptoMail sender address. After changing the file, reload the

@@ -128,7 +128,7 @@ if MAIL_PROVIDER == 'zeptomail':
     )
     DEFAULT_FROM_EMAIL = os.getenv(
         'ZEPTOMAIL_FROM_ADDRESS',
-        os.getenv('MAIL_FROM_ADDRESS', 'info@crypgo.us.ci'),
+        os.getenv('MAIL_FROM_ADDRESS', 'support@crypgo.us.ci'),
     )
     EMAIL_FROM_NAME = os.getenv(
         'MAIL_FROM_NAME',
