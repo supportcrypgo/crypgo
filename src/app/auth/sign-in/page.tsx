@@ -11,7 +11,7 @@ function SignInPageContent() {
   const [passwordResetToken, setPasswordResetToken] = useState(searchParams.get('resetToken'));
 
   return (
-    <main className="min-h-dvh bg-darkmode px-5 pb-16 pt-28 text-white sm:pt-32">
+    <main className="flex min-h-dvh items-center justify-center bg-darkmode px-5 py-28 text-white">
       <section className="mx-auto w-full max-w-md animate-in fade-in-0 slide-in-from-bottom-2 duration-300">
           <SignIn
             magicLinkToken={magicLinkToken}

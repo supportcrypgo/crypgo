@@ -532,13 +532,13 @@ const Signin = ({ onSuccess, onPasswordChanged, magicLinkToken, passwordResetTok
             setRequestSent(false);
             setFormError('');
           }}
-          className="mb-2 inline-block border-none bg-transparent text-base text-white hover:text-primary"
+          className="mx-auto mb-2 block border-none bg-transparent text-center text-base text-white hover:text-primary"
         >
           {isForgotPassword ? 'Back to Password Sign In' : 'Forgot Password?'}
         </button>
       )}
 
-      <p className={`text-body-secondary text-white text-base${firstLoginStep ? ' text-center' : ''}`}>
+      <p className="text-body-secondary text-center text-white text-base">
         Not a member yet?{" "}
         <Link href="/auth/sign-up" className="text-primary hover:underline">
           Sign Up
